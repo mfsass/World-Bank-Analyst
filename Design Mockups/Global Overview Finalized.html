@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Commit+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary": "#472a00",
+                        "on-primary-fixed": "#3b0900",
+                        "inverse-on-surface": "#313030",
+                        "outline": "#ad887e",
+                        "on-tertiary-container": "#3e2400",
+                        "on-primary-fixed-variant": "#872000",
+                        "primary": "#ffb5a0",
+                        "on-secondary-fixed": "#1b1c1c",
+                        "surface-variant": "#353534",
+                        "on-error": "#690005",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-surface": "#e5e2e1",
+                        "primary-fixed": "#ffdbd1",
+                        "secondary-container": "#464747",
+                        "secondary-fixed-dim": "#c7c6c6",
+                        "surface-container": "#201f1f",
+                        "primary-container": "#ff5625",
+                        "error-container": "#93000a",
+                        "tertiary-container": "#ca8100",
+                        "on-primary": "#601400",
+                        "outline-variant": "#5d4038",
+                        "on-secondary": "#303031",
+                        "primary-fixed-dim": "#ffb5a0",
+                        "on-primary-container": "#541100",
+                        "tertiary": "#ffb95f",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-high": "#2a2a2a",
+                        "on-error-container": "#ffdad6",
+                        "inverse-surface": "#e5e2e1",
+                        "on-surface-variant": "#e7bdb2",
+                        "on-secondary-fixed-variant": "#464747",
+                        "on-secondary-container": "#b6b5b5",
+                        "surface-container-highest": "#353534",
+                        "on-tertiary-fixed": "#2a1700",
+                        "surface-tint": "#ffb5a0",
+                        "secondary-fixed": "#e3e2e2",
+                        "secondary": "#c7c6c6",
+                        "on-background": "#e5e2e1",
+                        "inverse-primary": "#b12d00",
+                        "surface-container-lowest": "#0e0e0e",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#3a3939",
+                        "background": "#131313",
+                        "surface-dim": "#131313",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "surface": "#131313",
+                        "tertiary-fixed": "#ffddb8"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Commit Mono"],
+                        "mono": ["Commit Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .material-symbols-outlined.fill-1 {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .custom-mono { font-family: 'Commit Mono', monospace; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-[#0E0E0E] text-[#e5e2e1] font-body selection:bg-[#FF4500] selection:text-white">
+<!-- TopNavBar -->
+<nav class="bg-[#0E0E0E] flex justify-between items-center w-full px-6 h-16 fixed top-0 z-50 border-b border-[#262626]">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-[#FF4500] fill-1 text-2xl" data-icon="auto_awesome">auto_awesome</span>
+<div class="font-sans font-extrabold text-xl tracking-tighter text-white">WORLD ANALYST</div>
+</div>
+<div class="hidden md:flex items-center space-x-8 h-full">
+<a class="font-sans uppercase tracking-wider text-[11px] font-bold text-[#FF4500] border-b-2 border-[#FF4500] pb-2 h-full flex items-center mt-2" href="#">Global Overview</a>
+<a class="font-sans uppercase tracking-wider text-[11px] font-bold text-[#737373] hover:text-[#F5F5F5] transition-colors duration-150" href="#">Country Intelligence</a>
+<a class="font-sans uppercase tracking-wider text-[11px] font-bold text-[#737373] hover:text-[#F5F5F5] transition-colors duration-150" href="#">How It Works</a>
+<a class="font-sans uppercase tracking-wider text-[11px] font-bold text-[#737373] hover:text-[#F5F5F5] transition-colors duration-150" href="#">Pipeline</a>
+</div>
+<div class="flex items-center space-x-4">
+<button class="material-symbols-outlined text-[#737373] hover:text-[#F5F5F5] transition-colors duration-150" data-icon="notifications">notifications</button>
+<button class="material-symbols-outlined text-[#737373] hover:text-[#F5F5F5] transition-colors duration-150" data-icon="settings">settings</button>
+<div class="w-8 h-8 rounded-full bg-[#1A1A1A] border border-[#262626] flex items-center justify-center">
+<span class="material-symbols-outlined text-xs" data-icon="person">person</span>
+</div>
+</div>
+</nav>
+<!-- SideNavBar (Desktop Only) -->
+<aside class="hidden lg:flex flex-col w-64 h-full pt-20 fixed left-0 bg-[#0E0E0E] border-r border-[#262626] z-40">
+<div class="px-6 mb-8">
+<div class="flex items-center space-x-3 mb-2">
+<div class="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse"></div>
+<span class="font-mono uppercase text-[10px] tracking-tight text-[#e5e2e1]">SYSTEM STATUS</span>
+</div>
+<div class="font-mono uppercase text-[10px] tracking-tight text-[#737373]">OPERATIONAL // NODE: 01</div>
+</div>
+<div class="flex flex-col space-y-1">
+<a class="flex items-center px-6 py-3 space-x-4 text-[#FF4500] bg-[#FF4500]/5 border-r-2 border-[#FF4500] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="language">language</span>
+<span>Global Overview</span>
+</a>
+<a class="flex items-center px-6 py-3 space-x-4 text-[#737373] hover:bg-[#1A1A1A] hover:text-[#F5F5F5] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="flag">flag</span>
+<span>Country Intelligence</span>
+</a>
+<a class="flex items-center px-6 py-3 space-x-4 text-[#737373] hover:bg-[#1A1A1A] hover:text-[#F5F5F5] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="schema">schema</span>
+<span>How It Works</span>
+</a>
+<a class="flex items-center px-6 py-3 space-x-4 text-[#737373] hover:bg-[#1A1A1A] hover:text-[#F5F5F5] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="play_circle">play_circle</span>
+<span>Pipeline</span>
+</a>
+</div>
+<div class="mt-auto border-t border-[#262626] py-4">
+<a class="flex items-center px-6 py-2 space-x-2 text-[#737373] hover:text-[#F5F5F5] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span>Export</span>
+<span class="material-symbols-outlined text-[10px]" data-icon="arrow_forward">arrow_forward</span>
+</a>
+<a class="flex items-center px-6 py-2 space-x-4 text-[#737373] hover:text-[#F5F5F5] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span>Documentation</span>
+</a>
+<a class="flex items-center px-6 py-2 space-x-4 text-[#737373] hover:text-[#F5F5F5] transition-colors font-mono uppercase text-[10px] tracking-tight" href="#">
+<span>API Support</span>
+</a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="lg:ml-64 pt-20 pb-24 px-8 min-h-screen">
+<!-- Hero Section -->
+<section class="mb-8 bg-gradient-to-b from-[#1A1A1A] to-[#0E0E0E] p-8 rounded-lg">
+<div class="flex items-center space-x-2 text-[#FF4500] mb-4">
+<span class="material-symbols-outlined text-lg" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-mono text-[10px] font-bold uppercase tracking-widest">AI-Generated Insights</span>
+</div>
+<h1 class="text-[2.75rem] font-bold leading-tight mb-4 text-[#e5e2e1]">Global Economic Outlook — April 2026</h1>
+<p class="max-w-3xl text-body-md text-[#737373] leading-relaxed">
+                Predictive models indicate a systemic shift in the Sub-Saharan corridor. Market volatility has increased by <span class="text-[#FF4500] font-mono">12.4%</span> since the previous epoch. Intelligence suggests localized liquidity surges in emerging engineering hubs, specifically within the <span class="text-[#FF4500] font-mono">ZA-NG-KE</span> triad. Actionable intelligence requires immediate node recalibration.
+            </p>
+</section>
+<!-- Anomaly Banner -->
+<div class="bg-[#FF4500] text-white py-2 px-6 mb-8 flex items-center justify-between font-mono text-[11px] font-bold tracking-[0.2em] uppercase rounded-sm border-l-2 border-[#FF4500]">
+<div class="flex items-center space-x-4">
+<span class="material-symbols-outlined text-sm" data-icon="warning">warning</span>
+<span>04 ANOMALIES DETECTED IN PRIMARY DATALAYER</span>
+</div>
+<div class="flex items-center space-x-2">
+<span>VIEW LOGS</span>
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+<!-- KPI Row -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+<div class="bg-[#1A1A1A] border border-[#262626] p-6 relative overflow-hidden group">
+<div class="flex justify-between items-start mb-2">
+<div class="font-mono text-[10px] uppercase text-[#737373] tracking-wider">Countries Monitored</div>
+<div class="font-mono text-[9px] text-[#22C55E]">STAGNANT</div>
+</div>
+<div class="custom-mono text-[2rem] font-medium text-[#e5e2e1]">15</div>
+<div class="absolute bottom-2 right-4 font-mono text-[9px] text-[#737373]">LATENCY: 12MS</div>
+</div>
+<div class="bg-[#1A1A1A] border border-[#262626] p-6 relative overflow-hidden">
+<div class="flex justify-between items-start mb-2">
+<div class="font-mono text-[10px] uppercase text-[#737373] tracking-wider">Indicators Tracked</div>
+<div class="font-mono text-[9px] text-[#22C55E]">STAGNANT</div>
+</div>
+<div class="custom-mono text-[2rem] font-medium text-[#e5e2e1]">6</div>
+<div class="absolute bottom-2 right-4 font-mono text-[9px] text-[#737373]">LATENCY: 40MS</div>
+</div>
+<div class="bg-[#1A1A1A] border border-[#262626] p-6 relative overflow-hidden">
+<div class="flex justify-between items-start mb-2">
+<div class="font-mono text-[10px] uppercase text-[#737373] tracking-wider">Volatility Index</div>
+<div class="font-mono text-[9px] text-[#F59E0B]">ABOVE TARGET</div>
+</div>
+<div class="custom-mono text-[2rem] font-medium text-[#F59E0B]">18.42</div>
+<div class="absolute bottom-2 right-4 font-mono text-[9px] text-[#737373]">STABILITY: LOW</div>
+</div>
+<div class="bg-[#1A1A1A] border border-[#262626] p-6 relative overflow-hidden">
+<div class="flex justify-between items-start mb-2">
+<div class="font-mono text-[10px] uppercase text-[#737373] tracking-wider">Last AI Analysis</div>
+<div class="font-mono text-[9px] text-[#EF4444]">CRITICAL LEVEL</div>
+</div>
+<div class="custom-mono text-[1.5rem] font-medium text-[#e5e2e1]">2h ago</div>
+<div class="absolute bottom-2 right-4 font-mono text-[9px] text-[#737373]">LAST SYNC: 14:02 UTC</div>
+</div>
+</div>
+<!-- Main Data Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-10 gap-8 mb-8">
+<!-- Left 60%: Map Section -->
+<div class="lg:col-span-6 bg-[#1A1A1A] border border-[#262626] p-6 flex flex-col">
+<div class="flex justify-between items-center mb-6">
+<h2 class="text-headline-sm font-semibold">GLOBAL RISK OVERVIEW</h2>
+<span class="material-symbols-outlined text-[#737373] cursor-pointer" data-icon="fullscreen">fullscreen</span>
+</div>
+<div class="relative w-full aspect-[16/9] bg-[#0E0E0E] rounded border border-[#262626] overflow-hidden mb-6">
+<img alt="Dark stylized world map" class="w-full h-full object-cover opacity-40 grayscale" data-alt="Minimalist dark world map with high contrast coastlines, professional UI style, monochrome deep charcoal and black." data-location="global map" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_tbEUgOXebu4D39v1kAIGsLlyFvnxkMSRrUfOkwdo2G7PVYVMbwtrpIGj6QOsVusOGtsKs3uZ8qP40xK8EwclqH3Ilc6_6FJehdXfaLoBSJXmXSZ0Bt_zrLLalPPf2DF1zIA4eONSdXBR-KwBYyMm5JALd6NXFJLjJ9Nz_Jfo477kC9Ib-9kPV-ab0LLhpZietIZxSHIuZqpu49j2yrPpWJom6C9ugw5sxK96S_2Pa9dc1dke-9m03cKlcme_29V1GFk4gbumZZyW"/>
+<!-- Map Markers -->
+<div class="absolute inset-0 pointer-events-none">
+<div class="absolute top-[60%] left-[51%] group pointer-events-auto">
+<div class="w-3 h-3 bg-[#FF4500] rounded-full border border-white animate-pulse cursor-pointer"></div>
+<!-- Tooltip ZA -->
+<div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#262626] border border-[#FF4500] p-3 w-40 z-10 shadow-2xl">
+<div class="flex justify-between items-center mb-1">
+<span class="font-mono text-[10px] font-bold">SOUTH AFRICA</span>
+<span class="text-[9px] bg-red-900/50 text-[#EF4444] px-1 border border-[#EF4444]">HIGH RISK</span>
+</div>
+<div class="font-mono text-sm">GDP: 1.2%</div>
+<div class="mt-2 h-[1px] bg-[#262626] w-full"></div>
+<div class="text-[9px] text-[#737373] mt-1">SENTIMENT: BEARISH</div>
+</div>
+</div>
+<div class="absolute top-[45%] left-[18%] w-2 h-2 bg-[#FF4500] rounded-full opacity-60"></div>
+<div class="absolute top-[35%] left-[48%] w-2 h-2 bg-[#FF4500] rounded-full opacity-60"></div>
+<div class="absolute top-[25%] left-[80%] w-2 h-2 bg-[#FF4500] rounded-full opacity-60"></div>
+<div class="absolute top-[70%] left-[25%] w-2 h-2 bg-[#FF4500] rounded-full opacity-60"></div>
+</div>
+</div>
+<div class="mt-auto">
+<div class="font-mono text-[10px] text-[#737373] mb-3 tracking-widest uppercase">Select Market</div>
+<div class="flex space-x-2 overflow-x-auto hide-scrollbar pb-2">
+<div class="flex-none px-4 py-2 bg-[#FF4500] text-white font-mono text-xs cursor-pointer border border-[#FF4500]">ZA</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">NG</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">KE</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">EG</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">GH</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">ET</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">MA</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">DE</div>
+<div class="flex-none px-4 py-2 bg-[#0E0E0E] text-[#737373] font-mono text-xs hover:text-white hover:border-[#FF4500] border border-[#262626] transition-all cursor-pointer">FR</div>
+</div>
+</div>
+</div>
+<!-- Right 40%: Regional Breakdown -->
+<div class="lg:col-span-4 bg-[#1A1A1A] border border-[#262626] p-6">
+<h2 class="text-headline-sm font-semibold mb-6 uppercase tracking-tight">REGIONAL BREAKDOWN</h2>
+<div class="space-y-4">
+<div class="flex items-center text-[#737373] font-mono text-[9px] uppercase tracking-widest pb-2 border-b border-[#262626]">
+<div class="w-10">ID</div>
+<div class="flex-1">COUNTRY</div>
+<div class="w-20 text-right">METRIC</div>
+<div class="w-20 text-right">RISK</div>
+</div>
+<div class="flex items-center py-2 border-b border-[#262626]/50">
+<div class="w-10 font-mono text-xs bg-[#262626] py-1 text-center mr-3">ZA</div>
+<div class="flex-1 font-semibold text-sm">South Africa</div>
+<div class="w-20 text-right font-mono text-xs text-[#EF4444]">
+                            1.2% <span class="material-symbols-outlined text-[10px]" data-icon="arrow_downward">arrow_downward</span>
+</div>
+<div class="w-20 text-right">
+<span class="px-2 py-0.5 bg-red-900/20 text-[#EF4444] border border-[#EF4444] text-[8px] font-bold">CRITICAL</span>
+</div>
+</div>
+<div class="flex items-center py-2 border-b border-[#262626]/50">
+<div class="w-10 font-mono text-xs bg-[#262626] py-1 text-center mr-3">NG</div>
+<div class="flex-1 font-semibold text-sm">Nigeria</div>
+<div class="w-20 text-right font-mono text-xs text-[#22C55E]">
+                            3.4% <span class="material-symbols-outlined text-[10px]" data-icon="arrow_upward">arrow_upward</span>
+</div>
+<div class="w-20 text-right">
+<span class="px-2 py-0.5 bg-green-900/20 text-[#22C55E] border border-[#22C55E] text-[8px] font-bold">STABLE</span>
+</div>
+</div>
+<div class="flex items-center py-2 border-b border-[#262626]/50">
+<div class="w-10 font-mono text-xs bg-[#262626] py-1 text-center mr-3">KE</div>
+<div class="flex-1 font-semibold text-sm">Kenya</div>
+<div class="w-20 text-right font-mono text-xs text-[#22C55E]">
+                            5.1% <span class="material-symbols-outlined text-[10px]" data-icon="arrow_upward">arrow_upward</span>
+</div>
+<div class="w-20 text-right">
+<span class="px-2 py-0.5 bg-green-900/20 text-[#22C55E] border border-[#22C55E] text-[8px] font-bold">GROWTH</span>
+</div>
+</div>
+<div class="flex items-center py-2 border-b border-[#262626]/50">
+<div class="w-10 font-mono text-xs bg-[#262626] py-1 text-center mr-3">MA</div>
+<div class="flex-1 font-semibold text-sm">Morocco</div>
+<div class="w-20 text-right font-mono text-xs text-[#F59E0B]">
+                            2.8% <span class="material-symbols-outlined text-[10px]" data-icon="trending_flat">trending_flat</span>
+</div>
+<div class="w-20 text-right">
+<span class="px-2 py-0.5 bg-amber-900/20 text-[#F59E0B] border border-[#F59E0B] text-[8px] font-bold">WATCH</span>
+</div>
+</div>
+</div>
+<button class="w-full mt-6 py-3 border border-[#262626] font-mono text-[10px] tracking-widest text-[#737373] hover:text-[#e5e2e1] hover:bg-[#201F1F] transition-all">VIEW ALL 184 COUNTRIES</button>
+</div>
+</div>
+<!-- Market Depth Analysis -->
+<h2 class="text-headline-sm font-semibold mb-6 uppercase tracking-tight">MARKET DEPTH ANALYSIS</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+<!-- Market Card 1 -->
+<div class="bg-[#1A1A1A] border border-[#262626] p-5 hover:border-[#FF4500] transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="font-mono text-[9px] text-[#737373]">NODE_ID: ET_01</div>
+<h3 class="text-title-sm font-bold uppercase">Ethiopia</h3>
+</div>
+<span class="material-symbols-outlined text-[#22C55E]" data-icon="insights">insights</span>
+</div>
+<div class="h-12 w-full bg-[#0E0E0E] relative mb-4">
+<svg class="absolute inset-0 w-full h-full stroke-[#22C55E] fill-none stroke-[1.5]" viewbox="0 0 100 20">
+<polyline points="0,15 10,12 20,18 30,10 40,12 50,5 60,8 70,2 80,6 90,4 100,0"></polyline>
+</svg>
+</div>
+<p class="text-[11px] text-[#737373] italic">"Energy infrastructure yields driving 12% expansion."</p>
+<div class="mt-4 pt-4 border-t border-[#262626] flex justify-between items-center">
+<span class="font-mono text-[10px] text-[#FF4500]">AI INSIGHT</span>
+<span class="material-symbols-outlined text-xs text-[#737373]" data-icon="arrow_right_alt">arrow_right_alt</span>
+</div>
+</div>
+<!-- Market Card 2 -->
+<div class="bg-[#1A1A1A] border border-[#262626] p-5 hover:border-[#FF4500] transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="font-mono text-[9px] text-[#737373]">NODE_ID: MA_04</div>
+<h3 class="text-title-sm font-bold uppercase">Morocco</h3>
+</div>
+<span class="material-symbols-outlined text-[#F59E0B]" data-icon="monitoring">monitoring</span>
+</div>
+<div class="h-12 w-full bg-[#0E0E0E] relative mb-4">
+<svg class="absolute inset-0 w-full h-full stroke-[#F59E0B] fill-none stroke-[1.5]" viewbox="0 0 100 20">
+<polyline points="0,10 10,11 20,9 30,12 40,10 50,11 60,10 70,11 80,10 90,12 100,10"></polyline>
+</svg>
+</div>
+<p class="text-[11px] text-[#737373] italic">"Logistics corridor optimization nearing phase 2 completion."</p>
+<div class="mt-4 pt-4 border-t border-[#262626] flex justify-between items-center">
+<span class="font-mono text-[10px] text-[#FF4500]">AI INSIGHT</span>
+<span class="material-symbols-outlined text-xs text-[#737373]" data-icon="arrow_right_alt">arrow_right_alt</span>
+</div>
+</div>
+<!-- Market Card 3 -->
+<div class="bg-[#1A1A1A] border border-[#262626] p-5 hover:border-[#FF4500] transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="font-mono text-[9px] text-[#737373]">NODE_ID: GH_12</div>
+<h3 class="text-title-sm font-bold uppercase">Ghana</h3>
+</div>
+<span class="material-symbols-outlined text-[#22C55E]" data-icon="query_stats">query_stats</span>
+</div>
+<div class="h-12 w-full bg-[#0E0E0E] relative mb-4">
+<svg class="absolute inset-0 w-full h-full stroke-[#22C55E] fill-none stroke-[1.5]" viewbox="0 0 100 20">
+<polyline points="0,20 20,15 40,18 60,10 80,8 100,2"></polyline>
+</svg>
+</div>
+<p class="text-[11px] text-[#737373] italic">"Digital finance adoption scaling beyond projections."</p>
+<div class="mt-4 pt-4 border-t border-[#262626] flex justify-between items-center">
+<span class="font-mono text-[10px] text-[#FF4500]">AI INSIGHT</span>
+<span class="material-symbols-outlined text-xs text-[#737373]" data-icon="arrow_right_alt">arrow_right_alt</span>
+</div>
+</div>
+<!-- Market Card 4 -->
+<div class="bg-[#1A1A1A] border border-[#262626] p-5 hover:border-[#FF4500] transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="font-mono text-[9px] text-[#737373]">NODE_ID: SN_09</div>
+<h3 class="text-title-sm font-bold uppercase">Senegal</h3>
+</div>
+<span class="material-symbols-outlined text-[#EF4444]" data-icon="analytics">analytics</span>
+</div>
+<div class="h-12 w-full bg-[#0E0E0E] relative mb-4">
+<svg class="absolute inset-0 w-full h-full stroke-[#EF4444] fill-none stroke-[1.5]" viewbox="0 0 100 20">
+<polyline points="0,2 20,8 40,5 60,12 80,15 100,18"></polyline>
+</svg>
+</div>
+<p class="text-[11px] text-[#737373] italic">"Short-term liquidity crunch due to regional rebalancing."</p>
+<div class="mt-4 pt-4 border-t border-[#262626] flex justify-between items-center">
+<span class="font-mono text-[10px] text-[#FF4500]">AI INSIGHT</span>
+<span class="material-symbols-outlined text-xs text-[#737373]" data-icon="arrow_right_alt">arrow_right_alt</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-0 w-full flex justify-between items-center px-8 py-3 bg-[#0E0E0E] border-t border-[#262626] z-40">
+<div class="font-mono font-bold text-[10px] uppercase tracking-[0.1em] text-[#FF4500]">
+            WORLD ANALYST
+        </div>
+<div class="flex space-x-4 font-mono text-[9px] uppercase tracking-[0.1em] text-[#404040]">
+<span>PRIVACY PROTOCOL</span>
+<span>|</span>
+<span>SECURITY AUDIT</span>
+<span>|</span>
+<span>ENGINEERING DOCS</span>
+</div>
+<div class="font-mono text-[9px] uppercase tracking-[0.1em] text-[#404040] max-w-xs text-right">
+            AI-GENERATED CONTENT MAY CONTAIN INACCURACIES. VERIFY BEFORE ACTING.
+        </div>
+</footer>
+</body></html>

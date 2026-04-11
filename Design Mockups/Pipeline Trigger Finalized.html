@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Commit+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary": "#472a00",
+                    "on-primary-fixed": "#3b0900",
+                    "inverse-on-surface": "#313030",
+                    "outline": "#ad887e",
+                    "on-tertiary-container": "#3e2400",
+                    "on-primary-fixed-variant": "#872000",
+                    "primary": "#ffb5a0",
+                    "on-secondary-fixed": "#1b1c1c",
+                    "surface-variant": "#353534",
+                    "on-error": "#690005",
+                    "on-tertiary-fixed-variant": "#653e00",
+                    "on-surface": "#e5e2e1",
+                    "primary-fixed": "#ffdbd1",
+                    "secondary-container": "#464747",
+                    "secondary-fixed-dim": "#c7c6c6",
+                    "surface-container": "#201f1f",
+                    "primary-container": "#ff5625",
+                    "error-container": "#93000a",
+                    "tertiary-container": "#ca8100",
+                    "on-primary": "#601400",
+                    "outline-variant": "#5d4038",
+                    "on-secondary": "#303031",
+                    "primary-fixed-dim": "#ffb5a0",
+                    "on-primary-container": "#541100",
+                    "tertiary": "#ffb95f",
+                    "surface-container-low": "#1c1b1b",
+                    "surface-container-high": "#2a2a2a",
+                    "on-error-container": "#ffdad6",
+                    "inverse-surface": "#e5e2e1",
+                    "on-surface-variant": "#e7bdb2",
+                    "on-secondary-fixed-variant": "#464747",
+                    "on-secondary-container": "#b6b5b5",
+                    "surface-container-highest": "#353534",
+                    "on-tertiary-fixed": "#2a1700",
+                    "surface-tint": "#ffb5a0",
+                    "secondary-fixed": "#e3e2e2",
+                    "secondary": "#c7c6c6",
+                    "on-background": "#e5e2e1",
+                    "inverse-primary": "#b12d00",
+                    "surface-container-lowest": "#0e0e0e",
+                    "error": "#ffb4ab",
+                    "surface-bright": "#3a3939",
+                    "background": "#131313",
+                    "surface-dim": "#131313",
+                    "tertiary-fixed-dim": "#ffb95f",
+                    "surface": "#131313",
+                    "tertiary-fixed": "#ffddb8"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"],
+                    "mono": ["Commit Mono"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #0E0E0E;
+            color: #e5e2e1;
+        }
+        .custom-mono { font-family: 'Commit Mono', monospace; }
+        .terminal-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: #262626 #0E0E0E;
+        }
+    </style>
+</head>
+<body class="font-body selection:bg-primary-container selection:text-white">
+<!-- TopNavBar Shell -->
+<nav class="bg-[#0E0E0E] font-sans uppercase tracking-wider text-[11px] font-bold docked full-width top-0 border-b border-[#262626] flex justify-between items-center w-full px-6 h-16 fixed top-0 z-50">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-[#FF4500] text-2xl" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<div class="font-headline font-extrabold text-xl tracking-tighter text-white">WORLD ANALYST</div>
+</div>
+<div class="hidden md:flex items-center space-x-8 h-full">
+<a class="text-[#737373] hover:text-[#F5F5F5] h-full flex items-center transition-colors duration-150" href="#">Global Overview</a>
+<a class="text-[#737373] hover:text-[#F5F5F5] h-full flex items-center transition-colors duration-150" href="#">Country Intelligence</a>
+<a class="text-[#737373] hover:text-[#F5F5F5] h-full flex items-center transition-colors duration-150" href="#">How It Works</a>
+<a class="text-[#FF4500] border-b-2 border-[#FF4500] h-full flex items-center pb-0" href="#">Pipeline</a>
+</div>
+<div class="flex items-center space-x-4">
+<button class="material-symbols-outlined text-[#737373] hover:bg-[#1A1A1A] p-2 transition-colors duration-150">notifications</button>
+<button class="material-symbols-outlined text-[#737373] hover:bg-[#1A1A1A] p-2 transition-colors duration-150">settings</button>
+</div>
+</nav>
+<!-- SideNavBar Shell -->
+<aside class="bg-[#0E0E0E] font-mono uppercase text-[10px] tracking-tight docked left-0 h-full border-r border-[#262626] flex flex-col w-64 pt-20 fixed left-0 hidden lg:flex">
+<div class="px-6 mb-8">
+<div class="flex items-center space-x-2 text-[#737373]">
+<span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+<span>SYSTEM STATUS</span>
+</div>
+<div class="text-[9px] text-[#737373] mt-1">OPERATIONAL // NODE: 01</div>
+</div>
+<div class="flex-grow space-y-1">
+<a class="flex items-center space-x-3 py-3 px-6 text-[#737373] hover:bg-[#1A1A1A] transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">language</span>
+<span>Global Overview</span>
+</a>
+<a class="flex items-center space-x-3 py-3 px-6 text-[#737373] hover:bg-[#1A1A1A] transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">flag</span>
+<span>Country Intelligence</span>
+</a>
+<a class="flex items-center space-x-3 py-3 px-6 text-[#737373] hover:bg-[#1A1A1A] transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">schema</span>
+<span>How It Works</span>
+</a>
+<a class="flex items-center space-x-3 py-3 px-6 bg-[#FF4500]/5 text-[#FF4500] border-r-2 border-[#FF4500]" href="#">
+<span class="material-symbols-outlined text-sm">play_circle</span>
+<span>Pipeline</span>
+</a>
+</div>
+<div class="p-6 space-y-4 border-t border-[#262626]">
+<a class="flex items-center text-[#737373] hover:text-[#F5F5F5] transition-colors" href="#">
+<span>Export →</span>
+</a>
+<a class="flex items-center text-[#737373] hover:text-[#F5F5F5] transition-colors" href="#">
+<span>Documentation</span>
+</a>
+<a class="flex items-center text-[#737373] hover:text-[#F5F5F5] transition-colors" href="#">
+<span>API Support</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="lg:ml-64 pt-24 pb-12 px-6 md:px-12 max-w-[1600px] mx-auto min-h-screen">
+<!-- Page Header -->
+<header class="mb-8">
+<h1 class="text-4xl md:text-5xl font-bold tracking-tight text-on-surface mb-2">PIPELINE EXECUTION — LIVE TRIGGER</h1>
+<p class="text-[#737373] font-body text-lg">Monitor each stage of the data ingestion and transformation workflow in real-time.</p>
+</header>
+<!-- Row 1: KPI Status Row -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+<div class="bg-[#1A1A1A] p-5 border border-[#262626] rounded-lg">
+<p class="custom-mono text-[10px] uppercase tracking-wider text-[#737373] mb-2">Pipeline Status</p>
+<div class="flex items-center space-x-2">
+<span class="custom-mono text-2xl font-bold text-orange-500">RUNNING</span>
+<span class="material-symbols-outlined text-orange-500 text-sm animate-spin">refresh</span>
+</div>
+<div class="mt-4 text-right">
+<p class="custom-mono text-[9px] text-[#737373]">LATENCY: 12MS</p>
+</div>
+</div>
+<div class="bg-[#1A1A1A] p-5 border border-[#262626] rounded-lg">
+<p class="custom-mono text-[10px] uppercase tracking-wider text-[#737373] mb-2">Last Run Duration</p>
+<div class="custom-mono text-2xl font-bold">18:42.04</div>
+<div class="mt-4 text-right">
+<p class="custom-mono text-[9px] text-[#737373]">NODE: CLOUD-US-EAST</p>
+</div>
+</div>
+<div class="bg-[#1A1A1A] p-5 border border-[#262626] rounded-lg">
+<p class="custom-mono text-[10px] uppercase tracking-wider text-[#737373] mb-2">Records Processed</p>
+<div class="custom-mono text-2xl font-bold">1,248,302</div>
+<div class="mt-4 text-right">
+<p class="custom-mono text-[9px] text-[#737373]">THROUGHPUT: 12K/S</p>
+</div>
+</div>
+<div class="bg-[#1A1A1A] p-5 border border-[#262626] rounded-lg">
+<p class="custom-mono text-[10px] uppercase tracking-wider text-[#737373] mb-2">AI Calls Made</p>
+<div class="custom-mono text-2xl font-bold text-[#FF4500]">42,019</div>
+<div class="mt-4 text-right">
+<p class="custom-mono text-[9px] text-[#737373]">QUOTA USED: 64%</p>
+</div>
+</div>
+</div>
+<!-- CTA SECTION -->
+<section class="mb-8">
+<div class="relative overflow-hidden bg-gradient-to-b from-[#1A1A1A] to-[#0E0E0E] border border-[#262626] p-8 rounded-lg">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div class="flex items-start space-x-4">
+<div class="bg-primary-container/10 p-3 rounded-lg">
+<span class="material-symbols-outlined text-[#FF4500] text-3xl" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<div>
+<h2 class="text-2xl font-bold text-on-surface">TRIGGER PIPELINE RUN</h2>
+<p class="text-[#737373] mt-1 max-w-2xl">Initialize the global data synchronization engine. This will fetch latest datasets from international bodies, validate against current schema, and generate AI-driven narrative intelligence.</p>
+</div>
+</div>
+<button class="bg-[#FF4500] text-white px-8 py-4 font-bold uppercase tracking-widest text-sm rounded-lg hover:bg-orange-600 transition-colors active:scale-95 whitespace-nowrap">
+                        RUN PIPELINE NOW
+                    </button>
+</div>
+</div>
+</section>
+<!-- Execution Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+<!-- Row 2: EXECUTION LOG -->
+<div class="lg:col-span-2 space-y-4">
+<h3 class="custom-mono text-xs font-bold text-[#737373] uppercase tracking-[0.2em] mb-4">Live Execution Sequence</h3>
+<!-- Step 01: Complete -->
+<div class="bg-[#1A1A1A] border border-[#262626] border-l-4 border-l-[#22C55E] p-4 rounded-lg flex items-center justify-between">
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-full border-2 border-green-500 flex items-center justify-center">
+<span class="material-symbols-outlined text-green-500 text-lg">check</span>
+</div>
+<div>
+<p class="custom-mono text-[10px] text-[#737373]">STEP 01</p>
+<h4 class="font-bold text-sm tracking-tight">WORLD BANK API FETCH</h4>
+</div>
+</div>
+<div class="text-right">
+<span class="custom-mono text-[10px] text-green-500">SUCCESS</span>
+<p class="custom-mono text-[9px] text-[#737373]">0.42S</p>
+</div>
+</div>
+<!-- Step 02: Complete -->
+<div class="bg-[#1A1A1A] border border-[#262626] border-l-4 border-l-[#22C55E] p-4 rounded-lg flex items-center justify-between">
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-full border-2 border-green-500 flex items-center justify-center">
+<span class="material-symbols-outlined text-green-500 text-lg">check</span>
+</div>
+<div>
+<p class="custom-mono text-[10px] text-[#737373]">STEP 02</p>
+<h4 class="font-bold text-sm tracking-tight">SCHEMA VALIDATION</h4>
+</div>
+</div>
+<div class="text-right">
+<span class="custom-mono text-[10px] text-green-500">SUCCESS</span>
+<p class="custom-mono text-[9px] text-[#737373]">1.12S</p>
+</div>
+</div>
+<!-- Step 03: Running -->
+<div class="bg-[#1A1A1A] border border-[#262626] border-l-4 border-l-[#FF4500] p-4 rounded-lg flex items-center justify-between shadow-[0_0_15px_rgba(255,69,0,0.1)]">
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-full border-2 border-[#FF4500] border-t-transparent animate-spin flex items-center justify-center">
+</div>
+<div>
+<p class="custom-mono text-[10px] text-[#FF4500]">STEP 03</p>
+<h4 class="font-bold text-sm tracking-tight">ANOMALY DETECTION</h4>
+</div>
+</div>
+<div class="text-right">
+<span class="custom-mono text-[10px] text-[#FF4500] animate-pulse">RUNNING</span>
+<p class="custom-mono text-[9px] text-[#737373]">8.24S...</p>
+</div>
+</div>
+<!-- Step 04: Idle -->
+<div class="bg-[#1A1A1A] border border-[#262626] p-4 rounded-lg flex items-center justify-between opacity-50">
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-full border-2 border-[#262626] flex items-center justify-center">
+<span class="material-symbols-outlined text-[#737373] text-lg">hourglass_empty</span>
+</div>
+<div>
+<p class="custom-mono text-[10px] text-[#737373]">STEP 04</p>
+<h4 class="font-bold text-sm tracking-tight text-[#737373]">AI NARRATIVE GENERATION</h4>
+</div>
+</div>
+<div class="text-right">
+<span class="custom-mono text-[10px] text-[#737373]">PENDING</span>
+</div>
+</div>
+<!-- Step 05: Idle -->
+<div class="bg-[#1A1A1A] border border-[#262626] p-4 rounded-lg flex items-center justify-between opacity-50">
+<div class="flex items-center space-x-4">
+<div class="w-10 h-10 rounded-full border-2 border-[#262626] flex items-center justify-center">
+<span class="material-symbols-outlined text-[#737373] text-lg">hourglass_empty</span>
+</div>
+<div>
+<p class="custom-mono text-[10px] text-[#737373]">STEP 05</p>
+<h4 class="font-bold text-sm tracking-tight text-[#737373]">FIRESTORE WRITE</h4>
+</div>
+</div>
+<div class="text-right">
+<span class="custom-mono text-[10px] text-[#737373]">PENDING</span>
+</div>
+</div>
+</div>
+<!-- Terminal Area -->
+<div class="lg:col-span-1">
+<h3 class="custom-mono text-xs font-bold text-[#737373] uppercase tracking-[0.2em] mb-4">System Terminal</h3>
+<div class="bg-[#0E0E0E] border border-[#262626] rounded-lg h-[432px] overflow-hidden flex flex-col">
+<div class="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#262626]">
+<div class="flex space-x-1.5">
+<div class="w-2.5 h-2.5 rounded-full bg-red-900"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-yellow-900"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-green-900"></div>
+</div>
+<span class="custom-mono text-[9px] text-[#737373]">CONSOLE_STREAM // v2.0</span>
+</div>
+<div class="p-4 custom-mono text-[11px] leading-relaxed overflow-y-auto terminal-scroll text-green-500/80 flex-grow">
+<p class="text-[#737373]">[08:42:01] INITIALIZING PIPELINE RUN ID: 942-AX-1</p>
+<p>[08:42:02] Establishing handshake with World Bank API...</p>
+<p>[08:42:03] Connection established. Code: 200 OK</p>
+<p>[08:42:04] Fetching ZA_INTEL_SET_01...</p>
+<p>[08:42:05] Payload received: 4.8MB</p>
+<p>[08:42:06] Initiating Schema Validation Protocol...</p>
+<p>[08:42:07] Validation successful. 0 errors, 1 warning (deprecation notice).</p>
+<p>[08:42:08] Commencing Anomaly Detection sequence...</p>
+<p>[08:42:10] Scanning dataset chunk [0/200]...</p>
+<p>[08:42:12] Scanning dataset chunk [20/200]...</p>
+<p>[08:42:14] Scanning dataset chunk [40/200]...</p>
+<p>[08:42:16] Scanning dataset chunk [60/200]...</p>
+<p>[08:42:18] Scanning dataset chunk [80/200]...</p>
+<p class="animate-pulse">_</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Hidden/Bottom Success Card -->
+<div class="mt-8 bg-green-900/10 border border-green-500/30 p-6 rounded-lg flex items-center space-x-6">
+<span class="material-symbols-outlined text-green-500 text-3xl" style="font-variation-settings: 'FILL' 1;">task_alt</span>
+<div>
+<h4 class="font-bold text-green-500 uppercase tracking-widest text-sm">PIPELINE COMPLETE</h4>
+<p class="text-green-500/70 text-sm">This status will activate upon Step 05 confirmation. All nodes currently in ready-state.</p>
+</div>
+</div>
+</main>
+<!-- Footer Shell -->
+<footer class="fixed bottom-0 w-full flex justify-between items-center px-8 py-3 bg-[#0E0E0E] z-40 border-t border-[#262626]">
+<div class="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#FF4500]">
+            WORLD ANALYST
+        </div>
+<div class="flex space-x-4 text-[9px] font-mono font-bold text-[#404040]">
+<a class="hover:text-[#F5F5F5] transition-colors" href="#">PRIVACY PROTOCOL</a>
+<span>|</span>
+<a class="hover:text-[#F5F5F5] transition-colors" href="#">SECURITY AUDIT</a>
+<span>|</span>
+<a class="hover:text-[#F5F5F5] transition-colors" href="#">ENGINEERING DOCS</a>
+</div>
+<div class="font-mono text-[9px] font-bold text-[#404040] text-right max-w-xs leading-none">
+            AI-GENERATED CONTENT MAY CONTAIN INACCURACIES. VERIFY BEFORE ACTING.
+        </div>
+</footer>
+</body></html>

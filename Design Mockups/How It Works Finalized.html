@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Commit+Mono:wght@400;500;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#ffb5a0",
+                        "on-surface": "#e5e2e1",
+                        "surface-container": "#201f1f",
+                        "primary-container": "#ff5625",
+                        "on-primary": "#601400",
+                        "background": "#131313",
+                        "surface": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"],
+                        "mono": ["Commit Mono", "monospace"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #0E0E0E;
+            color: #e5e2e1;
+            font-family: 'Inter', sans-serif;
+        }
+        .custom-mono { font-family: 'Commit Mono', monospace; }
+        .label-sm { font-family: 'Commit Mono', monospace; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+        .engineering-border { border: 1px solid #262626; }
+    </style>
+</head>
+<body class="min-h-screen flex">
+<!-- Sidebar Nav -->
+<aside class="w-64 border-r border-[#262626] bg-[#0E0E0E] flex flex-col sticky top-0 h-screen z-50">
+<div class="p-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-[#FF4500]" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<div class="text-white font-extrabold text-lg tracking-tight uppercase">WORLD ANALYST</div>
+</div>
+<nav class="flex-grow mt-4">
+<a class="flex items-center gap-3 px-6 py-3 text-[#737373] hover:text-[#F5F5F5] transition-colors group" href="#">
+<span class="material-symbols-outlined text-xl">language</span>
+<span class="label-sm font-medium">Global Overview</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#737373] hover:text-[#F5F5F5] transition-colors group" href="#">
+<span class="material-symbols-outlined text-xl">flag</span>
+<span class="label-sm font-medium">Country Intelligence</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#FF4500] bg-[#FF4500]/5 border-r-2 border-[#FF4500]" href="#">
+<span class="material-symbols-outlined text-xl">schema</span>
+<span class="label-sm font-medium">How It Works</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#737373] hover:text-[#F5F5F5] transition-colors group" href="#">
+<span class="material-symbols-outlined text-xl">play_circle</span>
+<span class="label-sm font-medium">Pipeline</span>
+</a>
+</nav>
+<div class="p-6 flex flex-col gap-3 border-t border-[#262626]">
+<a class="text-[#737373] label-sm hover:text-white flex items-center justify-between" href="#">Export <span class="text-xs">→</span></a>
+<a class="text-[#737373] label-sm hover:text-white" href="#">Documentation</a>
+<a class="text-[#737373] label-sm hover:text-white" href="#">API Support</a>
+</div>
+</aside>
+<div class="flex-grow flex flex-col min-h-screen">
+<!-- Top Bar (Simplified) -->
+<nav class="h-16 border-b border-[#262626] bg-[#0E0E0E] flex items-center justify-end px-8 sticky top-0 z-40">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#737373] cursor-pointer hover:text-[#FF4500]">notifications</span>
+<span class="material-symbols-outlined text-[#737373] cursor-pointer hover:text-[#FF4500]">settings</span>
+</div>
+</nav>
+<main class="flex-grow w-full max-w-6xl mx-auto px-8 py-8 flex flex-col gap-8 pb-24">
+<!-- Header -->
+<header>
+<h1 class="text-4xl font-bold tracking-tight text-white mb-2 uppercase">HOW IT WORKS — <span class="text-[#FF4500]">AI PIPELINE</span></h1>
+<p class="text-[#737373] custom-mono text-sm uppercase tracking-widest">Architectural Documentation // System Orchestration // Node: 01</p>
+</header>
+<!-- CTA CARD -->
+<section class="bg-[#1A1A1A] engineering-border p-8 flex flex-col md:flex-row justify-between items-center gap-6">
+<div class="flex items-start gap-4">
+<span class="material-symbols-outlined text-[#FF4500] text-3xl mt-1" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<div>
+<h2 class="text-xl font-bold text-white mb-2">LIVE PIPELINE EXECUTION</h2>
+<p class="text-[#737373] text-sm">Trigger the end-to-end pipeline to ingest global economic indicators, process through the AI layer, and refresh the intelligence dashboard.</p>
+</div>
+</div>
+<div class="flex gap-4 w-full md:w-auto">
+<button class="bg-[#FF4500] text-white px-6 py-3 font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all w-full md:w-auto">Run Pipeline</button>
+<button class="bg-transparent border border-[#262626] text-[#F5F5F5] px-6 py-3 font-bold rounded-lg hover:bg-[#262626] transition-all w-full md:w-auto">View Trigger Page</button>
+</div>
+</section>
+<!-- Row 1: SYSTEM TELEMETRY -->
+<section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+<div class="bg-[#1A1A1A] engineering-border p-4 flex flex-col justify-between">
+<span class="label-sm text-green-500">Pipeline Uptime</span>
+<div class="flex justify-between items-end mt-2">
+<span class="custom-mono text-2xl text-white">99.98%</span>
+<span class="label-sm text-[#737373]">LATENCY: 12MS</span>
+</div>
+</div>
+<div class="bg-[#1A1A1A] engineering-border p-4 flex flex-col justify-between">
+<span class="label-sm text-orange-500">Avg Latency</span>
+<div class="flex justify-between items-end mt-2">
+<span class="custom-mono text-2xl text-white">245ms</span>
+<span class="label-sm text-[#737373]">NODE: CLOUD-01</span>
+</div>
+</div>
+<div class="bg-[#1A1A1A] engineering-border p-4 flex flex-col justify-between">
+<span class="label-sm text-[#FF4500]">Daily Data Points</span>
+<div class="flex justify-between items-end mt-2">
+<span class="custom-mono text-2xl text-white">1.42M</span>
+<span class="label-sm text-[#737373]">UPTAKE: +12%</span>
+</div>
+</div>
+<div class="bg-[#1A1A1A] engineering-border p-4 flex flex-col justify-between">
+<span class="label-sm text-amber-500">Cache Hit Rate</span>
+<div class="flex justify-between items-end mt-2">
+<span class="custom-mono text-2xl text-white">88.4%</span>
+<span class="label-sm text-[#737373]">TTL: 3600S</span>
+</div>
+</div>
+</section>
+<!-- Row 2: PIPELINE ARCHITECTURE -->
+<section class="bg-[#1A1A1A] engineering-border p-8 overflow-x-auto">
+<h3 class="label-sm text-[#737373] mb-6">SYSTEM ARCHITECTURE // DATA FLOW VISUALIZATION</h3>
+<div class="flex items-center justify-between min-w-[800px] gap-4">
+<div class="flex flex-col items-center gap-3 w-40">
+<div class="w-16 h-16 bg-[#201F1F] engineering-border flex items-center justify-center">
+<span class="material-symbols-outlined text-[#737373]">api</span>
+</div>
+<span class="label-sm text-center text-[#737373]">World Bank API</span>
+</div>
+<span class="material-symbols-outlined text-[#262626]">chevron_right</span>
+<div class="flex flex-col items-center gap-3 w-40">
+<div class="w-16 h-16 bg-[#201F1F] engineering-border flex items-center justify-center">
+<span class="material-symbols-outlined text-[#737373]">cloud_sync</span>
+</div>
+<span class="label-sm text-center text-[#737373]">Cloud Run</span>
+</div>
+<span class="material-symbols-outlined text-[#262626]">chevron_right</span>
+<div class="flex flex-col items-center gap-3 w-40">
+<div class="w-16 h-16 bg-[#201F1F] engineering-border flex items-center justify-center">
+<span class="material-symbols-outlined text-[#F59E0B]">monitoring</span>
+</div>
+<span class="label-sm text-center text-[#737373]">Anomaly Detection</span>
+</div>
+<span class="material-symbols-outlined text-[#262626]">chevron_right</span>
+<div class="flex flex-col items-center gap-3 w-40">
+<div class="w-16 h-16 bg-[#1A1A1A] border-2 border-[#FF4500] flex items-center justify-center shadow-[0_0_15px_rgba(255,69,0,0.3)]">
+<span class="material-symbols-outlined text-[#FF4500]" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<span class="label-sm text-[#FF4500] text-center">AI Intelligence Layer</span>
+</div>
+<span class="material-symbols-outlined text-[#262626]">chevron_right</span>
+<div class="flex flex-col items-center gap-3 w-40">
+<div class="w-16 h-16 bg-[#201F1F] engineering-border flex items-center justify-center">
+<span class="material-symbols-outlined text-[#737373]">database</span>
+</div>
+<span class="label-sm text-center text-[#737373]">Data Persistence</span>
+</div>
+</div>
+</section>
+<!-- Row 3: Input/Output -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="bg-[#0E0E0E] engineering-border overflow-hidden flex flex-col">
+<div class="bg-[#1A1A1A] px-4 py-2 border-b border-[#262626] flex justify-between items-center">
+<span class="label-sm text-[#737373]">Input: Raw World Bank JSON</span>
+<span class="label-sm text-[#737373]">FORMAT: VALID</span>
+</div>
+<div class="p-4 custom-mono text-[12px] text-[#737373] leading-relaxed">
+<pre><code>{
+  "indicator": "NY.GDP.MKTP.KD.ZG",
+  "country": "BGD",
+  "data": [
+    { "year": 2023, "value": 5.8 },
+    { "year": 2024, "value": 5.6 }
+  ],
+  "source": "World Bank Global Insights",
+  "checksum": "8f2d9e1a..."
+}</code></pre>
+</div>
+</div>
+<div class="bg-gradient-to-b from-[#1A1A1A] to-[#0E0E0E] border-l-4 border-[#FF4500] engineering-border p-6 relative">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[#FF4500]" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<h3 class="font-bold text-lg text-white">AI INTELLIGENCE SUMMARY</h3>
+</div>
+<span class="bg-[#EF4444] text-white text-[10px] font-bold px-2 py-1 rounded-sm tracking-widest custom-mono">CRITICAL RISK</span>
+</div>
+<p class="body-md text-[#e5e2e1] mb-4">Detected a significant divergence in GDP growth projections against historical trade volatility. Strategic focus required on regional supply chain nodes.</p>
+<div class="bg-[#201F1F] p-3 engineering-border mb-4">
+<p class="custom-mono text-[#FF4500] text-sm">Actionable: Adjust resource allocation to Node 04.</p>
+</div>
+<div class="absolute bottom-4 right-6 label-sm text-[#737373]">PROCESSED IN 142MS</div>
+</div>
+</section>
+<!-- Row 4: PROMPT STRATEGY -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="bg-[#1A1A1A] engineering-border p-6">
+<span class="label-sm text-[#FF4500] mb-2 block">Step 1</span>
+<h4 class="text-lg font-bold text-white mb-2">PER-INDICATOR ANALYSIS</h4>
+<p class="text-sm text-[#737373]">Individual micro-agents analyze each raw data stream for statistical outliers, seasonal variance, and historical consistency before cross-referencing.</p>
+</div>
+<div class="bg-[#1A1A1A] engineering-border p-6">
+<span class="label-sm text-[#FF4500] mb-2 block">Step 2</span>
+<h4 class="text-lg font-bold text-white mb-2">MACRO SYNTHESIS</h4>
+<p class="text-sm text-[#737373]">Global orchestrator weighs localized insights against global macroeconomic trends to generate executive-level intelligence summaries.</p>
+</div>
+</section>
+<!-- Tech spec strip -->
+<section class="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-y border-[#262626]">
+<div class="flex flex-col">
+<span class="label-sm text-[#737373]">AI Engine</span>
+<span class="custom-mono text-sm text-white">Intelligence Layer</span>
+</div>
+<div class="flex flex-col">
+<span class="label-sm text-[#737373]">Compute</span>
+<span class="custom-mono text-sm text-white">Cloud Run — Serverless</span>
+</div>
+<div class="flex flex-col">
+<span class="label-sm text-[#737373]">Database</span>
+<span class="custom-mono text-sm text-white">Firestore + GCS</span>
+</div>
+<div class="flex flex-col">
+<span class="label-sm text-[#737373]">Orchestrator</span>
+<span class="custom-mono text-sm text-white">Cloud Scheduler (Python 3.12)</span>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full flex justify-between px-8 py-4 bg-[#0E0E0E] z-40 border-t border-[#262626] mt-auto">
+<div class="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#FF4500]">WORLD ANALYST</div>
+<div class="flex gap-4 text-[#404040] font-mono text-[9px] uppercase tracking-widest">
+<span>PRIVACY PROTOCOL</span>
+<span>|</span>
+<span>SECURITY AUDIT</span>
+<span>|</span>
+<span>ENGINEERING DOCS</span>
+</div>
+<div class="font-mono text-[9px] uppercase tracking-[0.05em] text-[#404040]">
+            AI-GENERATED CONTENT MAY CONTAIN INACCURACIES. VERIFY BEFORE ACTING.
+        </div>
+</footer>
+</div>
+</body></html>

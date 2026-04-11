@@ -1,0 +1,276 @@
+openapi: "3.0.3"
+
+info:
+  title: World Analyst API
+  description: |
+    AI-native economic intelligence API.
+    Serves World Bank data processed through a two-step LLM analysis chain.
+  version: "1.0.0"
+  contact:
+    name: World Analyst
+    url: https://github.com/world-analyst
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      operationId: handlers.health.check
+      summary: Health check
+      description: Returns service status. No authentication required.
+      security: []
+      tags:
+        - System
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /indicators:
+    get:
+      operationId: handlers.indicators.get_all
+      summary: Retrieve all indicator insights
+      description: Returns processed AI insights for all indicators, optionally filtered by country.
+      tags:
+        - Indicators
+      parameters:
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+            description: ISO 3166-1 alpha-2 country code
+            example: ZA
+      responses:
+        "200":
+          description: List of indicator insights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IndicatorInsight"
+        "401":
+          description: Unauthorized — missing or invalid API key
+
+  /countries:
+    get:
+      operationId: handlers.countries.get_all
+      summary: List available countries
+      description: Returns all countries with available economic data.
+      tags:
+        - Countries
+      responses:
+        "200":
+          description: List of countries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Country"
+        "401":
+          description: Unauthorized
+
+  /countries/{country_code}:
+    get:
+      operationId: handlers.countries.get_by_code
+      summary: Get country detail with insights
+      description: Returns full country profile with all processed indicators and AI analysis.
+      tags:
+        - Countries
+      parameters:
+        - name: country_code
+          in: path
+          required: true
+          schema:
+            type: string
+            description: ISO 3166-1 alpha-2 country code
+            example: ZA
+      responses:
+        "200":
+          description: Country detail with insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountryDetail"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Country not found
+
+  /pipeline/trigger:
+    post:
+      operationId: handlers.pipeline.trigger
+      summary: Trigger pipeline execution
+      description: Manually triggers the data fetch → analysis → storage pipeline.
+      tags:
+        - Pipeline
+      responses:
+        "202":
+          description: Pipeline execution started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStatus"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Pipeline already running
+
+  /pipeline/status:
+    get:
+      operationId: handlers.pipeline.get_status
+      summary: Get pipeline status
+      description: Returns current pipeline execution status.
+      tags:
+        - Pipeline
+      responses:
+        "200":
+          description: Current pipeline status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStatus"
+        "401":
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      x-apikeyInfoFunc: handlers.auth.validate_api_key
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+
+    IndicatorInsight:
+      type: object
+      required:
+        - indicator_code
+        - indicator_name
+        - country_code
+      properties:
+        indicator_code:
+          type: string
+          example: NY.GDP.MKTP.CD
+        indicator_name:
+          type: string
+          example: GDP (current US$)
+        country_code:
+          type: string
+          example: ZA
+        latest_value:
+          type: number
+        previous_value:
+          type: number
+        percent_change:
+          type: number
+        is_anomaly:
+          type: boolean
+        ai_analysis:
+          type: string
+          description: LLM-generated narrative for this indicator
+        data_year:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+
+    Country:
+      type: object
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+          example: ZA
+        name:
+          type: string
+          example: South Africa
+        region:
+          type: string
+        income_level:
+          type: string
+
+    CountryDetail:
+      type: object
+      required:
+        - code
+        - name
+        - indicators
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        region:
+          type: string
+        income_level:
+          type: string
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndicatorInsight"
+        macro_synthesis:
+          type: string
+          description: LLM-generated macro-level country analysis
+        risk_flags:
+          type: array
+          items:
+            type: string
+        outlook:
+          type: string
+
+    PipelineStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [idle, running, complete, failed]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [pending, running, complete, failed]
+              duration_ms:
+                type: integer
+        error:
+          type: string
