@@ -61,7 +61,10 @@ Use these project-specific skills for domain guidance:
 
 | Skill           | Path                                                   | When                                                                                                                |
 | --------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| Design System   | `.github/skills/world-analyst-design-system/SKILL.md`  | Any frontend/UI work                                                                                                |
+| Design System   | `.github/skills/world-analyst-design-system/SKILL.md`  | Any frontend/UI work (tokens, colors, surfaces, typography)                                                         |
+| Animation Craft | `.github/skills/emil-design-eng/SKILL.md`              | Animation, easing curves, interaction polish, component feel, spring physics                                        |
+| Design Taste    | `.github/skills/design-taste-frontend/SKILL.md`        | Anti-AI-slop patterns, high-agency design philosophy, creative proactivity                                          |
+| **Agent**       | `.agents/workflows/frontend-design-review.md`          | Orchestrated design review: audits appearance + taste + motion, then fixes by priority                              |
 | Connexion API   | `.github/skills/connexion-api-development/SKILL.md`    | API routes, handlers, openapi.yaml                                                                                  |
 | Engineering WoW | `.github/skills/world-analyst-engineering/SKILL.md`    | Architecture decisions, testing philosophy, code quality                                                            |
 | World Bank API  | `.github/skills/world-bank-api/SKILL.md`               | Pipeline data fetching, indicator codes, response parsing                                                           |

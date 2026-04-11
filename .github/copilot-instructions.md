@@ -45,7 +45,10 @@ The canonical design system is defined in `.github/skills/world-analyst-design-s
 
 Read these for domain guidance before writing code in their area:
 
-- `.github/skills/world-analyst-design-system/SKILL.md` — Frontend/UI work
+- `.github/skills/world-analyst-design-system/SKILL.md` — Frontend/UI work (tokens, colors, surfaces, typography)
+- `.github/skills/emil-design-eng/SKILL.md` — Animation craft, easing curves, interaction polish, component feel
+- `.github/skills/design-taste-frontend/SKILL.md` — Anti-AI-slop patterns, high-agency design philosophy, creative proactivity
+- `.agents/workflows/frontend-design-review.md` — Orchestrated design review agent: audits appearance, taste, and motion in sequence, then fixes by priority
 - `.github/skills/connexion-api-development/SKILL.md` — API development
 - `.github/skills/world-analyst-engineering/SKILL.md` — Architecture, testing, quality
 - `.github/skills/world-bank-api/SKILL.md` — Pipeline data fetching, indicator codes, API response format

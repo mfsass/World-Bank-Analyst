@@ -27,7 +27,7 @@ AI-native economic intelligence terminal. Python/Connexion backend + React 18 fr
 - Primary user is a finance professional. Assume working knowledge of GDP, CPI, unemployment, fiscal debt, current account balance, and related macro indicators.
 - KPI selection and AI narrative should lead with risk-weighted signals: sovereign risk, inflationary pressure, fiscal stress, external vulnerability, recessionary signal.
 - Country pages should explain direction of travel, magnitude of change, and whether a move is anomalous relative to history. Avoid basic indicator definitions.
-- Scope remains intentionally bounded: 15 countries, 6 indicators, one Cloud Run job, one Firestore collection, one end-to-end live demo URL.
+- Scope remains intentionally bounded: a 17-country exact-complete core panel ending at 2024, 6 indicators, one Cloud Run job, one Firestore collection, and one end-to-end live demo URL.
 - Treat those scope limits as delivery guardrails, not permission for shortcut engineering. Target production-grade readability, documentation, validation, and reviewability.
 - The Pipeline Trigger flow is the presentation centrepiece. Prefer clean end-to-end reliability over speculative scale work such as async fan-out, multi-source enrichment, or heavy caching.
 - The dashboard is the final human-facing surface. Optimize API and Firestore shapes for frontend display, with structured fields only where the UI needs them and richer prose everywhere else.
@@ -67,4 +67,13 @@ cd frontend && npm run build
 ## Skills
 
 Read `.github/skills/*/SKILL.md` for domain-specific guidance before modifying code in that area.
+
+Frontend work should consult three complementary layers:
+
+- `.github/skills/world-analyst-design-system/SKILL.md` — What things look like (tokens, colors, surfaces, typography)
+- `.github/skills/emil-design-eng/SKILL.md` — How things move (animation, easing, springs, interaction polish)
+- `.github/skills/design-taste-frontend/SKILL.md` — Design judgment (anti-AI-slop, creative proactivity, layout philosophy)
+
+For a structured design review or polish pass, run `.agents/workflows/frontend-design-review.md` — it orchestrates all three layers in sequence: appearance audit, taste audit, motion audit, then structured fixes by priority.
+
 Use `.github/skills/humanizer-pro/SKILL.md` when writing or editing ADRs, presentation copy, user-facing narrative, or explanatory comments/docs that read as generic AI text.

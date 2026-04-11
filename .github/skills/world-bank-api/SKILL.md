@@ -19,11 +19,28 @@ The **World Bank Indicators API v2** provides free, unauthenticated access to th
 **No API key required.** No rate limit documented. No authentication headers needed.
 
 Base URL:
+
 ```
 https://api.worldbank.org/v2/
 ```
 
 All responses default to XML. Always append `?format=json` for JSON output.
+
+If you open endpoints such as `https://api.worldbank.org/v2/indicator` directly in a browser, the browser will often show a message like "This XML file does not appear to have any style information associated with it." That is normal. It is not an API failure. It just means the endpoint returned raw XML because no `format=json` query string was supplied.
+
+### Official Documentation Map
+
+The official World Bank v2 docs split the API into a few distinct families. That split matters because the JSON shapes are not identical across them.
+
+- `API Basic Call Structures` — query styles, delimiters, paging, MRV/MRNEV, output formats, language prefixes, URL limits
+- `Country API Queries` — country metadata and country-code behavior
+- `Aggregate API Queries` — region, income-level, and lending-type definitions and aggregate filters
+- `Indicator API Queries` — indicator metadata, source notes, topics, and source scoping
+- `Topic API Queries` — topic discovery and topic-to-indicator browsing
+- `Advanced Data API Queries` — multidimensional source/concept queries; JSON shape differs from the simple indicators API
+- `Metadata API Queries` — concept, metatype, and metadata discovery; JSON shape also differs from the simple indicators API
+
+For World Analyst runtime fetching, only the simple indicators API is on the hot path. Topic and metadata endpoints are discovery tools. Advanced Data is out of scope for the live pipeline unless a later ADR explicitly changes that.
 
 ---
 
@@ -61,139 +78,442 @@ https://api.worldbank.org/v2/country?format=json&per_page=300
 
 # Single country by ISO2 code
 https://api.worldbank.org/v2/country/za?format=json
+
+# Filter countries by region / income level / lending type
+https://api.worldbank.org/v2/country?region=LCN&format=json
+https://api.worldbank.org/v2/country?incomelevel=UMC&format=json
+https://api.worldbank.org/v2/country?lendingtype=IBD&format=json
 ```
+
+### Discovery and Definition Endpoints
+
+These are the catalog endpoints you use to inspect the available API surface rather than fetch country-indicator time series.
+
+```bash
+# List all indicators
+https://api.worldbank.org/v2/indicator?format=json&per_page=100
+
+# List income-level definitions
+https://api.worldbank.org/v2/incomelevel?format=json
+
+# List lending-type definitions
+https://api.worldbank.org/v2/lendingtypes?format=json
+
+# List all data sources
+https://api.worldbank.org/v2/sources?format=json
+
+# Get one source definition
+https://api.worldbank.org/v2/sources/2?format=json
+```
+
+Notes:
+
+- `indicator` is singular in the path: `/indicator`
+- `incomelevel` is singular in the path: `/incomelevel`
+- The list endpoint for lending types is plural: `/lendingtypes`
+- The source catalog uses `/sources` and source details use `/sources/{id}`
 
 ---
 
 ## 3. Query Parameters — Complete Reference
 
-| Parameter | Type | Description | Example |
-|---|---|---|---|
-| `format` | string | Output format. **Always use `json`** | `format=json` |
-| `date` | string | Year, range, month, or quarter | `date=2018:2023` |
-| `mrv` | int | Most Recent Values — N most recent years (includes nulls) | `mrv=5` |
-| `mrnev` | int | Most Recent Non-Empty Values — N most recent with actual data | `mrnev=5` |
-| `per_page` | int | Results per page. Default: 50. Max: varies | `per_page=1000` |
-| `page` | int | Page number for paginated results | `page=2` |
-| `gapfill` | Y/N | With MRV: back-fills nulls from previous periods | `gapfill=Y` |
-| `frequency` | M/Q/Y | With MRV: monthly, quarterly, or yearly data | `frequency=Y` |
+| Parameter        | Type          | Description                                                                   | Example              |
+| ---------------- | ------------- | ----------------------------------------------------------------------------- | -------------------- |
+| `format`         | string        | Output format. Use `json` for application code                                | `format=json`        |
+| `date`           | string        | Year, range, month, quarter, or YTD window                                    | `date=2018:2023`     |
+| `mrv`            | int           | Most Recent Values — N most recent periods, including nulls                   | `mrv=5`              |
+| `mrnev`          | int           | Most Recent Non-Empty Values — N most recent populated periods                | `mrnev=5`            |
+| `per_page`       | int           | Results per page. Default is 50                                               | `per_page=1000`      |
+| `page`           | int           | Page number for paginated results                                             | `page=2`             |
+| `gapfill`        | Y/N           | With `mrv`, back-fills nulls from earlier periods                             | `gapfill=Y`          |
+| `frequency`      | M/Q/Y         | With `mrv`, requests monthly, quarterly, or yearly values                     | `frequency=M`        |
+| `source`         | int           | Required for some indicator discovery queries and for multi-indicator queries | `source=2`           |
+| `footnote`       | Y/N           | Includes footnote detail in data calls                                        | `footnote=y`         |
+| `downloadformat` | csv/xml/excel | Returns a downloaded export instead of the normal payload                     | `downloadformat=csv` |
+
+### Multiple Indicators in One Call
+
+The official API does support multiple indicators in a single request:
+
+```bash
+https://api.worldbank.org/v2/country/chn;ago/indicator/SI.POV.DDAY;SP.POP.TOTL?source=2
+```
+
+Official limits from the docs:
+
+- Maximum 60 indicators in one request
+- Maximum 1,500 characters between two `/` separators
+- Maximum 4,000 characters in the full URL
+
+For World Analyst, keep one indicator per request anyway. It gives cleaner provenance, cleaner retries, and failure isolation per indicator.
 
 ### Date Format Rules
 
-| Format | Example | Use Case |
-|---|---|---|
-| Single year | `date=2022` | Snapshot |
-| Year range | `date=2015:2023` | Time series |
-| Month | `date=2012M01` | Monthly data |
-| Month range | `date=2012M01:2012M08` | Monthly series |
-| Quarter | `date=2013Q1` | Quarterly data |
-| Quarter range | `date=2013Q1:2013Q4` | Quarterly series |
-| Year-to-date | `date=YTD:2013` | High-frequency YTD |
+| Format        | Example                | Use Case           |
+| ------------- | ---------------------- | ------------------ |
+| Single year   | `date=2022`            | Snapshot           |
+| Year range    | `date=2015:2023`       | Time series        |
+| Month         | `date=2012M01`         | Monthly data       |
+| Month range   | `date=2012M01:2012M08` | Monthly series     |
+| Quarter       | `date=2013Q1`          | Quarterly data     |
+| Quarter range | `date=2013Q1:2013Q4`   | Quarterly series   |
+| Year-to-date  | `date=YTD:2013`        | High-frequency YTD |
 
 ### Delimiter Rules
 
-| Symbol | Meaning | Example |
-|---|---|---|
-| `:` | Range (numeric) | `date=2015:2023` |
-| `;` | Logical AND (multiple values) | `country/nl;de;be` |
+| Symbol | Meaning                       | Example            |
+| ------ | ----------------------------- | ------------------ |
+| `:`    | Range (numeric)               | `date=2015:2023`   |
+| `;`    | Logical AND (multiple values) | `country/nl;de;be` |
 
 ---
 
 ## 4. Response Format — JSON Structure
 
-**Critical:** The JSON response for successful queries is a 2-element array, not a simple object.
+**Do not assume one JSON shape across the whole World Bank API.**
+
+### Standard Indicators API Endpoints
+
+The standard discovery and data endpoints used by this project usually return a 2-element array on success:
 
 ```python
-response = requests.get(url).json()
-metadata = response[0]   # Pagination info
-data      = response[1]  # List of data points (or None if error)
+payload = requests.get(url).json()
+metadata = payload[0]
+rows = payload[1]
 ```
 
-### Pagination Metadata (element 0)
+This covers endpoints such as:
+
+- `/country`
+- `/indicator`
+- `/topic`
+- `/region`, `/incomelevel`, `/lendingtype`, `/lendingtypes`
+- `/sources`, `/sources/{id}`
+- `/country/{codes}/indicator/{indicator}`
+
+Sample indicator-data metadata:
 
 ```json
 {
   "page": 1,
   "pages": 1,
-  "per_page": 50,
-  "total": 6,
+  "per_page": 200,
+  "total": 4,
   "sourceid": "2",
-  "lastupdated": "2026-02-24"
+  "lastupdated": "2026-04-08"
 }
 ```
 
-> **Note:** For country endpoints, `per_page` is returned as a **string** (`"50"`).
-> For indicator endpoints, `per_page` is returned as an **integer** (`50`).
-> When using `mrnev`, `sourceid` is `null` instead of `"2"`.
-> Always treat these fields defensively.
+Sample indicator-data row:
 
-### Data Points (element 1) — Indicator Query
+```json
+{
+  "indicator": {
+    "id": "NY.GDP.MKTP.CD",
+    "value": "GDP (current US$)"
+  },
+  "country": {
+    "id": "BE",
+    "value": "Belgium"
+  },
+  "countryiso3code": "BEL",
+  "date": "2023",
+  "value": 651330595110.011,
+  "unit": "",
+  "obs_status": "",
+  "decimal": 0
+}
+```
+
+**Important nuances:**
+
+- Numeric-looking metadata fields such as `page`, `pages`, `per_page`, and `total` can arrive as either strings or integers depending on endpoint.
+- `sourceid` and `lastupdated` are common on indicator-data calls, not on every discovery endpoint.
+- When using `mrnev`, `unit` may be absent. Treat it as optional.
+
+### Discovery Endpoint Row Shapes
+
+These are the specific catalog endpoints most likely to matter when validating or expanding the monitored indicator set.
+
+#### `/country?format=json`
+
+Returns the World Bank country catalog, which is not a pure list of sovereign countries. It includes both real countries and aggregate entries.
+
+Live example metadata shape:
+
+```json
+{
+  "page": 1,
+  "pages": 60,
+  "per_page": "5",
+  "total": 296
+}
+```
+
+Live example row for a real country:
+
+```json
+{
+  "id": "ABW",
+  "iso2Code": "AW",
+  "name": "Aruba",
+  "region": {
+    "id": "LCN",
+    "iso2code": "ZJ",
+    "value": "Latin America & Caribbean "
+  },
+  "adminregion": {
+    "id": "",
+    "iso2code": "",
+    "value": ""
+  },
+  "incomeLevel": {
+    "id": "HIC",
+    "iso2code": "XD",
+    "value": "High income"
+  },
+  "lendingType": {
+    "id": "LNX",
+    "iso2code": "XX",
+    "value": "Not classified"
+  },
+  "capitalCity": "Oranjestad",
+  "longitude": "-70.0167",
+  "latitude": "12.5167"
+}
+```
+
+Live example row for an aggregate entry:
+
+```json
+{
+  "id": "AFE",
+  "iso2Code": "ZH",
+  "name": "Africa Eastern and Southern",
+  "region": {
+    "id": "NA",
+    "iso2code": "NA",
+    "value": "Aggregates"
+  },
+  "adminregion": {
+    "id": "",
+    "iso2code": "",
+    "value": ""
+  },
+  "incomeLevel": {
+    "id": "NA",
+    "iso2code": "NA",
+    "value": "Aggregates"
+  },
+  "lendingType": {
+    "id": "",
+    "iso2code": "",
+    "value": "Aggregates"
+  },
+  "capitalCity": "",
+  "longitude": "",
+  "latitude": ""
+}
+```
+
+What to take from this:
+
+- `/country` includes aggregates such as `AFE`, `AFR`, and `ARB`, not just countries.
+- Aggregate rows can be detected reliably via `region.id == "NA"` and usually `incomeLevel.id == "NA"`.
+- Fields like `adminregion`, `capitalCity`, `longitude`, and `latitude` can be empty strings.
+- The endpoint is paginated and should not be assumed to fit on one page.
+
+The endpoint also supports catalog filters such as `region`, `incomelevel`, and `lendingtype`, which are useful for discovery but not needed in the monitored-set runtime path.
+
+#### `/indicator?format=json`
+
+Returns the global indicator catalog. The result is large and always paginated, so never assume one page is enough.
+
+Live example metadata shape:
+
+```json
+{
+  "page": 1,
+  "pages": 14756,
+  "per_page": "2",
+  "total": 29511
+}
+```
+
+Live example indicator row shape:
+
+```json
+{
+  "id": "1.0.HCount.1.90usd",
+  "name": "Poverty Headcount ($1.90 a day)",
+  "unit": "",
+  "source": {
+    "id": "37",
+    "value": "LAC Equity Lab"
+  },
+  "sourceNote": "The poverty headcount index measures the proportion of the population with daily per capita income (in 2011 PPP) below the poverty line.",
+  "sourceOrganization": "LAC Equity Lab tabulations of SEDLAC (CEDLAS and the World Bank).",
+  "topics": [
+    {
+      "id": "11",
+      "value": "Poverty "
+    }
+  ]
+}
+```
+
+Use this endpoint when you need to validate indicator metadata, source ownership, and topic mapping. Do not use it in the monitored-set runtime path.
+
+#### `/incomelevel?format=json`
+
+Returns the small fixed income-level definition list.
+
+Live example row shape:
+
+```json
+{
+  "id": "HIC",
+  "iso2code": "XD",
+  "value": "High income"
+}
+```
+
+Use this endpoint to validate aggregate filters or to explain the meaning of country metadata returned from `/country`.
+
+#### `/lendingtypes?format=json`
+
+Returns the lending-type definition list.
+
+Live example row shape:
+
+```json
+{
+  "id": "IBD",
+  "iso2code": "XF",
+  "value": "IBRD"
+}
+```
+
+Use this endpoint the same way as `incomelevel`: for catalog understanding and filters, not for time-series retrieval.
+
+#### `/sources?format=json` and `/sources/{id}?format=json`
+
+Returns the data-source catalog used across indicators, metadata, and advanced-data queries.
+
+Live example source row shape:
+
+```json
+{
+  "id": "11",
+  "lastupdated": "2013-02-22",
+  "name": "Africa Development Indicators",
+  "code": "ADI",
+  "description": "",
+  "url": "",
+  "dataavailability": "Y",
+  "metadataavailability": "Y",
+  "concepts": "3"
+}
+```
+
+Live example for source `2`:
+
+```json
+{
+  "id": "2",
+  "lastupdated": "2026-04-08",
+  "name": "World Development Indicators",
+  "code": "WDI",
+  "description": "",
+  "url": "",
+  "dataavailability": "Y",
+  "metadataavailability": "Y",
+  "concepts": "3"
+}
+```
+
+This endpoint matters directly for this repo because our monitored indicators come from source `2`, World Development Indicators.
+
+### Standard Error Payloads on HTTP 200
+
+Invalid standard data calls often still return HTTP 200, but the JSON body changes shape to a 1-element list:
 
 ```json
 [
   {
-    "indicator": {
-      "id": "NY.GDP.MKTP.CD",
-      "value": "GDP (current US$)"
-    },
-    "country": {
-      "id": "ZA",
-      "value": "South Africa"
-    },
-    "countryiso3code": "ZAF",
-    "date": "2023",
-    "value": 381440724491.232,
-    "unit": "",
-    "obs_status": "",
-    "decimal": 0
+    "message": [
+      {
+        "id": "120",
+        "key": "Invalid value",
+        "value": "The provided parameter value is not valid"
+      }
+    ]
   }
 ]
 ```
 
-> **Warning:** When using `mrnev`, the `unit` field is **omitted** from the response.
-> Do not rely on `unit` being present. Use `.get("unit", "")` pattern.
+That is why payload-level validation is mandatory even after `raise_for_status()`.
 
-### Data Points — Country Query
+### Metadata and Advanced Data Endpoints
+
+`/sources/.../metadata` and `/sources/.../data` do **not** use the same `[meta, rows]` shape. They return JSON objects instead.
+
+Sample metadata response shape:
 
 ```json
-[
-  {
-    "id": "ZAF",
-    "iso2Code": "ZA",
-    "name": "South Africa",
-    "region": { "id": "SSF", "iso2code": "ZG", "value": "Sub-Saharan Africa" },
-    "adminregion": { "id": "SSA", "iso2code": "ZF", "value": "Sub-Saharan Africa (excluding high income)" },
-    "incomeLevel": { "id": "UMC", "iso2code": "XT", "value": "Upper middle income" },
-    "lendingType": { "id": "IBD", "iso2code": "XF", "value": "IBRD" },
-    "capitalCity": "Pretoria",
-    "longitude": "28.1871",
-    "latitude": "-25.746"
-  }
-]
+{
+  "page": 1,
+  "pages": 1,
+  "per_page": "5000",
+  "total": 2,
+  "source": [
+    {
+      "id": "2",
+      "name": "World Development Indicators",
+      "concept": [
+        {
+          "id": "Country",
+          "variable": [
+            {
+              "id": "JPN",
+              "metatype": [
+                {
+                  "id": "IncomeGroup",
+                  "value": "High income"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
 ```
 
-**Key fields to extract:**
-- `value` — the actual data point (can be `null` for missing years)
-- `date` — the year string (e.g. `"2023"`)
-- `country.value` — country name
-- `countryiso3code` — ISO 3166-1 alpha-3 code
+Use separate parsers for metadata and advanced-data endpoints. Do not reuse the simple indicator parser there.
 
 ---
 
 ## 5. Handling Null Values
 
-Many indicators have data gaps. This is normal and expected. The API returns `null` for years with no data.
+Many indicators have data gaps. This is normal and expected. The API returns `null` for periods with no data.
 
 ```python
-# Safe extraction pattern
 values = {
     item["date"]: item["value"]
-    for item in data
+    for item in rows
     if item["value"] is not None
 }
 ```
 
-For the World Analyst pipeline, use `mrnev=N` (Most Recent Non-Empty Values) instead of `mrv=N` to avoid pulling years that are all nulls. This is critical for World Bank data — many indicators lag 1–3 years.
+**Use `mrnev` carefully.**
+
+- `mrnev=N` is useful for exploratory lookups or latest-point UIs.
+- `mrv=N` is useful when you explicitly want the latest N periods including nulls.
+- `gapfill=Y` back-fills missing periods and can make sparse series look cleaner than they really are.
+
+For the World Analyst live pipeline, keep the fixed window `date=2010:2024` and avoid `mrnev` and `gapfill` in the core fetch path. We need to see stale and missing years explicitly so quality rules can flag incomplete coverage instead of hiding it.
 
 ---
 
@@ -219,24 +539,49 @@ def fetch_all_pages(url_base: str) -> list[dict]:
 
 ---
 
-## 7. Country Codes
+## 7. Country Codes and Aggregates
 
-The API accepts both **ISO 2-letter** and **ISO 3-letter** codes, and WB-specific codes where ISO codes don't exist.
+The API accepts ISO 2-letter codes, ISO 3-letter codes, and World Bank-specific aggregate codes.
 
 ```bash
-# Either works:
-/country/za/    # ISO 2 (South Africa)
-/country/ZAF/   # ISO 3 (South Africa)
-/country/all/   # All countries (including aggregates)
+/country/za/    # ISO2 country code
+/country/ZAF/   # ISO3 country code
+/country/LCN/   # Aggregate code (Latin America & Caribbean)
+/country/all/   # All countries plus aggregates
 ```
 
-**Important:** `/country/all/` includes regional aggregates and income group aggregates (e.g. "World", "High income", "Sub-Saharan Africa"). These are not real countries. Filter them by checking that `region.id != "NA"` or that `incomeLevel.id != "NA"`.
+**Important distinctions:**
+
+- Country metadata calls return top-level `id` as ISO3 and `iso2Code` as ISO2 where available.
+- Indicator data rows return `country.id` as ISO2 for countries, but aggregate rows can use World Bank 2-character codes there.
+- Aggregate indicator rows also carry the aggregate code in `countryiso3code`.
+- Some country catalog rows use World Bank-specific fallback codes when ISO codes are unavailable.
+
+Live example for `country/LCN/indicator/NY.GDP.MKTP.CD`:
+
+- `country.id = "ZJ"`
+- `country.value = "Latin America & Caribbean"`
+- `countryiso3code = "LCN"`
+
+That means code consuming indicator rows should not assume `country.id` is always ISO2.
+
+Live example for `country/chi?format=json`:
+
+- `id = "CHI"`
+- `iso2Code = "JG"`
+- `name = "Channel Islands"`
+
+That confirms the official docs: when ISO codes are unavailable, the country catalog can return World Bank-specific codes instead.
+
+`/country/all/` includes regional and income-group aggregates. For this project, avoid it in runtime fetching and use the explicit monitored-country list instead.
+
+If you ever need a dynamic country catalog, filter out aggregates like this:
 
 ```python
-# Filter to real countries only
 real_countries = [
-    c for c in countries
-    if c.get("region", {}).get("id") != "NA"
+    country
+    for country in countries
+    if country.get("region", {}).get("id") != "NA"
 ]
 ```
 
@@ -246,16 +591,17 @@ real_countries = [
 
 These are the six indicators used in the World Analyst pipeline. All sourced from **WDI (World Development Indicators, source ID 2)**.
 
-| Indicator Code | Name | Unit | Notes |
-|---|---|---|---|
-| `NY.GDP.MKTP.CD` | GDP (current US$) | USD | Most current data lags 1–2 years |
-| `FP.CPI.TOTL.ZG` | Inflation, consumer prices (annual %) | % | Core risk signal |
-| `SL.UEM.TOTL.ZS` | Unemployment, total (% of labor force) | % | Modelled ILO estimate |
-| `BN.CAB.XOKA.GD.ZS` | Current account balance (% of GDP) | % | Trade balance proxy — use % of GDP for cross-country comparison, not absolute BoP |
-| `GC.DOD.TOTL.GD.ZS` | Central government debt (% of GDP) | % | Fiscal health signal |
-| `NY.GDP.MKTP.KD.ZG` | GDP growth (annual %) | % | Most directly interpretable |
+| Indicator Code      | Name                                   | Unit | Notes                                                                             |
+| ------------------- | -------------------------------------- | ---- | --------------------------------------------------------------------------------- |
+| `NY.GDP.MKTP.CD`    | GDP (current US$)                      | USD  | Most current data lags 1–2 years                                                  |
+| `FP.CPI.TOTL.ZG`    | Inflation, consumer prices (annual %)  | %    | Core risk signal                                                                  |
+| `SL.UEM.TOTL.ZS`    | Unemployment, total (% of labor force) | %    | Modelled ILO estimate                                                             |
+| `BN.CAB.XOKA.GD.ZS` | Current account balance (% of GDP)     | %    | Trade balance proxy — use % of GDP for cross-country comparison, not absolute BoP |
+| `GC.DOD.TOTL.GD.ZS` | Central government debt (% of GDP)     | %    | Fiscal health signal                                                              |
+| `NY.GDP.MKTP.KD.ZG` | GDP growth (annual %)                  | %    | Most directly interpretable                                                       |
 
 **Recommended fetch strategy:**
+
 ```python
 BASE = "https://api.worldbank.org/v2"
 INDICATORS = [
@@ -267,13 +613,15 @@ INDICATORS = [
     "NY.GDP.MKTP.KD.ZG",
 ]
 
-# Fetch 7 years to give Pandas enough history for trend + anomaly detection
-DATE_RANGE = "2017:2023"
+# Fetch the exact-complete 15-year panel used by the live monitored scope
+DATE_RANGE = "2010:2024"
 ```
 
 ---
 
 ## 9. Python Fetch Pattern (Production-Grade)
+
+This is a general-purpose pattern for the simple indicators API. The production World Analyst pipeline intentionally keeps a stricter version of this pattern: one indicator per request, explicit date window, payload-level error detection, and no `mrnev`/`gapfill` in the main monitored-set path.
 
 ```python
 import requests
@@ -285,10 +633,25 @@ logger = logging.getLogger(__name__)
 
 WB_BASE = "https://api.worldbank.org/v2"
 
+
+def _payload_error(payload: list[dict] | list[object]) -> str | None:
+    first_item = payload[0] if payload else None
+    if not isinstance(first_item, dict) or "message" not in first_item:
+        return None
+
+    messages = first_item["message"]
+    if not isinstance(messages, list):
+        return str(messages)
+
+    return "; ".join(
+        str(message.get("value") or message.get("key") or message)
+        for message in messages
+    )
+
 def fetch_indicator(
     country_code: str,
     indicator: str,
-    date_range: str = "2017:2023",
+  date_range: str = "2010:2024",
     mrnev: Optional[int] = None,
     retries: int = 3,
 ) -> list[dict]:
@@ -311,14 +674,21 @@ def fetch_indicator(
         try:
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
-            data = resp.json()
+            payload = resp.json()
 
-            if not isinstance(data, list) or len(data) < 2 or data[1] is None:
+            if not isinstance(payload, list) or not payload:
+                raise ValueError(f"Unexpected payload shape: {type(payload)}")
+
+            payload_error = _payload_error(payload)
+            if payload_error:
+                raise ValueError(f"World Bank payload error: {payload_error}")
+
+            if len(payload) < 2 or payload[1] is None:
                 return []
 
             return [
                 {"date": item["date"], "value": item["value"]}
-                for item in data[1]
+                for item in payload[1]
                 if item["value"] is not None
             ]
         except requests.RequestException as e:
@@ -334,7 +704,7 @@ def fetch_indicator(
 def fetch_all_countries_indicator(
     indicator: str,
     country_codes: list[str],
-    date_range: str = "2017:2023",
+  date_range: str = "2010:2024",
 ) -> dict[str, list[dict]]:
     """Fetch one indicator for multiple countries via batch request.
 
@@ -351,13 +721,20 @@ def fetch_all_countries_indicator(
 
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
-    data = resp.json()
+    payload = resp.json()
 
-    if not isinstance(data, list) or len(data) < 2 or data[1] is None:
+    if not isinstance(payload, list) or not payload:
+        raise ValueError(f"Unexpected payload shape: {type(payload)}")
+
+    payload_error = _payload_error(payload)
+    if payload_error:
+        raise ValueError(f"World Bank payload error: {payload_error}")
+
+    if len(payload) < 2 or payload[1] is None:
         return {}
 
     result: dict[str, list[dict]] = {}
-    for item in data[1]:
+    for item in payload[1]:
         if item["value"] is None:
             continue
         code = item["country"]["id"].lower()
@@ -370,128 +747,178 @@ def fetch_all_countries_indicator(
 
 ---
 
-## 10. GCS Raw Backup — Storage Pattern
+## 10. Raw Archive Pattern in This Repo
 
-The pipeline stores raw API responses to GCS before any processing. File naming convention:
+World Analyst does **not** archive only `response[1]` anymore. The live pipeline stores one request-response envelope per successful indicator request, scoped to the run.
 
-```
-gs://{BUCKET}/raw/{indicator_code}/{country_code}/{YYYY-MM-DD}.json
+Current envelope fields mirror `pipeline.fetcher._build_raw_payload_envelope()`:
+
+```json
+{
+    "source_name": "world_bank_indicators_api",
+  "source_date_range": "2010:2024",
+    "source_last_updated": "2026-04-08",
+    "source_id": "2",
+    "indicator_code": "NY.GDP.MKTP.CD",
+    "indicator_name": "GDP (current US$)",
+  "country_codes": ["BR", "CA", "GB"],
+    "request": {
+    "url": "https://api.worldbank.org/v2/country/br;ca;gb/indicator/NY.GDP.MKTP.CD?format=json&date=2010:2024&per_page=1000&source=2",
+        "params": {
+            "format": "json",
+      "date": "2010:2024",
+            "per_page": 1000,
+      "source": "2"
+        }
+    },
+    "http_status": 200,
+    "fetched_at": "2026-04-11T...Z",
+    "response_metadata": {...},
+    "response_body": [...]
+}
 ```
 
-Example:
-```
-gs://world-analyst-raw/raw/NY.GDP.MKTP.CD/za/2024-01-15.json
-```
+Why this matters:
 
-The raw file is the exact `response[1]` list from the API, serialised as JSON. This creates a clean audit trail: raw data in GCS, processed insights in Firestore.
+- We retain the exact logical API payload for successful indicator requests.
+- Failed indicator requests currently surface through logs and failure summaries rather than archived request-response envelopes.
+- We retain request scope and source metadata in the same file.
+- Provenance is per run and per indicator, not per country, which matches the actual fetch strategy.
 
 ---
 
 ## 11. Country List — World Analyst Default Set
 
-15 countries selected for geographic, economic, and narrative diversity. Includes ML6's home markets.
+17 countries selected for exact 15-year completeness ending at 2024. This is the live core panel used by the backend runtime, not a broad geographic-representation list.
 
-| ISO2 | ISO3 | Country | Relevance |
-|---|---|---|---|
-| BE | BEL | Belgium | ML6 HQ — Ghent |
-| NL | NLD | Netherlands | ML6 Amsterdam office |
-| DE | DEU | Germany | ML6 Berlin/Munich offices |
-| GB | GBR | United Kingdom | ML6 London office |
-| FR | FRA | France | Major EU economy |
-| US | USA | United States | Global benchmark |
-| CN | CHN | China | Largest emerging market |
-| JP | JPN | Japan | Major developed Asia |
-| IN | IND | India | Fastest-growing large economy |
-| BR | BRA | Brazil | Largest Latin American economy |
-| ZA | ZAF | South Africa | ML6 adjacent; load-shedding narrative |
-| NG | NGA | Nigeria | Largest African economy |
-| EG | EGY | Egypt | North Africa / MENA |
-| AU | AUS | Australia | Commodities benchmark |
-| CA | CAN | Canada | G7 / North America |
+| ISO2 | ISO3 | Country              | Relevance                                 |
+| ---- | ---- | -------------------- | ----------------------------------------- |
+| BR   | BRA  | Brazil               | Largest Latin American economy            |
+| CA   | CAN  | Canada               | North America benchmark                   |
+| GB   | GBR  | United Kingdom       | Major European market                     |
+| US   | USA  | United States        | Global benchmark                          |
+| BS   | BHS  | Bahamas, The         | Exact-complete Caribbean coverage         |
+| CO   | COL  | Colombia             | Latin American macro comparator           |
+| SV   | SLV  | El Salvador          | Exact-complete Central America coverage   |
+| GE   | GEO  | Georgia              | Eurasia bridge market                     |
+| HU   | HUN  | Hungary              | EU-converger comparator                   |
+| MY   | MYS  | Malaysia             | Asia manufacturing exporter               |
+| NZ   | NZL  | New Zealand          | Small developed open economy              |
+| RU   | RUS  | Russian Federation   | Mechanically selected energy exposure     |
+| SG   | SGP  | Singapore            | Trade and financial hub                   |
+| ES   | ESP  | Spain                | Euro-area comparator                      |
+| CH   | CHE  | Switzerland          | Safe-haven developed market               |
+| TR   | TUR  | Turkiye              | Inflation and external-vulnerability case |
+| UY   | URY  | Uruguay              | Stable Latin American comparator          |
 
-**Fetch all 15 in one request:**
+**Fetch all 17 in one request:**
+
 ```python
-COUNTRIES = ["be","nl","de","gb","fr","us","cn","jp","in","br","za","ng","eg","au","ca"]
+COUNTRIES = ["br","ca","gb","us","bs","co","sv","ge","hu","my","nz","ru","sg","es","ch","tr","uy"]
 batch = ";".join(COUNTRIES)
-url = f"https://api.worldbank.org/v2/country/{batch}/indicator/NY.GDP.MKTP.CD?format=json&date=2017:2023&per_page=500"
+url = f"https://api.worldbank.org/v2/country/{batch}/indicator/NY.GDP.MKTP.CD?format=json&date=2010:2024&per_page=1000&source=2"
 ```
 
 ---
 
 ## 12. Known Data Quirks and Gotchas
 
-**Null-heavy recent years**  
-Many indicators for 2024 and even 2023 are null because national statistics offices report with a 1–2 year lag. Use `mrnev=5` or `date=2015:2023` to get reliable data.
+**Public endpoint latency can spike**  
+The API is public and occasionally slow. In live checks for this repo, a simple two-country GDP call took about 30 seconds even though other calls returned in under 3 seconds. Timeouts and retries are operational necessities, not optional polish.
 
-**Aggregates in "all" queries**  
-`/country/all/` returns ~300 entries including regional/income aggregates. Filter these out by checking `region.id != "NA"`.
+**Null-heavy recent years are normal**  
+Many indicators lag by one or more years. For exploratory work, `mrnev` can help. For the World Analyst pipeline, fixed date windows are better because they preserve evidence of stale series.
 
-**No sorting supported**  
-The API returns data in a fixed order (usually newest year first, or alpha by country). You cannot control sort order. Sort in Pandas after fetching.
+**`mrnev` and `gapfill` can hide quality problems**  
+They make latest-value lookups easier, but they also hide whether a series actually stopped years ago. That matters directly for monitored-set quality checks.
 
-**Pagination default is 50**  
-The most common mistake is forgetting to set `per_page=1000`. With 15 countries × 7 years × 6 indicators that's up to 105 data points per indicator call — well within a single page at `per_page=1000`.
+**`/country/all/` includes aggregates**  
+It is not a clean country-only catalog. Use explicit country lists in runtime code.
 
-**Response is always a list (but length varies)**  
-Successful queries return a 2-element array: `[metadata, data]`.
-Error responses return a **1-element array**: `[{"message": [...]}]`.
-Always check `len(data) >= 2` before accessing `data[1]`.
+**No sorting is supported**  
+The API returns data in a reasonable default order, but you cannot request a custom sort. Always sort downstream.
+
+**Pagination defaults to 50**  
+If you do not set `per_page`, large discovery queries will paginate. For this project's indicator data calls, `per_page=1000` keeps one-indicator batches on one page.
+
+**Standard data endpoints and metadata endpoints do not share one JSON shape**  
+Simple country/indicator/topic/aggregate endpoints are list-shaped. Metadata and advanced-data endpoints are dict-shaped.
+
+**Standard logical errors can still be HTTP 200**  
+Treat payload-level `message` arrays as first-class errors.
 
 **Indicator codes are case-sensitive**  
 `NY.GDP.MKTP.CD` works. `ny.gdp.mktp.cd` does not.
 
-**Value field can be float, int, or null**  
-Do not assume numeric type. Always cast: `float(item["value"])` after null check.
+**Value fields can be `float`, `int`, or `null`**  
+Always null-check before casting.
 
-**`unit` field not always present**  
-When using `mrnev` parameter, the `unit` field is omitted from response objects. Use `.get("unit", "")` defensively.
+**`unit` is optional**  
+Especially with `mrnev`, do not assume it is present.
+
+**Multiple-indicator calls require `source` and complicate parsing**  
+The API allows them, but they are not the right default for this repo's live pipeline.
 
 ---
 
 ## 13. Error Handling
 
-The API returns HTTP 200 even for invalid queries. Errors are embedded in the response body.
+For the simple indicators API, the most important rule is this: **HTTP 200 does not mean the query succeeded logically.** Invalid requests can still come back as JSON with a `message` payload.
 
-**Critical:** Error responses are a **1-element array** (not 2-element like successful responses):
+Standard error payload:
 
 ```json
-[{"message": [{"id": "120", "key": "Invalid value", "value": "The provided parameter value is not valid"}]}]
+[
+  {
+    "message": [
+      {
+        "id": "120",
+        "key": "Invalid value",
+        "value": "The provided parameter value is not valid"
+      }
+    ]
+  }
+]
 ```
 
-**Robust check pattern:**
+Robust check pattern for simple country/indicator/topic/aggregate endpoints:
+
 ```python
-data = resp.json()
-if not isinstance(data, list):
-    raise ValueError(f"Unexpected response type: {type(data)}")
-if len(data) < 2 or data[1] is None:
-    # Check for error message in first element
-    if isinstance(data[0], dict) and "message" in data[0]:
-        error_msg = data[0]["message"]
-        raise ValueError(f"API error: {error_msg}")
-    return []  # Valid but empty result
+payload = resp.json()
+if not isinstance(payload, list) or not payload:
+    raise ValueError(f"Unexpected response type: {type(payload)}")
+
+if isinstance(payload[0], dict) and "message" in payload[0]:
+    raise ValueError(f"World Bank payload error: {payload[0]['message']}")
+
+if len(payload) < 2 or payload[1] is None:
+    return []
 ```
+
+For metadata and advanced-data endpoints, use a different parser. Those endpoints return JSON objects, not `[meta, rows]` lists.
 
 **Common error IDs:**
 
-| ID | Key | Meaning |
-|---|---|---|
-| 120 | Invalid value | Bad country code, indicator code, or parameter |
-| 140 | No data | Valid query but no data exists |
-| 150 | Language not supported | Unsupported language prefix |
-| 175 | Resource not found | Endpoint or resource does not exist |
+| ID  | Key                    | Meaning                                        |
+| --- | ---------------------- | ---------------------------------------------- |
+| 120 | Invalid value          | Bad country code, indicator code, or parameter |
+| 140 | No data                | Valid query but no data exists                 |
+| 150 | Language not supported | Unsupported language prefix                    |
+| 175 | Resource not found     | Endpoint or resource does not exist            |
 
 ---
 
-## 14. Rate Limits and Best Practices
+## 14. Best Practices for This Repo
 
-No documented rate limit, but follow these conventions:
+The official docs do not publish a hard rate limit. Treat the API as a public shared service and code defensively.
 
-- Add `time.sleep(0.1)` between sequential requests in loops
-- For parallel fetching with `asyncio`, limit concurrency to ~5 simultaneous requests
-- Set `timeout=10` on all requests to handle slow responses gracefully
-- Implement exponential backoff on failures (start at 1s, max at 8s, 3 attempts)
-
-The World Bank API is a public service. Be a respectful consumer.
+- Keep the current pattern of one indicator per request and semicolon-batched countries.
+- Keep `format=json`, `source=2`, `per_page=1000`, and a fixed date range in the live pipeline.
+- Do not switch the monitored-set runtime path to `mrnev` or `gapfill`; those are discovery conveniences, not quality-safe runtime defaults.
+- Keep payload-level error detection even after `raise_for_status()`.
+- Check `response[0]["pages"]` on every simple indicator call. The current monitored scope should stay on one page; if that changes, fail loudly and implement pagination deliberately instead of truncating page 1.
+- Keep small pauses between requests and exponential backoff on transport errors.
+- Treat timeout length as an operational tuning parameter. The repo now defaults to 45 seconds and exposes `WORLD_ANALYST_WORLD_BANK_TIMEOUT_SECONDS` for runtime tuning because slower public responses are a real production condition.
 
 ---
 
@@ -501,25 +928,63 @@ The World Bank API is a public service. Be a respectful consumer.
 # List all available data sources
 https://api.worldbank.org/v2/sources?format=json
 
+# Get one source definition
+https://api.worldbank.org/v2/sources/2?format=json
+
 # List all indicators (paginated — 10k+ total)
 https://api.worldbank.org/v2/indicator?format=json&per_page=100
-
-# Search indicators by keyword (partial name match)
-https://api.worldbank.org/v2/indicator?format=json&per_page=100&q=GDP
 
 # Get indicator metadata (description, source, topics)
 https://api.worldbank.org/v2/indicator/NY.GDP.MKTP.CD?format=json
 
+# List income-level and lending-type definitions
+https://api.worldbank.org/v2/incomelevel?format=json
+https://api.worldbank.org/v2/lendingtypes?format=json
+
 # List all topics
-https://api.worldbank.org/v2/topics?format=json
+https://api.worldbank.org/v2/topic?format=json
 
 # Get all indicators for a topic (topic 3 = Economy & Growth)
 https://api.worldbank.org/v2/topic/3/indicator?format=json
+
+# List region / income-level / lending-type definitions
+https://api.worldbank.org/v2/region?format=json
+
+# Filter countries by aggregate definition
+https://api.worldbank.org/v2/country?region=LCN&format=json
+
+# Retrieve source-specific metadata for one concept/metatype combination
+https://api.worldbank.org/v2/sources/2/country/usa;jpn/metatypes/incomegroup/metadata?format=json
+
+# Retrieve topic-aligned indicator candidates when reconsidering coverage
+https://api.worldbank.org/v2/topic/3/indicator?format=json&per_page=100
 ```
 
 ---
 
-## 16. Quick Reference — Cheat Sheet
+## 16. What This Means for World Analyst
+
+The current fetcher is aligned with the official API in the places that matter most:
+
+- It uses the standard simple indicators endpoint: `country/{codes}/indicator/{indicator}`.
+- It batches countries with semicolons instead of using `country/all`.
+- It requests JSON explicitly.
+- It uses one indicator per request, which matches the repo's provenance and failure-isolation needs.
+- It checks for HTTP-200 logical errors in the response body.
+
+The clarified runtime rules for this project are:
+
+1. Keep the fixed historical window `2010:2024` in the live monitored-set path.
+2. Keep one indicator per request even though the API supports multi-indicator requests.
+3. Keep topic and metadata endpoints as offline discovery tools for indicator validation, replacement analysis, and source checking.
+4. Do not use aggregate codes or `country/all` in runtime fetching unless the product intentionally expands beyond country briefings.
+5. Treat transport latency as a real operational concern when deciding whether to tune `REQUEST_TIMEOUT_SECONDS`.
+
+This is the key practical distinction: the World Bank API allows more flexible query shapes than World Analyst should use in production. The repo should prefer the narrower, more auditable subset.
+
+---
+
+## 17. Quick Reference — Cheat Sheet
 
 ```python
 # The single most useful call pattern for this project:
@@ -529,39 +994,45 @@ import requests
 def get_indicator_for_countries(
     countries: list[str],
     indicator: str,
-    years: str = "2017:2023",
+  years: str = "2010:2024",
 ) -> list[dict]:
     """Batch-fetch one indicator for all target countries."""
     batch = ";".join(countries)
-    url = (
-        f"https://api.worldbank.org/v2/country/{batch}"
-        f"/indicator/{indicator}"
-        f"?format=json&date={years}&per_page=1000"
-    )
-    r = requests.get(url, timeout=10)
-    data = r.json()
-    if not isinstance(data, list) or len(data) < 2 or data[1] is None:
+    params = {
+        "format": "json",
+        "date": years,
+        "per_page": 1000,
+      "source": "2",
+    }
+    url = f"https://api.worldbank.org/v2/country/{batch}/indicator/{indicator}"
+    r = requests.get(url, params=params, timeout=15)
+    payload = r.json()
+    if not isinstance(payload, list) or not payload:
+        raise ValueError(f"Unexpected payload type: {type(payload)}")
+    if isinstance(payload[0], dict) and "message" in payload[0]:
+        raise ValueError(f"World Bank payload error: {payload[0]['message']}")
+    if len(payload) < 2 or payload[1] is None:
         return []
     return [
         {
             "country_code": row["country"]["id"].upper(),
-            "country_name": row["country"]["value"],
+            "country_name": row["country"]["value"].strip(),
             "year": int(row["date"]),
             "value": row["value"],
             "indicator": indicator,
         }
-        for row in data[1]
+        for row in payload[1]
         if row["value"] is not None
     ]
 
 # Usage
-COUNTRIES = ["be","nl","de","gb","fr","us","cn","jp","in","br","za","ng","eg","au","ca"]
+COUNTRIES = ["br","ca","gb","us","bs","co","sv","ge","hu","my","nz","ru","sg","es","ch","tr","uy"]
 gdp_data = get_indicator_for_countries(COUNTRIES, "NY.GDP.MKTP.CD")
 ```
 
 ---
 
-*Source: World Bank Data Help Desk — Developer Information*  
+_Source: World Bank Data Help Desk — Developer Information_  
 *https://datahelpdesk.worldbank.org/knowledgebase/topics/125589*  
-*All claims live-verified against production API — April 2026*  
-*No API key required. Free and open access.*
+_All claims live-verified against production API — April 2026_  
+_No API key required. Free and open access._
