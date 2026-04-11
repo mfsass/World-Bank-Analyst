@@ -57,7 +57,7 @@ pnpm-debug.log*
 *.temp
 
 # Private reference material
-Project Context/
+private-context/
 
 # OS
 .DS_Store
