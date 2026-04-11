@@ -7,11 +7,37 @@ implementations to be selected by configuration.
 
 from __future__ import annotations
 
+import copy
+import logging
 import os
 from threading import Lock
 from typing import Any, Protocol
 
 PIPELINE_STEP_NAMES = ("fetch", "analyse", "synthesise", "store")
+PIPELINE_STATUS_PUBLIC_FIELDS = ("status", "started_at", "completed_at", "steps", "error")
+PIPELINE_STATUS_STEP_PUBLIC_FIELDS = ("name", "status", "duration_ms")
+INDICATOR_PUBLIC_FIELDS = (
+    "indicator_code",
+    "indicator_name",
+    "country_code",
+    "latest_value",
+    "previous_value",
+    "percent_change",
+    "is_anomaly",
+    "ai_analysis",
+    "data_year",
+    "updated_at",
+)
+COUNTRY_PUBLIC_FIELDS = (
+    "code",
+    "name",
+    "region",
+    "income_level",
+    "macro_synthesis",
+    "risk_flags",
+    "outlook",
+    "updated_at",
+)
 
 LOCAL_COUNTRY_CATALOG: dict[str, dict[str, str]] = {
     "ZA": {
@@ -24,6 +50,7 @@ LOCAL_COUNTRY_CATALOG: dict[str, dict[str, str]] = {
 
 _REPOSITORIES: dict[str, InsightsRepository] = {}
 _REPOSITORY_LOCK = Lock()
+logger = logging.getLogger(__name__)
 
 
 class InsightsRepository(Protocol):
@@ -50,6 +77,9 @@ class InsightsRepository(Protocol):
 
     def upsert_pipeline_status(self, record: dict[str, Any]) -> None:
         """Store the latest pipeline status payload."""
+
+    def get_pipeline_status_record(self) -> dict[str, Any]:
+        """Return the full stored pipeline status for internal mutation."""
 
     def list_indicator_insights(self, country_code: str | None = None) -> list[dict[str, Any]]:
         """Return indicator insights, optionally filtered by country."""
@@ -82,6 +112,35 @@ def default_pipeline_status() -> dict[str, Any]:
     }
 
 
+def project_public_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Project a stored mixed document back to the public API contract.
+
+    Args:
+        record: Stored mixed-document record.
+
+    Returns:
+        Public-facing payload with private provenance and status detail removed.
+    """
+    entity_type = record.get("entity_type")
+    if entity_type == "indicator":
+        return _project_fields(record, INDICATOR_PUBLIC_FIELDS)
+
+    if entity_type == "country":
+        return _project_fields(record, COUNTRY_PUBLIC_FIELDS)
+
+    if entity_type == "pipeline_status":
+        projected = _project_fields(record, PIPELINE_STATUS_PUBLIC_FIELDS)
+        projected["steps"] = [
+            _project_fields(step, PIPELINE_STATUS_STEP_PUBLIC_FIELDS)
+            for step in record.get("steps", build_pipeline_steps())
+        ]
+        return projected
+
+    public_record = copy.deepcopy(record)
+    public_record.pop("entity_type", None)
+    return public_record
+
+
 def require_fields(record: dict[str, Any], required_fields: tuple[str, ...], record_type: str) -> None:
     """Validate that a record contains the fields required by the repository.
 
@@ -104,19 +163,40 @@ def get_repository() -> InsightsRepository:
     """Return the configured repository backend.
 
     Environment:
-        WORLD_ANALYST_STORAGE_BACKEND: `local` or `firestore`. Defaults to `local`.
+        REPOSITORY_MODE: `local` or `firestore`. Defaults to `local`.
+        WORLD_ANALYST_STORAGE_BACKEND: Backward-compatible alias for REPOSITORY_MODE.
         WORLD_ANALYST_FIRESTORE_COLLECTION: Optional collection name override.
         GOOGLE_CLOUD_PROJECT / GCP_PROJECT_ID: Project identifier for Firestore.
 
     Returns:
         Shared repository instance for the selected backend.
     """
-    backend = os.environ.get("WORLD_ANALYST_STORAGE_BACKEND", "local").lower()
+    backend = get_repository_backend()
     if backend not in _REPOSITORIES:
         with _REPOSITORY_LOCK:
             if backend not in _REPOSITORIES:
                 _REPOSITORIES[backend] = _build_repository(backend)
     return _REPOSITORIES[backend]
+
+
+def get_repository_backend() -> str:
+    """Resolve the configured repository backend.
+
+    Returns:
+        Normalized repository backend name.
+    """
+    backend = os.environ.get("REPOSITORY_MODE")
+    if backend:
+        return backend.lower()
+
+    legacy_backend = os.environ.get("WORLD_ANALYST_STORAGE_BACKEND")
+    if legacy_backend:
+        logger.info(
+            "Using WORLD_ANALYST_STORAGE_BACKEND as a backward-compatible alias for REPOSITORY_MODE"
+        )
+        return legacy_backend.lower()
+
+    return "local"
 
 
 def reset_repository_cache() -> None:
@@ -151,7 +231,7 @@ def _build_repository(backend: str) -> InsightsRepository:
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT_ID")
         if not project_id:
             raise ValueError(
-                "WORLD_ANALYST_STORAGE_BACKEND=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
+                "REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
             )
 
         return FirestoreInsightsRepository(
@@ -160,3 +240,16 @@ def _build_repository(backend: str) -> InsightsRepository:
         )
 
     raise ValueError(f"Unsupported repository backend: {backend}")
+
+
+def _project_fields(record: dict[str, Any], field_names: tuple[str, ...]) -> dict[str, Any]:
+    """Copy a known subset of fields from a stored record.
+
+    Args:
+        record: Stored record.
+        field_names: Public fields to copy when present.
+
+    Returns:
+        Copied subset of the stored record.
+    """
+    return {field_name: copy.deepcopy(record[field_name]) for field_name in field_names if field_name in record}

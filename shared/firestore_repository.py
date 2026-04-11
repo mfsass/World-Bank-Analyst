@@ -13,7 +13,12 @@ from typing import Any
 
 from google.cloud import firestore
 
-from shared.repository import LOCAL_COUNTRY_CATALOG, default_pipeline_status, require_fields
+from shared.repository import (
+    LOCAL_COUNTRY_CATALOG,
+    default_pipeline_status,
+    project_public_record,
+    require_fields,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +129,7 @@ class FirestoreInsightsRepository:
         document_id = self._document_id("pipeline_status", "current")
         self._collection.document(document_id).set(
             {"entity_type": "pipeline_status", **record},
-            merge=True,
+            merge=False,
         )
 
     def list_indicator_insights(self, country_code: str | None = None) -> list[dict[str, Any]]:
@@ -139,7 +144,7 @@ class FirestoreInsightsRepository:
         normalized = country_code.upper() if country_code else None
         records_to_scan = self._scan_records()
         records = [
-            self._public_record(record)
+            project_public_record(record)
             for record in records_to_scan
             if record.get("entity_type") == "indicator"
             and (normalized is None or record.get("country_code") == normalized)
@@ -160,9 +165,23 @@ class FirestoreInsightsRepository:
         if not snapshot.exists:
             return None
 
-        detail = self._public_record(snapshot.to_dict() or {})
+        detail = project_public_record(snapshot.to_dict() or {})
         detail["indicators"] = self.list_indicator_insights(normalized)
         return detail
+
+    def get_pipeline_status_record(self) -> dict[str, Any]:
+        """Return the stored pipeline status, including private fields.
+
+        Returns:
+            Full stored pipeline status payload.
+        """
+        snapshot = self._collection.document(self._document_id("pipeline_status", "current")).get()
+        if not snapshot.exists:
+            return default_pipeline_status()
+
+        stored_record = copy.deepcopy(snapshot.to_dict() or {})
+        stored_record.pop("entity_type", None)
+        return stored_record
 
     def get_pipeline_status(self) -> dict[str, Any]:
         """Return the latest pipeline status payload.
@@ -173,7 +192,7 @@ class FirestoreInsightsRepository:
         snapshot = self._collection.document(self._document_id("pipeline_status", "current")).get()
         if not snapshot.exists:
             return default_pipeline_status()
-        return self._public_record(snapshot.to_dict() or {})
+        return project_public_record(snapshot.to_dict() or {})
 
     @staticmethod
     def _document_id(entity_type: str, key: str) -> str:
@@ -187,20 +206,6 @@ class FirestoreInsightsRepository:
             Stable document identifier.
         """
         return f"{entity_type}:{key}"
-
-    @staticmethod
-    def _public_record(record: dict[str, Any]) -> dict[str, Any]:
-        """Strip repository-only metadata before returning data.
-
-        Args:
-            record: Internal record dict.
-
-        Returns:
-            Copy without internal metadata.
-        """
-        public_record = copy.deepcopy(record)
-        public_record.pop("entity_type", None)
-        return public_record
 
     def _scan_records(self) -> list[dict[str, Any]]:
         """Load all mixed documents for bounded-scope repository reads.

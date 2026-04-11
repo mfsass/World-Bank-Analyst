@@ -10,7 +10,12 @@ import copy
 from threading import RLock
 from typing import Any
 
-from shared.repository import LOCAL_COUNTRY_CATALOG, default_pipeline_status, require_fields
+from shared.repository import (
+    LOCAL_COUNTRY_CATALOG,
+    default_pipeline_status,
+    project_public_record,
+    require_fields,
+)
 
 
 class InMemoryInsightsRepository:
@@ -113,7 +118,7 @@ class InMemoryInsightsRepository:
         normalized = country_code.upper() if country_code else None
         with self._lock:
             records = [
-                self._public_record(record)
+                project_public_record(record)
                 for record in self._records.values()
                 if record.get("entity_type") == "indicator"
                 and (normalized is None or record.get("country_code") == normalized)
@@ -137,10 +142,24 @@ class InMemoryInsightsRepository:
             if country_record is None:
                 return None
 
-            detail = self._public_record(country_record)
+            detail = project_public_record(country_record)
 
         detail["indicators"] = self.list_indicator_insights(normalized)
         return detail
+
+    def get_pipeline_status_record(self) -> dict[str, Any]:
+        """Return the stored pipeline status, including private fields.
+
+        Returns:
+            Full stored pipeline status payload.
+        """
+        document_id = self._document_id("pipeline_status", "current")
+        with self._lock:
+            record = self._records.get(document_id, {"entity_type": "pipeline_status", **default_pipeline_status()})
+
+        stored_record = copy.deepcopy(record)
+        stored_record.pop("entity_type", None)
+        return stored_record
 
     def get_pipeline_status(self) -> dict[str, Any]:
         """Return the latest pipeline status payload.
@@ -151,7 +170,7 @@ class InMemoryInsightsRepository:
         document_id = self._document_id("pipeline_status", "current")
         with self._lock:
             record = self._records.get(document_id, {"entity_type": "pipeline_status", **default_pipeline_status()})
-        return self._public_record(record)
+        return project_public_record(record)
 
     def _upsert(self, document_id: str, record: dict[str, Any]) -> None:
         """Write a record under a stable document identifier.
@@ -176,16 +195,3 @@ class InMemoryInsightsRepository:
         """
         return f"{entity_type}:{key}"
 
-    @staticmethod
-    def _public_record(record: dict[str, Any]) -> dict[str, Any]:
-        """Strip internal repository metadata before returning data.
-
-        Args:
-            record: Internal record dict.
-
-        Returns:
-            Copy without repository-only keys.
-        """
-        public_record = copy.deepcopy(record)
-        public_record.pop("entity_type", None)
-        return public_record
