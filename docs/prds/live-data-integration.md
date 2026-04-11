@@ -3,12 +3,14 @@
 ## 1. Product overview
 
 ### 1.1 Document title and version
+
 Live data integration
 Version: 0.1
 Date: 2026-04-10
 Status: Draft for approval
 
 ### 1.2 Product summary
+
 World Analyst already has the structure of a pipeline, but the current end-to-end slice still depends on deterministic local fixture data. That is useful for tests and early UI work, but it means the product is not yet operating on the real World Bank source that the challenge is built around. The next step is to replace the local data path for real runs with live World Bank API ingestion while keeping the product bounded, understandable, and resilient to common data-quality issues.
 
 This PRD covers the live-data layer only. It owns fetching, normalization, verified indicator coverage, historical-window policy, missing-data handling, and partial-success behavior for the six approved indicators across the 15 approved countries. It does not own final live-AI behavior, final cloud scheduling, or deep production hardening. The goal is simple: the same product flow should run on real World Bank data instead of only local fixtures. Exploratory research on other World Bank indicators does not change the approved six-indicator scope unless that change is recorded through an ADR and reflected across planning documents.
@@ -18,17 +20,20 @@ This PRD follows the same simplicity rule as the rest of the planning set. The i
 ## 2. Goals
 
 ### 2.1 Business goals
+
 - Replace the local-only data path with real World Bank API ingestion for the bounded project scope.
 - Make the product more credible by grounding dashboard outputs in the real public source named in the challenge brief.
 - Keep the data layer understandable enough to explain clearly in review and Q&A.
 - Preserve the existing product flow so live data strengthens the system without forcing a frontend redesign.
 
 ### 2.2 User goals
+
 - As a reviewer, I want the pipeline to work on real World Bank data so the product feels like a true submission rather than a local simulation.
 - As a finance user, I want the dashboard to reflect real indicator history from the selected countries and metrics.
 - As an engineer, I want one clear live-data path with predictable normalization and failure handling so the pipeline is easy to maintain.
 
 ### 2.3 Non-goals (explicit out-of-scope)
+
 - Replacing deterministic local fixtures for tests and lightweight development.
 - Improving the quality of AI narrative generation beyond what the current AI layer already does. That belongs to the live-AI PRD.
 - Wiring Cloud Scheduler or Cloud Run Job orchestration. That belongs to the cloud deployment, scheduling, and runtime topology PRD.
@@ -39,16 +44,19 @@ This PRD follows the same simplicity rule as the rest of the planning set. The i
 ## 3. User personas
 
 ### 3.1 Key user types
+
 - ML6 evaluator expecting a real integration with the World Bank API.
 - Finance reviewer expecting real macroeconomic signals rather than synthetic data.
 - Engineer maintaining the fetch, normalization, and validation path.
 
 ### 3.2 Basic persona details
+
 - ML6 evaluator: cares that the system uses the named external data source credibly and handles practical data issues with intent.
 - Finance reviewer: cares that the displayed metrics come from a real source and reflect recent historical context, not only one hardcoded country fixture.
 - Engineer: needs a bounded and legible data path with clear rules for null values, stale series, deleted indicators, and partial failures.
 
 ### 3.3 Role-based access (if applicable)
+
 - No new role model is introduced in this PRD.
 - Live data remains an internal pipeline concern surfaced through the same API and frontend flows.
 - Cloud operator workflows remain outside the frontend.
@@ -111,15 +119,19 @@ This PRD follows the same simplicity rule as the rest of the planning set. The i
 ## 5. User experience
 
 ### 5.1 Entry points and first-time user flow
+
 A reviewer opens the app or triggers a run and sees the same product flow they already understand. The difference is not a new interface. The difference is that the pipeline is now materializing results from the real World Bank source. The user should not need to understand the fetch logic to benefit from it, but the product should be able to explain that it is using real source data.
 
 ### 5.2 Core experience
+
 The product continues to fetch, analyze, store, and display economic indicators. With this PRD in place, that loop is grounded in live World Bank data for the full bounded scope instead of only South Africa fixture data. Users should still see the same high-level flow through the dashboard and trigger surface, while engineers gain a clearer live-data path underneath.
 
 ### 5.3 Advanced features and edge cases
+
 If some source series are missing recent data, the run should continue where it still can and make the gap explicit. If one indicator fails due to API or validation issues, the system should not discard healthy results from the rest of the scope. If the World Bank API returns null rows or sparse coverage, the normalization layer should handle that deterministically instead of leaking raw source oddities into downstream logic. If the live source changes shape or invalidates an indicator, the failure should be visible and diagnosable.
 
 ### 5.4 UI and UX highlights
+
 - No new page is required for this PRD.
 - Existing dashboard and trigger flows should continue to work against live-backed results.
 - User-visible status and documentation should be able to describe that the source is the live World Bank API.
@@ -132,16 +144,19 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 ## 7. Success metrics
 
 ### 7.1 User-centric metrics
+
 - A reviewer can trigger or inspect runs that are based on real World Bank data rather than only local fixtures.
 - Dashboard outputs for the bounded scope reflect live source history with enough context to support trend and anomaly interpretation.
 - Partial source failures are visible and understandable rather than hidden.
 
 ### 7.2 Business metrics
+
 - The product demonstrates real integration with the challenge's named external data source.
 - The live-data story is simple enough to explain clearly in presentation and Q&A.
 - The system remains bounded and credible instead of expanding into a broad ingestion effort.
 
 ### 7.3 Technical metrics
+
 - The pipeline can fetch all six approved indicators for the 15 approved countries through the live World Bank API path.
 - Normalized records are compatible with the existing analysis and storage flow.
 - The history window is sufficient to support current trend and anomaly logic.
@@ -151,6 +166,7 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 ## 8. Technical considerations
 
 ### 8.1 Integration points
+
 - Live fetch boundary in `pipeline/fetcher.py`.
 - Analysis expectations in `pipeline/analyser.py`.
 - Current fixture path in `pipeline/local_data.py`.
@@ -163,12 +179,14 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 - `PIPELINE_MODE` controls the data source only. Storage backend selection remains independent through `REPOSITORY_MODE`, as defined by the durable storage and status PRD.
 
 ### 8.2 Data storage and privacy
+
 - The World Bank API is public and requires no authentication.
 - This PRD should produce normalized source records and provenance suitable for later archival and persistence work.
 - Raw response retention and durable archival remain aligned with the storage PRD rather than being redefined here.
 - No additional sensitive user data is introduced by this integration.
 
 ### 8.3 Scalability and performance
+
 - The bounded scope remains 15 countries and 6 indicators.
 - One API request per indicator remains acceptable at this scale.
 - The implementation should respect the public API without adding unnecessary batching complexity beyond what the source already supports.
@@ -176,6 +194,7 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 - This PRD optimizes for correctness, bounded resilience, and clarity rather than ingestion throughput.
 
 ### 8.4 Potential challenges
+
 - Different indicators may have different recency or completeness across countries.
 - The World Bank API can return HTTP 200 responses that still contain logical API errors in the payload.
 - Sparse or null-heavy series can create misleading downstream calculations if they are not normalized carefully.
@@ -185,13 +204,16 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 ## 9. Milestones and sequencing
 
 ### 9.1 Project estimate
+
 This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or full hardening work, but it is substantial because it replaces the source of truth under the whole pipeline and must do so without making the system harder to reason about.
 
 ### 9.2 Team size and composition
+
 - One implementation lane covering live fetching, normalization, validation, and pipeline integration.
 - One review lane checking indicator validity, data-quality rules, partial-success behavior, and downstream contract stability.
 
 ### 9.3 Suggested phases
+
 1. Finalize the approved live indicator list, country list, and historical-window policy.
 2. Implement or refine the live fetch path and one normalized internal record shape.
 3. Add explicit data-quality rules for nulls, sparse coverage, invalid indicators, and API-level errors.
@@ -199,12 +221,14 @@ This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or
 5. Validate partial-success behavior, provenance handoff, and downstream compatibility with analysis and storage.
 
 ### 9.4 Dependencies
+
 - Durable storage and status should complete before this PRD so provenance handoff, partial-success behavior, and repository validation can be tested against durable persistence.
 - Live AI integration may proceed in parallel, but the final live-AI evaluation gate should run against real live-data inputs rather than only deterministic fixtures.
 
 ## 10. User stories
 
 ### 10.1 Fetch real World Bank data for the bounded scope
+
 - **ID**: US-1
 - **Description**: As an evaluator, I want the pipeline to fetch real World Bank data for the approved countries and indicators so that the product reflects the actual challenge source.
 - **Acceptance criteria**:
@@ -214,6 +238,7 @@ This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or
   - [ ] Scope changes to countries or indicators require an ADR rather than informal exploratory testing.
 
 ### 10.2 Normalize live data into one internal shape
+
 - **ID**: US-2
 - **Description**: As an engineer, I want live source data normalized into one predictable record shape so that downstream analysis does not need source-specific logic.
 - **Acceptance criteria**:
@@ -222,6 +247,7 @@ This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or
   - [ ] Analysis code can consume the same shape regardless of whether data came from fixtures or the live API.
 
 ### 10.3 Keep enough history for analysis to remain defensible
+
 - **ID**: US-3
 - **Description**: As a reviewer, I want the system to fetch enough source history so that trend and anomaly logic are based on more than one recent point.
 - **Acceptance criteria**:
@@ -230,6 +256,7 @@ This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or
   - [ ] The history policy is applied consistently unless an explicit exception is documented.
 
 ### 10.4 Handle imperfect source data clearly
+
 - **ID**: US-4
 - **Description**: As an engineer, I want the system to handle nulls, sparse coverage, and invalid indicators predictably so that source quirks do not silently corrupt downstream output.
 - **Acceptance criteria**:
@@ -239,6 +266,7 @@ This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or
   - [ ] Null values are filtered rather than interpolated or converted to zero.
 
 ### 10.5 Preserve useful output when runs are only partially successful
+
 - **ID**: US-5
 - **Description**: As a reviewer, I want partial live-data failures to be visible without discarding successful results so that the product stays useful and honest.
 - **Acceptance criteria**:

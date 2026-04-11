@@ -3,12 +3,14 @@
 ## 1. Product overview
 
 ### 1.1 Document title and version
+
 Frontend fidelity to design mockups
 Version: 0.1
 Date: 2026-04-10
 Status: Draft for approval
 
 ### 1.2 Product summary
+
 World Analyst already has the beginnings of a working frontend: the route structure exists, the main pages are wired, the dashboard can read live API responses, and the design token layer is in place. What it does not yet have is the visual authority, shared shell, component discipline, and page composition shown in the finalized mockups. Right now the frontend feels like a functional local slice. The target is a coherent economic intelligence terminal.
 
 This PRD turns the finalized design mockups into an implementation-ready frontend scope. The mockups are the visual source of truth for page composition, hierarchy, and interaction intent. The design system remains the hard implementation guardrail for tokens and rules: dark canvas, orange restraint, 8px radius, no shadows, no blur, Inter plus Commit Mono, and tonal depth only. Where the mockup HTML and the design system disagree, the design system wins.
@@ -18,17 +20,20 @@ This PRD focuses on UX and UI. It covers all four pages, the shared application 
 ## 2. Goals
 
 ### 2.1 Business goals
+
 - Make the product look and feel like the intended World Analyst terminal rather than an early technical slice.
 - Increase review and presentation quality by aligning the shipped frontend with the finalized mockups and the ML6-facing product brief.
 - Create a frontend surface that is visually credible enough to carry the later live-data, live-AI, and cloud-runtime work.
 - Reduce UX drift by establishing clear component, layout, and state-handling rules before further frontend growth.
 
 ### 2.2 User goals
+
 - As a finance reviewer, I want the dashboard to feel intentional, dense, and trustworthy so I can scan signals quickly.
 - As an ML6 evaluator, I want the frontend to reflect strong product craft rather than a generic dashboard template.
 - As an engineer, I want a reusable frontend structure so later data and runtime work can slot in without rewriting the page layouts.
 
 ### 2.3 Non-goals (explicit out-of-scope)
+
 - Replacing placeholder or local-slice data with final live-data sources.
 - Replacing deterministic or provisional AI text with final live-AI quality and provider behavior.
 - Making the How It Works page fully truthful to final cloud runtime behavior. That belongs to the How It Works and architecture explainability PRD and the cloud deployment, scheduling, and runtime topology PRD.
@@ -39,16 +44,19 @@ This PRD focuses on UX and UI. It covers all four pages, the shared application 
 ## 3. User personas
 
 ### 3.1 Key user types
+
 - Finance reviewer using the dashboard as a macro-risk terminal.
 - ML6 evaluator assessing end-to-end product quality, design discipline, and presentation readiness.
 - Engineer implementing and maintaining the React frontend against the existing API.
 
 ### 3.2 Basic persona details
+
 - Finance reviewer: expects dense, legible layouts, fast scanning, clear hierarchy, and credible status feedback. They do not need consumer-style onboarding.
 - ML6 evaluator: cares about whether the frontend looks deliberate, consistent, and aligned with the architecture story rather than assembled from templates.
 - Engineer: needs a component and layout structure that keeps styling, state handling, and page composition maintainable as the product evolves.
 
 ### 3.3 Role-based access (if applicable)
+
 - No new role model is introduced in this PRD.
 - The current authenticated product surface remains the working assumption.
 - Navigation, page shell, and UI states are shared across all current users.
@@ -113,15 +121,19 @@ This PRD focuses on UX and UI. It covers all four pages, the shared application 
 ## 5. User experience
 
 ### 5.1 Entry points and first-time user flow
+
 A reviewer lands on the dashboard and immediately sees a product surface that feels finished: strong navigation, a credible hero state, structured KPIs, and clear pathways into the country, pipeline, and architecture views. The user should not need explanation to understand that this is an economic intelligence terminal with a live workflow behind it.
 
 ### 5.2 Core experience
+
 The product should support two main behaviors. The first is macro scanning: the user reads the global overview, identifies a risk signal, and opens a country page. The second is demo validation: the user opens the trigger page, starts or monitors a run, and then returns to inspect the updated dashboard. Across both flows, the shell, component language, and state feedback should feel consistent and deliberate.
 
 ### 5.3 Advanced features and edge cases
+
 If API-served content is not yet materialized, the page should still preserve the intended structure and show a controlled empty or pending state rather than collapsing into minimal placeholder blocks. If data is loading, the page should provide feedback that fits the terminal feel. If a trigger call fails, the interface should surface that clearly while keeping the rest of the page legible. If charts, maps, or telemetry are still partly illustrative in this phase, the UI should make room for later real data without redesign.
 
 ### 5.4 UI and UX highlights
+
 - The mockups are the visual reference for composition, density, and hierarchy.
 - The design system remains the implementation rulebook.
 - The app should feel like one cohesive terminal rather than four separate pages.
@@ -135,16 +147,19 @@ World Analyst should look like the product it claims to be. This PRD closes the 
 ## 7. Success metrics
 
 ### 7.1 User-centric metrics
+
 - A first-time reviewer can understand the product structure and navigate between the four pages without guidance.
 - The frontend communicates loading, running, complete, failed, and empty states clearly without generic placeholder UX.
 - The product feels visually cohesive across all pages rather than assembled incrementally.
 
 ### 7.2 Business metrics
+
 - The shipped frontend is recognizably aligned with the finalized mockups and the World Analyst design language.
 - The visual quality strengthens demo and review impact without requiring a new frontend redesign later.
 - The product presentation supports the ML6 evaluation story of end-to-end product engineering, not just backend competence.
 
 ### 7.3 Technical metrics
+
 - Shared navigation chrome and common UI patterns are implemented as reusable React components.
 - All styling remains within the existing React plus vanilla CSS approach and uses CSS custom properties.
 - The four current routes render high-fidelity layouts without adding route sprawl.
@@ -156,6 +171,7 @@ World Analyst should look like the product it claims to be. This PRD closes the 
 ## 8. Technical considerations
 
 ### 8.1 Integration points
+
 - Route structure and app composition in `frontend/src/App.jsx`.
 - Shared styling and tokens in `frontend/src/index.css`.
 - Page implementations in `frontend/src/pages/GlobalOverview.jsx`, `frontend/src/pages/CountryIntelligence.jsx`, `frontend/src/pages/HowItWorks.jsx`, and `frontend/src/pages/PipelineTrigger.jsx`.
@@ -164,17 +180,20 @@ World Analyst should look like the product it claims to be. This PRD closes the 
 - Design references in `docs/design-mockups/Global Overview Finalized.html`, `docs/design-mockups/Country Intelligence Finalized.html`, `docs/design-mockups/How It Works Finalized.html`, `docs/design-mockups/Pipeline Trigger Finalized.html`, and `docs/design-mockups/Design System.md`.
 
 ### 8.2 Data storage and privacy
+
 - This PRD does not introduce new storage requirements.
 - The frontend should continue to consume the existing API without requiring sensitive data in the client bundle beyond the current development assumptions.
 - Placeholder or illustrative content on the UI should not imply the existence of stored data that the backend does not actually provide.
 
 ### 8.3 Scalability and performance
+
 - The component structure should reduce duplication and make future frontend changes cheaper.
 - Layout fidelity should not depend on heavyweight libraries unless they are clearly justified by an existing planned surface such as charts or maps.
 - Static SVG or lightweight placeholder implementations are acceptable for charts and maps in this phase if they preserve the final page structure without forcing premature library choices.
 - This PRD optimizes for product fidelity and maintainable frontend structure, not premature frontend complexity.
 
 ### 8.4 Potential challenges
+
 - The mockup HTML is a visual artifact, not implementation-ready code, and some details will need to be translated into the stricter repo design system.
 - The current frontend lacks a reusable component layer, so visual fidelity work will also require structural cleanup.
 - Some mockup surfaces imply richer live data than the current backend provides, so placeholder policy must be explicit.
@@ -185,13 +204,16 @@ World Analyst should look like the product it claims to be. This PRD closes the 
 ## 9. Milestones and sequencing
 
 ### 9.1 Project estimate
+
 This is a medium-sized frontend foundation PRD. It is larger than a styling pass because it includes shell architecture, component extraction, page composition, interaction states, and responsive behavior, but it remains bounded because it does not own live-data or runtime truthfulness.
 
 ### 9.2 Team size and composition
+
 - One implementation lane covering shell, components, page fidelity, and state treatment.
 - One review lane checking design-system drift, mockup fidelity, interaction completeness, responsive behavior, and frontend maintainability.
 
 ### 9.3 Suggested phases
+
 0. Before implementation kickoff, audit the mockups against the design system and record any meaningful conflicts before code changes begin.
 1. Finalize the shared shell, page scaffolding, and reusable component inventory.
 2. Implement Global Overview and Country Intelligence fidelity with live-compatible states.
@@ -202,6 +224,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
 ## 10. User stories
 
 ### 10.1 Build a shared terminal shell
+
 - **ID**: US-1
 - **Description**: As a reviewer, I want the app to have a consistent terminal-like shell so that the product feels coherent across all four pages.
 - **Acceptance criteria**:
@@ -210,6 +233,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
   - [ ] The shared shell passes a design-system checklist covering canvas color, border treatment, 8px radius, typography, and spacing rhythm.
 
 ### 10.2 Match the Global Overview composition
+
 - **ID**: US-2
 - **Description**: As a finance reviewer, I want the landing page to match the intended macro-scanning layout so that I can assess overall signals quickly.
 - **Acceptance criteria**:
@@ -219,6 +243,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
   - [ ] The implemented page matches the section structure shown in the Global Overview mockup without introducing non-token colors, spacing, or shadow effects.
 
 ### 10.3 Match the Country Intelligence composition
+
 - **ID**: US-3
 - **Description**: As a finance reviewer, I want the country page to present a clear deep-dive layout so that I can move from high-level signal to detailed country interpretation.
 - **Acceptance criteria**:
@@ -228,6 +253,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
   - [ ] Chart and analysis regions preserve the final layout even if some data surfaces remain representative in this phase.
 
 ### 10.4 Turn the Pipeline Trigger page into the showcase surface
+
 - **ID**: US-4
 - **Description**: As an evaluator, I want the trigger page to look and feel like a deliberate live execution console so that the demo proves the product works.
 - **Acceptance criteria**:
@@ -236,6 +262,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
   - [ ] Trigger controls provide clear disabled, loading, and post-run feedback without allowing accidental duplicate submissions.
 
 ### 10.5 Implement the visual structure of How It Works
+
 - **ID**: US-5
 - **Description**: As an ML6 evaluator, I want the architecture page to have a clear explanatory layout so that the product communicates engineering intent even before the final truthfulness pass.
 - **Acceptance criteria**:
@@ -245,6 +272,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
   - [ ] The page structure can receive the truthful content owned by the How It Works PRD without requiring a structural rewrite.
 
 ### 10.6 Introduce reusable UI building blocks
+
 - **ID**: US-6
 - **Description**: As an engineer, I want recurring frontend patterns extracted into reusable components so that the UI can evolve without duplicating page logic and styling.
 - **Acceptance criteria**:
@@ -255,6 +283,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
   - [ ] Shared components use the existing design token system rather than hardcoded one-off visual values.
 
 ### 10.7 Preserve fidelity on smaller screens
+
 - **ID**: US-7
 - **Description**: As a user opening the app on a smaller screen, I want the interface to remain usable so that the product still reads cleanly outside the primary desktop demo view.
 - **Acceptance criteria**:
