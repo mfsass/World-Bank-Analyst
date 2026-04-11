@@ -14,6 +14,7 @@ This repo is part product artifact and part paper trail. Treat both as first-cla
 - Secrets, `.env` files, service-account keys, and any credential export
 - Virtual environments, `node_modules/`, caches, coverage outputs, and build artifacts
 - Personal editor settings, scratch files, and local-only AI notes
+- Personal application material and third-party briefing attachments when the important context can be captured in repo-owned markdown
 - Generated noise that a reviewer cannot act on or explain
 
 ## Working Agreement
