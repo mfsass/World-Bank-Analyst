@@ -71,7 +71,7 @@ BigQuery is a data warehouse for analytical queries over large datasets. World A
 
 ## Quick Start
 
-Local development defaults to `WORLD_ANALYST_STORAGE_BACKEND=local` and `WORLD_ANALYST_API_KEY=local-dev`.
+Local development defaults to `REPOSITORY_MODE=local` and `WORLD_ANALYST_API_KEY=local-dev`. `WORLD_ANALYST_STORAGE_BACKEND` remains supported as a backward-compatible alias.
 The browser does not send that key directly. The Vite dev proxy injects it server-side, which matches the deployed same-origin proxy story.
 
 ```bash
@@ -120,13 +120,13 @@ See `docs/design-mockups/Design System.md` for the full specification. Key const
 
 ## Documentation
 
-| Document                                   | What It Answers                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `docs/DECISIONS.md`                        | **Why** — trade-offs, alternatives considered, rationale         |
-| `CONTRIBUTING.md`                          | How we stage, split, and curate commits into a clear audit trail |
-| `docs/context/world-analyst-project.md`    | Full project brief, data model, pipeline architecture            |
-| `.github/skills/`                          | Domain-specific guidance for each area of the codebase           |
-| `docs/design-mockups/Design System.md`     | Complete design token specification                              |
+| Document                                | What It Answers                                                  |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| `docs/DECISIONS.md`                     | **Why** — trade-offs, alternatives considered, rationale         |
+| `CONTRIBUTING.md`                       | How we stage, split, and curate commits into a clear audit trail |
+| `docs/context/world-analyst-project.md` | Full project brief, data model, pipeline architecture            |
+| `.github/skills/`                       | Domain-specific guidance for each area of the codebase           |
+| `docs/design-mockups/Design System.md`  | Complete design token specification                              |
 
 ## Engineering Principles
 

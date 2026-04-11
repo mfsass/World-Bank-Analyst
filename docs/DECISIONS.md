@@ -428,3 +428,31 @@
 **Trade-off:** Some local research stays outside version control, and a few paths become longer because they now sit under `docs/`. We accept that because the cleaner public surface is easier to review and easier to defend.
 
 **Date:** 2026-04-11
+
+---
+
+## ADR-031: Local Raw Archive Adapter Behind the Same Run-Scoped Contract
+
+**Context:** Durable storage now needs raw-data archival linkage before processed records are persisted. In production that archive belongs in GCS, but the current local slice and tests still need to run without cloud credentials or a fake GCS stack.
+
+**Decision:** Keep one run-scoped raw archive contract and back it with two implementations: local filesystem storage for development and tests, and GCS for deployed environments. Persist only the stable archive reference in stored records, not the raw payload itself.
+
+**Why:** This keeps the storage flow honest to the target architecture without making local validation depend on cloud setup. The same run id and relative archive paths work in both modes, so tests can prove archival linkage and provenance using the same record shape that production will use.
+
+**Trade-off:** Local development does not exercise real GCS permissions or object-store behavior. We accept that because the bounded goal in this phase is the contract between archival and processed persistence, not full cloud runtime parity.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-032: Persist Provenance Privately While Standardizing on REPOSITORY_MODE
+
+**Context:** Durable storage needs to persist run ids, raw archive references, source provenance, and minimal AI provenance. The approved scope also keeps the current frontend contract stable. At the same time, repo docs already describe `REPOSITORY_MODE`, while the runtime selector still used `WORLD_ANALYST_STORAGE_BACKEND`.
+
+**Decision:** Persist provenance and richer status detail in stored mixed documents, but project API reads back to the existing public response shapes. Standardize runtime configuration on `REPOSITORY_MODE=local|firestore` and keep `WORLD_ANALYST_STORAGE_BACKEND` only as a backward-compatible alias.
+
+**Why:** This keeps the durable record contract truthful and reviewable without turning storage hardening into an API redesign. It also removes a real code-versus-doc drift point at the exact boundary this phase is hardening.
+
+**Trade-off:** Reviewers need Firestore inspection or repository-level tests to see the new provenance fields, because the API does not expose them yet. The repository layer also picks up a small projection and config-compatibility branch. We accept that because preserving the current product surface is more valuable in this phase than expanding the contract.
+
+**Date:** 2026-04-11
