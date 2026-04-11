@@ -1,4 +1,4 @@
-# World Analyst — Product Brief & Architecture Context
+# World Bank Analyst — Product Brief & Architecture Context
 
 **Document Type:** Repo-owned product brief and architecture context  
 **Origin:** Created for the ML6 AI Native WoW Engineering Challenge  
@@ -83,7 +83,7 @@ ML6 AI Native WoW Engineering Challenge brief.
 
 ### Product Name
 
-**World Analyst** — a global economic intelligence terminal
+**World Bank Analyst** — a global economic intelligence terminal
 
 ### The Mental Model
 
@@ -100,7 +100,7 @@ AI Intelligence Layer (LLM via API)
     ↓ [structured JSON narratives]
 Firestore (processed insights) + GCS (raw JSON backup)
     ↓ [served via Connexion REST API]
-React Frontend (World Analyst Dashboard)
+React Frontend (World Bank Analyst Dashboard)
 ```
 
 ### The Core Insight
@@ -213,7 +213,7 @@ Weekly cron triggers the pipeline job. This is the "Push mechanism" the brief re
 Four items only. No clutter.
 
 ```
-[✦ WORLD ANALYST]  Global Overview | Country Intelligence | How It Works | Pipeline  [🔒 API KEY] [🔔] [⚙] [👤]
+[✦ WORLD BANK ANALYST]  Global Overview | Country Intelligence | How It Works | Pipeline  [🔒 API KEY] [🔔] [⚙] [👤]
 ```
 
 ### Sidebar (simplified)
@@ -791,7 +791,7 @@ Everything else: `1px #262626`. When everything has an accent, nothing does.
 ### Footer (standardised, all screens)
 
 ```
-Left:   WORLD ANALYST                    #FF4500, Commit Mono bold, 10px uppercase
+Left:   WORLD BANK ANALYST               #FF4500, Commit Mono bold, 10px uppercase
 Center: PRIVACY PROTOCOL | SECURITY AUDIT | ENGINEERING DOCS   #404040
 Right:  AI-GENERATED CONTENT MAY CONTAIN INACCURACIES. VERIFY BEFORE ACTING.   #404040
 ```

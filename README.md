@@ -1,10 +1,10 @@
-# World Analyst
+# World Bank Analyst
 
 > AI-native global economic intelligence terminal for the ML6 Engineering Challenge.
 
 ## What This Is
 
-World Analyst fetches economic data from the World Bank, processes it through a two-step LLM analysis chain, and serves structured insights via a Connexion REST API to a React frontend.
+World Bank Analyst pulls economic data from the World Bank, processes it through a two-step LLM analysis chain, and serves structured insights through a Connexion REST API to a React frontend.
 
 **Python + Pandas handles the math. The LLM writes the analyst report.**
 
@@ -22,7 +22,7 @@ That mix is deliberate. The challenge is partly about whether the repo can expla
 
 ## Current Product Constraints
 
-World Analyst is designed for a finance team, not a general business audience. The dashboard should assume fluency in macro indicators and focus on risk interpretation: direction of travel, magnitude of change, and whether a move is anomalous relative to history. AI narratives should use finance vocabulary such as sovereign risk, inflationary pressure, fiscal stress, external vulnerability, and recessionary signal.
+World Bank Analyst is designed for a finance team, not a general business audience. The dashboard should assume fluency in macro indicators and focus on risk interpretation: direction of travel, magnitude of change, and whether a move is anomalous relative to history. AI narratives should use finance vocabulary such as sovereign risk, inflationary pressure, fiscal stress, external vulnerability, and recessionary signal.
 
 The delivery scope remains deliberately bounded around 15 countries, 6 indicators, one Cloud Run job, and one Firestore collection. Those are scope guardrails, not permission for shortcut engineering: implementations should be production-grade in readability, inline documentation, validation, and decision logging. The API and stored documents are optimized for human-readable dashboard rendering rather than downstream machine integration, so prose-forward insight fields are preferred unless the frontend needs structured values for specific UI elements.
 
@@ -35,7 +35,7 @@ World Bank API → Cloud Run Job (Python + Pandas)
     → AI Chain (Gemini/OpenAI: indicator analysis → macro synthesis)
     → Firestore (insights) + GCS (raw backup)
     → Connexion REST API
-    → React Frontend (World Analyst Dashboard)
+    → React Frontend (World Bank Analyst Dashboard)
 ```
 
 ### Three Services
@@ -67,7 +67,7 @@ World Bank API → Cloud Run Job (Python + Pandas)
 
 ### Why Not BigQuery?
 
-BigQuery is a data warehouse for analytical queries over large datasets. World Analyst stores JSON-shaped documents and serves them read-heavy to a dashboard. Firestore's `doc.get()` is all the querying needed. Migration to BigQuery is documented as a future path if analytical queries become a requirement.
+BigQuery is a data warehouse for analytical queries over large datasets. World Bank Analyst stores JSON-shaped documents and serves them read-heavy to a dashboard. Firestore's `doc.get()` is all the querying needed. Migration to BigQuery is documented as a future path if analytical queries become a requirement.
 
 ## Quick Start
 

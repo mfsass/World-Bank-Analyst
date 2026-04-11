@@ -1,18 +1,18 @@
 openapi: "3.0.3"
 
 info:
-  title: World Analyst API
+  title: World Bank Analyst API
   description: |
-    AI-native economic intelligence API.
-    Serves World Bank data processed through a two-step LLM analysis chain.
+    REST API for World Bank Analyst.
+    Serves World Bank indicators, per-indicator analysis, macro synthesis, and pipeline status for the dashboard.
   version: "1.0.0"
   contact:
-    name: World Analyst
-    url: https://github.com/world-analyst
+    name: World Bank Analyst Maintainers
+    url: https://github.com/mfsass/World-Bank-Analyst
 
 servers:
   - url: /api/v1
-    description: API v1
+    description: World Bank Analyst API v1
 
 security:
   - ApiKeyAuth: []

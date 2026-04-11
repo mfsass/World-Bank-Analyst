@@ -64,9 +64,9 @@ This PRD focuses on UX and UI. It covers all four pages, the shared application 
 ## 4. Functional requirements
 
 - **Shared application shell** (Priority: High)
-  - The frontend must implement a consistent top navigation, desktop sidebar, and footer across the four-page experience.
+  - The frontend must implement a consistent top navigation and footer across the four-page experience.
   - Active route state, shared labels, responsible-AI messaging, and page spacing must remain consistent across the app.
-  - The shell must support desktop and smaller-screen fallback layouts without becoming visually fragile.
+  - The shell must support desktop and smaller-screen fallback layouts without becoming visually fragile or introducing duplicate navigation systems.
 
 - **Design-system enforcement** (Priority: High)
   - All frontend implementation must follow the World Analyst design system and existing token layer.
@@ -82,12 +82,12 @@ This PRD focuses on UX and UI. It covers all four pages, the shared application 
 
 - **Global Overview mockup fidelity** (Priority: High)
   - The landing page must implement the mockup's macro scanning structure: hero AI insight area, anomaly banner, executive KPI row, map-led risk overview, regional breakdown, and market depth section.
-  - The page must preserve live-state capability while presenting the higher-fidelity terminal layout.
+  - The map must support point-based drill-in so a reviewer can click a market, read a compact summary, and move directly into the country page.
   - Empty, loading, and failed states must remain intentional rather than collapsing into generic cards.
 
 - **Country Intelligence mockup fidelity** (Priority: High)
-  - The country page must implement the mockup's deep-dive structure: breadcrumb, market switcher, country identity block, KPI row, chart region, AI analyst panel, and risk or outlook surfaces.
-  - Chart areas may use representative or partial data states for now, but the layout and interaction model must match the intended product shape.
+  - The country page must implement the mockup's deep-dive structure: breadcrumb, market switcher, elevated AI analyst summary, country identity block, KPI row, current risk signal pack, and risk or outlook surfaces.
+  - Historical charts are optional in this phase and should only appear when they add real value instead of reserving placeholder space.
   - Country switching controls and analyst panels must feel like part of a coherent terminal, not isolated widgets.
 
 - **How It Works mockup fidelity** (Priority: Medium)
@@ -116,7 +116,7 @@ This PRD focuses on UX and UI. It covers all four pages, the shared application 
   - The frontend must work well on desktop and remain usable on smaller screens.
   - Desktop remains the presentation-first target, but mobile and tablet layouts must not break the shell, typography, or main content flow.
   - The primary audit breakpoints are 1440px, 768px, and 375px.
-  - The sidebar, dense tables, and map or chart surfaces must have clear fallback behavior on reduced screen widths: sidebar collapse, KPI reflow, and scroll or aspect-ratio preservation for dense visual surfaces.
+  - The top-level shell, dense tables, and map or terminal surfaces must have clear fallback behavior on reduced screen widths: navigation collapse, KPI reflow, and scroll or aspect-ratio preservation for dense visual surfaces.
 
 ## 5. User experience
 
@@ -228,8 +228,8 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
 - **ID**: US-1
 - **Description**: As a reviewer, I want the app to have a consistent terminal-like shell so that the product feels coherent across all four pages.
 - **Acceptance criteria**:
-  - [ ] The frontend renders a shared top navigation, desktop sidebar, and footer across the four existing routes.
-  - [ ] Active route state is visually clear in both top navigation and sidebar where applicable.
+  - [ ] The frontend renders a shared top navigation and footer across the four existing routes.
+  - [ ] Active route state is visually clear in the shared navigation without a second competing nav surface.
   - [ ] The shared shell passes a design-system checklist covering canvas color, border treatment, 8px radius, typography, and spacing rhythm.
 
 ### 10.2 Match the Global Overview composition
@@ -238,6 +238,7 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
 - **Description**: As a finance reviewer, I want the landing page to match the intended macro-scanning layout so that I can assess overall signals quickly.
 - **Acceptance criteria**:
   - [ ] The page includes a hero AI insight area, anomaly banner, executive KPI row, map-led risk section, regional breakdown, and market depth section.
+  - [ ] The map supports click-to-open market summaries with a direct path into country intelligence.
   - [ ] The page preserves intentional loading, empty, ready, and failure states without collapsing into generic placeholder blocks.
   - [ ] API-backed content can populate the layout without changing the page structure.
   - [ ] The implemented page matches the section structure shown in the Global Overview mockup without introducing non-token colors, spacing, or shadow effects.
@@ -247,10 +248,10 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
 - **ID**: US-3
 - **Description**: As a finance reviewer, I want the country page to present a clear deep-dive layout so that I can move from high-level signal to detailed country interpretation.
 - **Acceptance criteria**:
-  - [ ] The page includes breadcrumb context, market switcher, country identity block, KPI row, chart region, AI analyst panel, and risk or outlook section.
+  - [ ] The page includes breadcrumb context, market switcher, elevated AI analyst summary, country identity block, KPI row, current risk signal pack, and risk or outlook section.
   - [ ] Country switching controls and KPI presentation follow the visual language of the mockups and design system.
   - [ ] The page can render meaningful empty or pending states when full live content is not yet materialized.
-  - [ ] Chart and analysis regions preserve the final layout even if some data surfaces remain representative in this phase.
+  - [ ] The page preserves a strong narrative-first hierarchy without reserving placeholder chart space when live history visuals are not yet ready.
 
 ### 10.4 Turn the Pipeline Trigger page into the showcase surface
 
@@ -288,5 +289,5 @@ This is a medium-sized frontend foundation PRD. It is larger than a styling pass
 - **Description**: As a user opening the app on a smaller screen, I want the interface to remain usable so that the product still reads cleanly outside the primary desktop demo view.
 - **Acceptance criteria**:
   - [ ] The top-level shell, page headers, KPI rows, and primary content regions remain readable at 1440px, 768px, and 375px.
-  - [ ] Sidebar, dense tables, charts, and map or terminal regions have defined fallback behavior for smaller screens, including sidebar collapse and scroll or aspect-ratio preservation for dense visual surfaces.
+  - [ ] The top-level shell, dense tables, and map or terminal regions have defined fallback behavior for smaller screens, including navigation collapse and scroll or aspect-ratio preservation for dense visual surfaces.
   - [ ] Responsive adjustments preserve the design system rather than introducing a separate visual language.

@@ -2,15 +2,15 @@
 
 ## In Progress
 
-- [ ] Add active work here only.
+- [ ] Frontend fidelity to design mockups: shared shell, reusable components, and page-level composition against the current API boundary.
 
 ## Next Up
 
-- [ ] Convert the next approved plan into concrete tasks here.
+- [ ] Kick off the live-data integration plan once the frontend fidelity pass lands cleanly.
 
 ## Blocked
 
-- [ ] Add blockers with the missing dependency or decision.
+- [ ] Resolve the canonical approved 15-country list across ADR-006, the product brief, and the current fetcher before live-data implementation starts.
 
 ## Done
 
