@@ -123,7 +123,7 @@ Pandas detects _that_ GDP dropped 4.2%. The LLM explains _why_ — what it means
 These constraints govern KPI selection, AI prompt design, dashboard UX, and scope decisions across the project:
 
 1. **Finance team audience.** The user is a finance professional, not a general business reader. The product should assume literacy in macro indicators and focus on what the signals mean now in risk terms: sovereign risk, inflationary pressure, fiscal stress, external vulnerability, and recessionary signal. Country intelligence should emphasise direction of travel, magnitude of change, and anomaly versus historical norms rather than explaining basic definitions.
-2. **Bounded delivery scope.** Scope guardrails remain fixed at 15 countries, 6 indicators, one Cloud Run job, one Firestore collection, and one deployable URL. Treat those limits as scope controls, not permission for shortcut engineering. Prefer a clean, defendable end-to-end system with production-grade readability, documentation, and validation over speculative scalability.
+2. **Bounded delivery scope.** Scope guardrails remain fixed around a 17-country exact-complete core panel ending at 2024, 6 indicators, one Cloud Run job, one Firestore collection, and one deployable URL. Treat those limits as scope controls, not permission for shortcut engineering. Prefer a clean, defendable end-to-end system with production-grade readability, documentation, and validation over speculative scalability.
 3. **Dashboard as the terminal surface.** A human reads the output and decides what to do next. That means API responses and Firestore documents should be optimized for display rather than machine-readability. Rich analyst prose is desirable. Structured fields should exist only where the React frontend needs them for rendering badges, deltas, anomaly flags, or risk scores. The responsible AI disclaimer matters because a human is acting on generated narrative.
 4. **Decision baseline.** ADR-008 and ADR-014 now formalize the finance-first audience and production-grade delivery standard. This document should be read as the product brief and architecture story, while `docs/DECISIONS.md` remains the source of truth for trade-offs finalized during planning.
 
@@ -247,7 +247,7 @@ API Support
 [⚠ 04 ANOMALIES DETECTED — REVIEW FLAGGED MARKETS BELOW]  [DISMISS]
 
 EXECUTIVE SUMMARY
-[Countries: 15] [Indicators: 6] [Volatility: 18.42] [Last Analysis: 2h ago]
+[Countries: 17] [Indicators: 6] [Volatility: 18.42] [Last Analysis: 2h ago]
 
 GLOBAL RISK OVERVIEW                    REGIONAL BREAKDOWN
 [World map with orange pins]            [Table: ID | Country | Metric | Risk]
@@ -260,21 +260,21 @@ MARKET DEPTH ANALYSIS
 
 **Map Interaction:**
 
-- 15 countries have orange `place` pin markers
+- 17 countries have orange `place` pin markers
 - Hover: pin scales 1.2x + preview card appears
   - Country flag + name + primary metric + risk badge + "View Intelligence →"
 - Click: navigates to Country Intelligence for that country
 
-**15 Selected Countries:**
+**17 Selected Countries:**
 
-| Region               | Countries                                                                      |
-| -------------------- | ------------------------------------------------------------------------------ |
-| Europe (ML6 Markets) | Belgium (BE), Netherlands (NL), Germany (DE), United Kingdom (GB), France (FR) |
-| Americas             | USA (US), Brazil (BR), Canada (CA)                                             |
-| Asia-Pacific         | China (CN), Japan (JP), India (IN), Australia (AU)                             |
-| Africa / MENA        | South Africa (ZA), Nigeria (NG), Egypt (EG)                                    |
+| Region                    | Countries                                                                 |
+| ------------------------- | ------------------------------------------------------------------------- |
+| Europe & Central Asia     | United Kingdom (GB), Georgia (GE), Hungary (HU), Russian Federation (RU), Spain (ES), Switzerland (CH), Turkiye (TR) |
+| North America             | Canada (CA), United States (US)                                            |
+| Latin America & Caribbean | Bahamas, The (BS), Brazil (BR), Colombia (CO), El Salvador (SV), Uruguay (UY) |
+| East Asia & Pacific       | Malaysia (MY), New Zealand (NZ), Singapore (SG)                            |
 
-Rationale: geographic spread, strong narrative contrast (DE stability vs NG volatility vs ZA recovery), covers ML6's key client regions and office locations (Belgium HQ, Netherlands, Germany, UK). All 15 country codes verified against World Bank API — see `.github/skills/world-bank-api/SKILL.md`.
+Rationale: exact six-indicator completeness matters more than broad regional representation in the current live runtime. This 17-country panel is the cleanest group with a full 15-year span ending at 2024, which makes cross-country comparisons and long-window analyst narratives more defensible. All 17 country codes are verified against the World Bank API — see `.github/skills/world-bank-api/SKILL.md`.
 
 ---
 
@@ -283,14 +283,14 @@ Rationale: geographic spread, strong narrative contrast (DE stability vs NG vola
 **Structure:**
 
 ```
-DASHBOARD > SOUTH AFRICA
+DASHBOARD > BRAZIL
 
-[SWITCH MARKET pill rail: BR | CN | EG | IN | NG | ZA* | ...]
+[SWITCH MARKET pill rail: BR* | CA | CO | GB | MY | TR | UY | ...]
 
-[🇿🇦  SOUTH AFRICA]  EMERGING MARKET — TIER 1     TOTAL POPULATION
-                                                    60.41M    [HIGH RISK]
+[🇧🇷  BRAZIL]  EMERGING MARKET — TIER 1     TOTAL POPULATION
+                                               211.1M    [MEDIUM RISK]
 
-[GDP: 1.2% -0.3%] [CPI: 5.4% -1.2%] [Unemployment: 32.9% +0.2%] [Fiscal: -4.7% -0.1%]
+[GDP: 3.2% +0.3%] [CPI: 4.6% -0.5%] [Unemployment: 7.8% -0.4%] [Debt: 84.7% +1.1%]
 
 [Real GDP Growth chart — 5Y]        [✦ AI ANALYST REPORT          +4.2% SCORE]
 [CPI Inflation chart — 1Y]          [TREND SUMMARY paragraph]
@@ -516,12 +516,12 @@ All six indicators verified against live World Bank API production endpoint (Apr
 ### Example API Call
 
 ```
-https://api.worldbank.org/v2/country/za/indicator/NY.GDP.MKTP.KD.ZG?format=json&date=2017:2023&per_page=1000
+https://api.worldbank.org/v2/country/br/indicator/NY.GDP.MKTP.KD.ZG?format=json&date=2010:2024&per_page=1000&source=2
 ```
 
 ### Historical window policy
 
-The live analysis window is fixed to seven years: `2017:2023` (ADR-019). That is enough history for year-over-year change, anomaly checks, and narrative context without turning the data layer into a broader research platform.
+The live analysis window is fixed to fifteen years: `2010:2024` (ADR-041). That window matches the exact-complete core panel and gives the pipeline one defensible longitudinal frame instead of mixing countries with materially different history depth.
 
 ### Pandas Analysis Steps
 
@@ -811,7 +811,7 @@ Navigate directly to the deployed URL. Click "Run Pipeline." Watch all five step
 Walk through Screen 1. Explain the anomaly alert banner. Hover over a country on the map to show the tooltip. Click through to a country page.
 
 **Minutes 8–14: Country Intelligence deep dive**
-Choose South Africa — strongest narrative (energy crisis, mining recovery, election risk, Load Shedding). Walk through the charts. Explain how the anomaly markers come from Pandas Z-scores before the LLM ever sees the data.
+Choose Brazil — strongest core-panel narrative (fiscal pressure, rate-cycle lag, and commodity sensitivity). Walk through the charts. Explain how the anomaly markers come from Pandas Z-scores before the LLM ever sees the data.
 
 **Minutes 14–22: How It Works + Agentic thinking**
 This is the technical argument. Walk through the pipeline diagram. Spend time on the PROMPT STRATEGY section. Explain the two-step chain explicitly: _"This is agentic thinking — structuring the AI's reasoning process, not just its output."_
@@ -854,9 +854,9 @@ The following are intentionally left open pending testing or further input:
 
 The live baseline is now fixed to `gemma-4-31b-it`, but one open question remains: is that model good enough for both AI steps, or only for per-indicator analysis? The answer depends on the evaluation gate defined by the Live AI integration PRD.
 
-### Netherlands as a Country
+### Geographic Expansion Beyond the Exact-Complete Core Panel
 
-Currently 15 countries include Netherlands (NL). Decision: include it. The country set already aims for economically relevant geographic coverage, and the Netherlands remains a defensible inclusion.
+The current live monitored set is now the 17-country exact-complete panel ending at 2024. If future product goals require Africa, MENA, or South Asia back in scope, that should become an explicit second-tier watchlist with partial-coverage rules rather than an ad hoc dilution of the exact-complete core panel.
 
 ### Browser-Facing Auth Hardening
 

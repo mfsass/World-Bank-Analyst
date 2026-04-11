@@ -5,17 +5,29 @@
 ### 1.1 Document title and version
 
 Live data integration
-Version: 0.1
-Date: 2026-04-10
-Status: Draft for approval
+Version: 1.0
+Date: 2026-04-11
+Status: Implemented and validated locally
 
 ### 1.2 Product summary
 
 World Analyst already has the structure of a pipeline, but the current end-to-end slice still depends on deterministic local fixture data. That is useful for tests and early UI work, but it means the product is not yet operating on the real World Bank source that the challenge is built around. The next step is to replace the local data path for real runs with live World Bank API ingestion while keeping the product bounded, understandable, and resilient to common data-quality issues.
 
-This PRD covers the live-data layer only. It owns fetching, normalization, verified indicator coverage, historical-window policy, missing-data handling, and partial-success behavior for the six approved indicators across the 15 approved countries. It does not own final live-AI behavior, final cloud scheduling, or deep production hardening. The goal is simple: the same product flow should run on real World Bank data instead of only local fixtures. Exploratory research on other World Bank indicators does not change the approved six-indicator scope unless that change is recorded through an ADR and reflected across planning documents.
+This PRD covers the live-data layer only. It owns fetching, normalization, verified indicator coverage, historical-window policy, missing-data handling, and partial-success behavior for the six approved indicators across the exact-complete 17-country core panel ending at 2024. It does not own final live-AI behavior, final cloud scheduling, or deep production hardening. The goal is simple: the same product flow should run on real World Bank data instead of only local fixtures. Exploratory research on other World Bank indicators does not change the approved six-indicator scope unless that change is recorded through an ADR and reflected across planning documents.
 
 This PRD follows the same simplicity rule as the rest of the planning set. The implementation should prefer one clear live fetch path, one normalized internal data shape, and one set of explicit data-quality rules over a broad ingestion framework. A reviewer should be able to see where live data enters the system, how it is cleaned, and how failures are handled without tracing through unnecessary abstraction.
+
+### 1.3 Implementation outcome
+
+The live-data layer is now implemented in the backend runtime for the exact-complete 17-country monitored scope defined in ADR-041. Real runs request the six approved indicators from the World Bank Indicators source (`source=2`), normalize them into the shared internal record shape, archive run-scoped request and response envelopes, and keep deterministic local mode available for tests and development.
+
+Closure is based on honest handling of real source imperfections, not on pretending the public source is complete. Missing or stale annual series are excluded from coverage, successful outputs from partial runs are preserved, and the overall run ends in terminal `failed` when monitored-set coverage is incomplete. For the implemented 17-country panel, the current live source completed without coverage gaps in local validation, while the stale-series and partial-success rules remain active for future runs.
+
+Validation completed on 2026-04-11:
+
+- `cd pipeline && python -m pytest tests -v` passed (`24 passed`).
+- `cd api && python -m pytest tests -v` passed (`11 passed`).
+- A live pipeline smoke with `PIPELINE_MODE=live` and `REPOSITORY_MODE=local` completed across all 17 monitored countries and all six indicators: 255 usable rows per indicator, 1,530 total usable data points, 102 indicator insights, 17 country syntheses, 7 raw payload archives, and 0 fetch failures.
 
 ## 2. Goals
 
@@ -37,7 +49,7 @@ This PRD follows the same simplicity rule as the rest of the planning set. The i
 - Replacing deterministic local fixtures for tests and lightweight development.
 - Improving the quality of AI narrative generation beyond what the current AI layer already does. That belongs to the live-AI PRD.
 - Wiring Cloud Scheduler or Cloud Run Job orchestration. That belongs to the cloud deployment, scheduling, and runtime topology PRD.
-- Broadening the scope beyond the approved 15 countries and 6 indicators.
+- Broadening the scope beyond the approved 17-country core panel and 6 indicators.
 - Building a multi-source ingestion platform or adding alternative economic data providers.
 - Deep resilience, load, or security hardening beyond the minimum needed for correct bounded-scope ingestion.
 
@@ -64,7 +76,7 @@ This PRD follows the same simplicity rule as the rest of the planning set. The i
 ## 4. Functional requirements
 
 - **Bounded live source coverage** (Priority: High)
-  - The pipeline must fetch live World Bank API data for the approved 15-country, 6-indicator scope.
+  - The pipeline must fetch live World Bank API data for the approved 17-country, 6-indicator scope.
   - The live indicator list is fixed to the currently approved six verified indicators: `NY.GDP.MKTP.CD`, `NY.GDP.MKTP.KD.ZG`, `FP.CPI.TOTL.ZG`, `SL.UEM.TOTL.ZS`, `BN.CAB.XOKA.GD.ZS`, and `GC.DOD.TOTL.GD.ZS`.
   - Any candidate indicator outside that set is exploratory only until an ADR updates the approved scope.
   - Local fixture mode must remain available for tests and deterministic development, but live mode becomes the default path for real runs.
@@ -75,8 +87,8 @@ This PRD follows the same simplicity rule as the rest of the planning set. The i
   - Downstream analysis and storage should not need to know whether data came from fixtures or the live API.
 
 - **Historical window policy for analysis** (Priority: High)
-  - Live fetching must retrieve a seven-year history window rather than only the latest point.
-  - The initial implementation uses `2017:2023` to match the current analysis and fixture baseline. Any later change to that window must be recorded through an ADR (ADR-019).
+  - Live fetching must retrieve a 15-year history window rather than only the latest point.
+  - The active implementation uses `2010:2024` to match ADR-041 and the current exact-complete panel validation. Any later change to that window must be recorded through an ADR.
   - The chosen history window must be stable, documented, and shared across indicators unless there is a clear reason to vary it.
   - The history policy should remain proportionate to the bounded scope and the current analysis design.
 
@@ -124,7 +136,7 @@ A reviewer opens the app or triggers a run and sees the same product flow they a
 
 ### 5.2 Core experience
 
-The product continues to fetch, analyze, store, and display economic indicators. With this PRD in place, that loop is grounded in live World Bank data for the full bounded scope instead of only South Africa fixture data. Users should still see the same high-level flow through the dashboard and trigger surface, while engineers gain a clearer live-data path underneath.
+The product continues to fetch, analyze, store, and display economic indicators. With this PRD in place, that loop is grounded in live World Bank data for the full bounded scope instead of only the deterministic South Africa fixture data. Users should still see the same high-level flow through the dashboard and trigger surface, while engineers gain a clearer live-data path underneath.
 
 ### 5.3 Advanced features and edge cases
 
@@ -139,7 +151,7 @@ If some source series are missing recent data, the run should continue where it 
 
 ## 6. Narrative
 
-World Analyst should analyze the real source it claims to use. This PRD replaces the local-only data path for real runs with a bounded, understandable integration to the World Bank API. It keeps the scope narrow: verified indicators, approved countries, one normalized shape, one clear history policy, and explicit rules for incomplete or imperfect source data. The result is a more credible pipeline without turning the project into a complex ingestion platform.
+World Analyst should analyze the real source it claims to use. This PRD replaces the local-only data path for real runs with a bounded, understandable integration to the World Bank API. It keeps the scope narrow: verified indicators, the exact-complete 17-country core panel, one normalized shape, one clear history policy, and explicit rules for incomplete or imperfect source data. The result is a more credible pipeline without turning the project into a complex ingestion platform.
 
 ## 7. Success metrics
 
@@ -157,7 +169,7 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 
 ### 7.3 Technical metrics
 
-- The pipeline can fetch all six approved indicators for the 15 approved countries through the live World Bank API path.
+- The pipeline can request all six approved indicators for the 17 approved countries through the live World Bank API path and report missing or stale coverage explicitly when the public source is incomplete.
 - Normalized records are compatible with the existing analysis and storage flow.
 - The history window is sufficient to support current trend and anomaly logic.
 - Invalid or deleted indicator configuration fails clearly.
@@ -187,7 +199,7 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 
 ### 8.3 Scalability and performance
 
-- The bounded scope remains 15 countries and 6 indicators.
+- The bounded scope remains 17 countries and 6 indicators.
 - One API request per indicator remains acceptable at this scale.
 - The implementation should respect the public API without adding unnecessary batching complexity beyond what the source already supports.
 - The fetch path should continue to use bounded retries and request timeouts rather than introducing complex rate-control infrastructure for the current scope.
@@ -232,45 +244,45 @@ This is a medium-sized data-foundation PRD. It is narrower than cloud runtime or
 - **ID**: US-1
 - **Description**: As an evaluator, I want the pipeline to fetch real World Bank data for the approved countries and indicators so that the product reflects the actual challenge source.
 - **Acceptance criteria**:
-  - [ ] The live fetch path retrieves the approved six indicators for the approved 15 countries.
-  - [ ] Local fixtures remain available for tests, but live data becomes the real-run source.
-  - [ ] The indicator and country scope remains explicit and easy to inspect in code.
-  - [ ] Scope changes to countries or indicators require an ADR rather than informal exploratory testing.
+  - [x] The live fetch path retrieves the approved six indicators for the approved 17-country core panel.
+  - [x] Local fixtures remain available for tests, but live data becomes the real-run source.
+  - [x] The indicator and country scope remains explicit and easy to inspect in code.
+  - [x] Scope changes to countries or indicators require an ADR rather than informal exploratory testing.
 
 ### 10.2 Normalize live data into one internal shape
 
 - **ID**: US-2
 - **Description**: As an engineer, I want live source data normalized into one predictable record shape so that downstream analysis does not need source-specific logic.
 - **Acceptance criteria**:
-  - [ ] Raw World Bank responses are converted into one normalized internal record structure.
-  - [ ] The normalized structure includes country identifiers, indicator identifiers, year, and numeric value.
-  - [ ] Analysis code can consume the same shape regardless of whether data came from fixtures or the live API.
+  - [x] Raw World Bank responses are converted into one normalized internal record structure.
+  - [x] The normalized structure includes country identifiers, indicator identifiers, year, and numeric value.
+  - [x] Analysis code can consume the same shape regardless of whether data came from fixtures or the live API.
 
 ### 10.3 Keep enough history for analysis to remain defensible
 
 - **ID**: US-3
 - **Description**: As a reviewer, I want the system to fetch enough source history so that trend and anomaly logic are based on more than one recent point.
 - **Acceptance criteria**:
-  - [ ] The live fetch path uses a documented seven-year historical window rather than only the most recent observation.
-  - [ ] The initial implementation uses `2017:2023` unless an ADR updates the approved range (ADR-019).
-  - [ ] The history policy is applied consistently unless an explicit exception is documented.
+  - [x] The live fetch path uses a documented 15-year historical window rather than only the most recent observation.
+  - [x] The active implementation uses `2010:2024` under ADR-041.
+  - [x] The history policy is applied consistently unless an explicit exception is documented.
 
 ### 10.4 Handle imperfect source data clearly
 
 - **ID**: US-4
 - **Description**: As an engineer, I want the system to handle nulls, sparse coverage, and invalid indicators predictably so that source quirks do not silently corrupt downstream output.
 - **Acceptance criteria**:
-  - [ ] Null or unusable rows are filtered or flagged according to explicit data-quality rules.
-  - [ ] Invalid or deleted indicator configuration fails clearly rather than silently returning empty success.
-  - [ ] API-level logical errors in otherwise successful HTTP responses are detected from the response body, logged with run identifier and indicator code, and surfaced through the pipeline status error summary.
-  - [ ] Null values are filtered rather than interpolated or converted to zero.
+  - [x] Null or unusable rows are filtered or flagged according to explicit data-quality rules.
+  - [x] Invalid or deleted indicator configuration fails clearly rather than silently returning empty success.
+  - [x] API-level logical errors in otherwise successful HTTP responses are detected from the response body, logged with run identifier and indicator code, and surfaced through the pipeline status error summary.
+  - [x] Null values are filtered rather than interpolated or converted to zero.
 
 ### 10.5 Preserve useful output when runs are only partially successful
 
 - **ID**: US-5
 - **Description**: As a reviewer, I want partial live-data failures to be visible without discarding successful results so that the product stays useful and honest.
 - **Acceptance criteria**:
-  - [ ] A run can complete partially when some countries or indicators fail.
-  - [ ] Successful records from a partial run are preserved and traceable to the run.
-  - [ ] If at least one record succeeds but coverage is incomplete, the run ends in terminal `failed` status while preserving successful outputs.
-  - [ ] Status or logging makes the incomplete coverage explicit rather than implying a full success.
+  - [x] A run can produce partial output when some countries or indicators fail.
+  - [x] Successful records from a partial run are preserved and traceable to the run.
+  - [x] If at least one record succeeds but coverage is incomplete, the run ends in terminal `failed` status while preserving successful outputs.
+  - [x] Status or logging makes the incomplete coverage explicit rather than implying a full success.

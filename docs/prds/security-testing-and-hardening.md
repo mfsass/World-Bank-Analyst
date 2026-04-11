@@ -13,7 +13,7 @@ World Analyst can already define its target architecture, data path, AI path, an
 
 This PRD defines the final hardening phase for the bounded World Analyst scope. It owns the browser-facing authentication boundary, secret hygiene, origin and request hardening, business-driven validation across the stack, and the minimum release-readiness checks that make the live demo defensible. It does not replace the earlier PRDs for storage, live data, live AI, cloud runtime, frontend fidelity, or architecture explanation. Instead, it closes those PRDs by deciding how the browser reaches the API safely enough for the challenge and by defining the proof that the system works end to end.
 
-The hardening posture in this PRD stays proportional to the product. The project still targets 15 countries, 6 indicators, one Cloud Run Job, one Firestore collection, and one live demo URL. That means the right outcome is a small set of real controls and real tests, not a large security program. The product should be simple enough to explain and strong enough that a reviewer cannot immediately find an avoidable trust gap.
+The hardening posture in this PRD stays proportional to the product. The project still targets a 17-country exact-complete core panel ending at 2024, 6 indicators, one Cloud Run Job, one Firestore collection, and one live demo URL. That means the right outcome is a small set of real controls and real tests, not a large security program. The product should be simple enough to explain and strong enough that a reviewer cannot immediately find an avoidable trust gap.
 
 ## 2. Goals
 

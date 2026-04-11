@@ -23,7 +23,7 @@ These principles apply across World Analyst PRDs. They exist to keep the solutio
 
 ## 4. Match implementation complexity to challenge scope
 
-- The project remains bounded around 15 countries, 6 indicators, one Cloud Run job, one Firestore collection, and one live demo URL.
+- The project remains bounded around a 17-country exact-complete core panel ending at 2024, 6 indicators, one Cloud Run job, one Firestore collection, and one live demo URL.
 - Design and engineering quality should feel production-grade, but the solution should not imitate a large-enterprise platform where the challenge does not require it.
 - A small, well-structured implementation is better than a broad but brittle one.
 

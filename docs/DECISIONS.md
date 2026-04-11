@@ -73,6 +73,8 @@
 
 **Context:** The World Bank API has data for 200+ countries.
 
+**Status:** Superseded by ADR-041 for the active live monitored-set scope.
+
 **Decision:** Analyse 15 countries spanning 6 regions and multiple income levels.
 
 **Why:** Processing 200 countries × 6 indicators = 1200 API calls + 1200 LLM calls per run. At ~$0.01/call, that's $12 per refresh. 15 countries keeps each run under $2 while covering representative diversity (ZA, NG, KE, EG, US, BR, MX, DE, GB, FR, CN, IN, JP, ID, AU).
@@ -98,6 +100,8 @@
 ## ADR-008: Finance-First, Presentation-Scoped Dashboard
 
 **Context:** The challenge leaves room to build for a broad business audience, design for machine-readable downstream consumers, or over-engineer for future scale. The clarified target is narrower: a finance team using the dashboard as a decision surface during a weekend challenge demo.
+
+**Status:** Active except for the monitored-country count, which is superseded by ADR-041 for the active live monitored-set scope.
 
 **Decision:** Optimize the product for finance users, a weekend-sized implementation, and human-readable dashboard output. Lead KPI and narrative design with risk-weighted signals, keep scope fixed around 15 countries and 6 indicators, and prioritize a reliable Pipeline Trigger demo over speculative scale work.
 
@@ -183,6 +187,8 @@
 
 **Context:** The repo originated in a challenge setting, but active instructions still described it as a weekend build. That framing started to justify thin inline documentation, demo-only shortcuts, and prose that sounded assembled rather than deliberate.
 
+**Status:** Active except for the monitored-country count, which is superseded by ADR-041 for the active live monitored-set scope.
+
 **Decision:** Keep the product scope guardrails fixed at 15 countries, 6 indicators, one Cloud Run job, one Firestore collection, and one live demo URL, but remove weekend framing from active instructions. Treat the repo as production-grade in code quality, inline documentation, validation, and decision logging. Require docstrings plus targeted inline comments for non-obvious business rules, orchestration, and state transitions.
 
 **Why:** The project now needs to stand up in review, presentation, and handover without hidden chat context. Reviewers should be able to understand both the implementation and the trade-offs directly from the repo. Scope discipline still matters, but describing the work as a weekend project biases decisions toward shortcuts when the real requirement is defensible quality.
@@ -253,6 +259,8 @@
 
 **Context:** Live data integration needs a stable history window that supports current trend and anomaly logic without turning the fetch layer into a larger analytics system.
 
+**Status:** Superseded by ADR-041 for the active live monitored-set scope.
+
 **Decision:** Use a seven-year history window. The initial implementation uses `2017:2023` for all approved indicators.
 
 **Why:** The current analysis logic compares year-over-year movement and needs more than one recent point. Seven years is enough to show medium-term direction without adding much extra fetch or storage cost, and it matches the existing fixture baseline.
@@ -263,7 +271,7 @@
 
 ---
 
-## ADR-020: Curated Repository Baseline Over Code-Only Import
+## ADR-020A: Curated Repository Baseline Over Code-Only Import
 
 **Context:** The project had already accumulated product code, PRDs, design mockups, and AI workflow assets before git initialization. The repo now needs to serve as a technical interview artifact, not just a place to store source files.
 
@@ -481,9 +489,10 @@
 
 **Why:** Duplicate navigation hierarchies confuse users and clutter the interface. "Apple-like" and professional UX demands a single clear structural hierarchy. Furthermore, shipping dead buttons (even with "coming soon" alerts) undermines trust and interface integrity, violating core UX/UI principles.
 
-**Trade-off:** If future requirements introduce dense secondary utilities, they must be explicitly planned in the PRD rather than living as permanent UI stubs. 
+**Trade-off:** If future requirements introduce dense secondary utilities, they must be explicitly planned in the PRD rather than living as permanent UI stubs.
 
 **Date:** 2026-04-11
+
 ---
 
 ## ADR-035: Single Top Navigation and Summary-First Country Drill-In
@@ -495,5 +504,93 @@
 **Why:** Four primary routes do not justify two structural navigation systems. A single top nav is cleaner on desktop, collapses more predictably on smaller screens, and removes duplicate active-state logic. Map popovers give quick context in place, and the elevated country briefing puts the main analyst takeaway before the lower-level indicator cards.
 
 **Trade-off:** We give up the denser always-visible side rail and stop reserving country-page real estate for a placeholder chart region in this phase. We accept that because the current product benefits more from a clear drill-in flow and stronger narrative hierarchy than from extra chrome or empty visual slots.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-036: ZA-First Live Extraction Before the Monitored-Set Rollout
+
+**Context:** The live-data PRD targets the approved 15-country monitored set, but the current shared repository metadata and stored country contract still materialize only `ZA`. Expanding fetch scope, repository metadata, overview coverage, and API-facing country parity in one pass would bundle several unrelated risks into the same backend change.
+
+**Status:** Superseded by ADR-041 for the active live monitored-set scope.
+
+**Decision:** Make `PIPELINE_MODE=live` real now for the existing South Africa slice only. Keep the live fetch scope fixed to the approved six indicators and the seven-year `2017:2023` window, preserve deterministic `local` mode for tests and development, and defer the monitored-country catalog rollout to its own follow-on change.
+
+**Why:** The immediate credibility gap is that the pipeline still always loads fixtures even when a live mode is requested. Hardening one real country end to end lets the repo prove the important pieces now: payload-level API error handling, null filtering, stable normalized records, and raw request-response archival with provenance.
+
+**Trade-off:** Live mode becomes honest for one country before it becomes representative of the full monitored set. We accept that temporary asymmetry because it isolates the fetch hardening work from broader catalog and contract changes, and it gives the later rollout a proven live-data seam instead of another combined migration.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-037: Canonicalize the ML6-Market 15-Country Set
+
+**Context:** ADR-006 still showed an older example list even though the product brief and live fetcher had already converged on a different 15-country monitored set. The backend rollout now needs one country catalog that drives fetch scope, repository metadata, and the API country listing.
+
+**Status:** Superseded by ADR-041 for the active live monitored-set scope.
+
+**Decision:** Treat the ML6-market set already used in the product brief and `pipeline/fetcher.py` as canonical: BE, NL, DE, GB, FR, US, BR, CA, CN, JP, IN, AU, ZA, NG, EG. Use that set as the shared source of truth for monitored-country metadata and live fetch scope.
+
+**Why:** This is the list already reflected in the product brief and live-data seam, so adopting it avoids reopening country-selection scope during backend rollout. It also keeps `GET /countries`, repository metadata, and `PIPELINE_MODE=live` aligned instead of maintaining competing examples.
+
+**Trade-off:** ADR-006's older country example becomes historical context rather than an active source of truth. Future country-set changes now need to update the shared catalog and ADR log together instead of being implied by one illustrative example.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-038: Keep One Canonical World Bank API Reference
+
+**Context:** The repo had two substantial World Bank API references: the agent-facing skill in `.github/skills/world-bank-api/SKILL.md` and a private-context copy in `private-context/WORLDBANK_API_SKILL.md`. That duplication created a predictable drift risk just as the team was re-validating the official API semantics against the World Bank documentation and live production responses.
+
+**Decision:** Treat `.github/skills/world-bank-api/SKILL.md` as the canonical World Bank API reference for the repo. Keep `private-context/WORLDBANK_API_SKILL.md` only as a short repo-specific usage note that points back to the canonical skill.
+
+**Why:** The skill file is the artifact already wired into the repo's agent instructions, implementation guidance, and pipeline fetcher comments. Making it the single authoritative reference removes ambiguity, keeps official API semantics in one maintained place, and lets the private-context file focus on how World Analyst should use the API rather than trying to restate the entire surface area.
+
+**Trade-off:** The private-context note is no longer a standalone API reference. We accept that because the alternative is maintaining two competing documents and slowly reintroducing the same uncertainty we just resolved.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-039: Pin Live World Bank Fetches to WDI and Fail Loudly on Scope Drift
+
+**Context:** A deeper audit of the official World Bank API docs and live production responses showed three things that the existing fetcher was handling too loosely. First, the monitored indicators belong to World Development Indicators (`source=2`), and the simple country-indicator endpoint accepts that source pin directly. Second, the public endpoint can be materially slower than the earlier hard-coded 15-second timeout assumption. Third, the current monitored scope fits inside one `per_page=1000` response, but the fetcher was only safe by accident because it never checked whether a future scope expansion had started returning multiple pages.
+
+**Decision:** Refine the live World Bank runtime contract in three ways. Pin monitored indicator requests explicitly to `source=2`, make the request timeout configurable through `WORLD_ANALYST_WORLD_BANK_TIMEOUT_SECONDS` with a higher default, and fail the fetch step explicitly when an indicator response spans more than one page instead of silently truncating page 1.
+
+**Why:** The source pin removes ambiguity if an indicator code exists in multiple catalogs. The timeout knob reflects real public-endpoint behavior without turning the fetch path into a bigger rate-control system. The multi-page guard keeps the pipeline honest: if the bounded scope ever stops fitting in one response page, the run should fail clearly rather than archive incomplete source data and pretend the fetch succeeded.
+
+**Trade-off:** Live requests can now wait longer before failing, and future scope expansion that triggers pagination will stop the run until pagination is implemented deliberately. We accept both costs because source determinism and honest failure behavior are more important than preserving a brittle happy path.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-040: Treat Live Annual Series Older Than One Year as Stale Coverage
+
+**Context:** The final PRD close-out pass exposed one remaining data-quality gap. The monitored-set live run already failed explicitly when countries had no usable debt series, but it still accepted very old annual tails as if they were current coverage. In the real monitored-set smoke, five debt series were current through 2023, Australia lagged to 2022, and India only had a usable value as far back as 2018. Leaving that untouched meant the pipeline could surface materially stale fiscal language while claiming current live coverage.
+
+**Decision:** Define a freshness rule for annual live indicators. For a requested range ending in year `Y`, a country-indicator series remains usable only if its latest non-null observation is at least `Y - 1`. Anything older is treated as stale coverage, removed from the normalized live result, and reported explicitly in the fetch failure summary.
+
+**Why:** This keeps the pipeline honest without over-penalizing annual public-source lag that is still close enough to inform the current narrative. A one-year allowance preserves near-current annual data while excluding clearly stale tails that would distort the live risk story.
+
+**Trade-off:** The live fetch path now treats some source rows as unavailable even though the World Bank still returns them. We accept that because the alternative is presenting materially stale fiscal or external data as if it were part of the current live coverage story.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-041: Replace the ML6-Market Scope With a 2024 Exact-Complete 17-Country Core Panel
+
+**Context:** The live feasibility scan against the full World Bank country catalog changed the country-selection trade-off materially. The old ML6-market 15-country set told a good geographic story, but it produced repeated debt-coverage failures and stale-series exceptions in the real monitored run. The broader scan showed that no country has even five consecutive fully complete years across the six approved indicators ending at 2025, while exactly 17 countries have a fully complete 15-year span ending at 2024. The challenge brief requires a credible World Bank integration and defensible economic insights, but it does not mandate a fixed country list, a fixed year window, or a fixed monitored-country count.
+
+**Decision:** Replace the superseded ML6-market 15-country monitored set and the seven-year `2017:2023` live window with a data-complete core panel anchored to `2010:2024`. The active live monitored set is: BR, CA, GB, US, BS, CO, SV, GE, HU, MY, NZ, RU, SG, ES, CH, TR, UY. This supersedes ADR-019 and ADR-037 for the active live monitored-set scope. Repository metadata, API country listing, and live runtime fetching should use this panel. Deterministic `local` mode stays on the existing ZA fixture slice for tests and lightweight development.
+
+**Why:** This is the smallest scope change that makes the live backend honest and comparable without lowering the data-quality bar or inventing substitute indicators. It preserves the approved six-indicator macro story, gives the pipeline one defensible balanced panel for longitudinal analysis, and stays well inside the challenge's bounded-product expectations.
+
+**Trade-off:** We give up the earlier geographic-representation and ML6-market narrative. The new core panel has no Africa, MENA, or South Asia coverage, and Russia stays in scope because the shortlist is mechanically derived from the completeness rule rather than chosen editorially. If future product goals require broader regional representation, that should become an explicit second-tier watchlist with documented partial-coverage rules instead of silently weakening the exact-complete core panel.
 
 **Date:** 2026-04-11

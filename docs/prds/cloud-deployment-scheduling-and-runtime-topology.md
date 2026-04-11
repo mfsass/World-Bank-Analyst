@@ -57,11 +57,15 @@ This PRD moves World Analyst from a local-first execution model to a real GCP ru
   - The frontend, API, and pipeline execution path must run as separate cloud resources rather than one local process.
   - The deployed API must no longer perform the full pipeline inside its own process when cloud mode is enabled.
   - The pipeline must execute in a dedicated Cloud Run Job runtime.
+  - `PIPELINE_MODE` must default to `"live"` in all Cloud Run environments. The `"local"` mode remains available for local development and CI only (via explicit env var override). It is not a valid posture for any deployed service.
 
 - **Scheduled push execution** (Priority: High)
   - Cloud Scheduler must trigger the Cloud Run Job on a defined cadence.
   - Scheduled runs must write processed records and pipeline status without requiring any frontend page load.
   - The architecture must remain push-based in line with the challenge brief.
+  - The scheduled cadence is monthly (first Monday of each month, 06:00 UTC). World Bank indicator data is published annually, sometimes with a 1–2 year lag, so daily or weekly polling produces only redundant upserts. Monthly is the minimum frequency that keeps the push story honest without wasting quota.
+  - The manual trigger via `POST /pipeline/trigger` is the primary mechanism for demonstration and evaluation. The scheduled job exists to satisfy the architectural requirement; the PipelineTrigger page is the centrepiece the reviewer will use during the evaluation session.
+  - Firestore upsert semantics make any cadence idempotent: re-running against unchanged source data overwrites records with identical values and advances no state visible to the user.
 
 - **Manual trigger dispatch** (Priority: High)
   - `POST /pipeline/trigger` must dispatch a cloud pipeline run through the Cloud Run Jobs API instead of starting a background thread in the API process when cloud mode is enabled.
@@ -174,11 +178,12 @@ World Analyst should not claim a cloud architecture that only exists in diagrams
 - Cloud Scheduler should only have permission to invoke the pipeline job.
 
 ### 8.3 Scalability and performance
-- The bounded workload remains 15 countries and 6 indicators on a scheduled cadence.
+- The bounded workload remains 17 countries and 6 indicators on a scheduled cadence.
 - One Cloud Run Job per scheduled or manual run is acceptable at this scale.
 - API autoscaling can remain lightweight because the product is read-heavy and demo-oriented.
 - Expected pipeline runtime is measured in minutes, not hours. The initial job configuration should assume a 10-minute timeout, 512MB memory, and 1 vCPU unless implementation evidence requires a change.
-- The initial cadence remains weekly at 06:00 UTC on Monday to match the challenge's push model without pretending the source updates daily.
+  - The scheduled cadence is monthly (first Monday of each month, 06:00 UTC). World Bank data is annual; weekly runs would produce redundant upserts. Monthly balances architectural credibility against API quota.
+  - The manual trigger endpoint is the primary demonstration mechanism. Cloud Scheduler provides the push-model evidence the challenge brief requires.
 - No VPC or private-networking layer is required for the current challenge scope.
 - This PRD optimizes for truthful runtime separation and deployability, not for high-throughput orchestration.
 

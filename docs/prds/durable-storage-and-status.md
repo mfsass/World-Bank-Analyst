@@ -159,7 +159,7 @@ World Analyst should stop behaving like a temporary local run and start behaving
 - AI provenance is limited to light metadata in this phase and must not store unnecessary sensitive payloads.
 
 ### 8.3 Scalability and performance
-- The bounded scope remains 15 countries and 6 indicators.
+- The bounded scope remains 17 countries and 6 indicators.
 - One mixed Firestore collection remains acceptable at this scale.
 - Current collection scans are acceptable for bounded MVP scope but should be revisited before major expansion.
 - This PRD optimizes for correctness and durability, not large-scale throughput.

@@ -90,7 +90,7 @@ The initial live baseline must use Google GenAI with `gemma-4-31b-it`. That is a
 - **Evaluation-gated model selection** (Priority: High)
   - The live-AI layer must include a repeatable evaluation pass before any model becomes the default production candidate.
   - Evaluation must cover at least structured-output validity, groundedness to numeric inputs, synthesis coherence, refusal behavior, latency, and estimated full-run cost.
-  - The baseline model must be tested against the full approved 15-country by 6-indicator scope unless a documented subset is agreed before the evaluation phase.
+  - The baseline model must be tested against the full approved 17-country by 6-indicator scope unless a documented subset is agreed before the evaluation phase.
   - A stronger model should only be adopted when the baseline fails documented pass criteria.
 
 - **Bounded retry and degraded-fallback behavior** (Priority: High)
@@ -192,7 +192,7 @@ World Analyst already knows where AI belongs. Pandas calculates the signal. The 
 
 ### 8.3 Scalability and performance
 
-- The bounded scope remains 15 countries and 6 indicators on a weekly run cadence.
+- The bounded scope remains 17 countries and 6 indicators on a weekly run cadence.
 - The two-step chain still produces a manageable number of calls at this scale, so clarity matters more than advanced batching infrastructure.
 - Exact-match reuse should lower recurring cost without adding a new cache tier.
 - If one model proves too weak for the synthesis step, a step-specific upgrade is acceptable as long as it is documented and evaluated.
@@ -221,7 +221,7 @@ This is a medium-sized AI-enablement PRD. It is narrower than cloud runtime or f
 
 1. Confirm the live-AI boundary, baseline model choice, and evaluation rubric before implementation starts.
 2. Wire Google GenAI `gemma-4-31b-it` behind the existing AI client interface for real runs while keeping deterministic local mode, schema validation, bounded retry behavior, degraded fallback payloads, and minimum provenance fields.
-3. Implement evaluation and cost-reporting for the approved 15-country by 6-indicator scope, or a documented temporary subset if live data is not yet fully available.
+3. Implement evaluation and cost-reporting for the approved 17-country by 6-indicator scope, or a documented temporary subset if live data is not yet fully available.
 4. Add exact-match reuse by AI input fingerprint and validate downstream contract compatibility.
 5. Re-run the evaluation gate on the full live-data scope and promote to a stronger model for one or both steps only if the baseline fails.
 
@@ -268,7 +268,7 @@ This is a medium-sized AI-enablement PRD. It is narrower than cloud runtime or f
 - **Description**: As a reviewer, I want model selection to be backed by evidence so that the chosen AI configuration is defensible.
 - **Acceptance criteria**:
   - [ ] Evaluation covers structured-output validity, groundedness to numeric inputs, synthesis coherence, refusal behavior, latency, and estimated full-run cost.
-  - [ ] The evaluation corpus uses the full approved 15-country by 6-indicator scope unless a documented temporary subset is agreed before the evaluation phase.
+  - [ ] The evaluation corpus uses the full approved 17-country by 6-indicator scope unless a documented temporary subset is agreed before the evaluation phase.
   - [ ] The default live model is only approved after passing the documented evaluation gate.
   - [ ] A stronger model is only adopted when the baseline fails documented pass criteria.
 

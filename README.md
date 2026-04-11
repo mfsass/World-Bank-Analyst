@@ -24,7 +24,7 @@ That mix is deliberate. The challenge is partly about whether the repo can expla
 
 World Bank Analyst is designed for a finance team, not a general business audience. The dashboard should assume fluency in macro indicators and focus on risk interpretation: direction of travel, magnitude of change, and whether a move is anomalous relative to history. AI narratives should use finance vocabulary such as sovereign risk, inflationary pressure, fiscal stress, external vulnerability, and recessionary signal.
 
-The delivery scope remains deliberately bounded around 15 countries, 6 indicators, one Cloud Run job, and one Firestore collection. Those are scope guardrails, not permission for shortcut engineering: implementations should be production-grade in readability, inline documentation, validation, and decision logging. The API and stored documents are optimized for human-readable dashboard rendering rather than downstream machine integration, so prose-forward insight fields are preferred unless the frontend needs structured values for specific UI elements.
+The delivery scope remains deliberately bounded around a 17-country exact-complete core panel ending at 2024, 6 indicators, one Cloud Run job, and one Firestore collection. That core panel prioritizes comparable live coverage over broad regional representation. Those are scope guardrails, not permission for shortcut engineering: implementations should be production-grade in readability, inline documentation, validation, and decision logging. The API and stored documents are optimized for human-readable dashboard rendering rather than downstream machine integration, so prose-forward insight fields are preferred unless the frontend needs structured values for specific UI elements.
 
 ## Architecture
 
