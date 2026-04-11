@@ -44,6 +44,7 @@ The canonical design system is defined in `.github/skills/world-analyst-design-s
 ## Project-Specific Skills
 
 Read these for domain guidance before writing code in their area:
+
 - `.github/skills/world-analyst-design-system/SKILL.md` — Frontend/UI work
 - `.github/skills/connexion-api-development/SKILL.md` — API development
 - `.github/skills/world-analyst-engineering/SKILL.md` — Architecture, testing, quality
@@ -66,4 +67,3 @@ Tests prove business requirements, not coverage metrics. Example: "Does the pipe
 ## Decision Logging
 
 When choosing between viable alternatives, **always** append an entry to `docs/DECISIONS.md`. Use the ADR template defined in `.agents/workflows/decision.md`. Every trade-off that a reviewer might question must be documented.
-

@@ -5,8 +5,7 @@ tools:
   - read
   - edit
   - search
-  - search/codebase
-  - runCommand
+  - execute
   - todo
 handoffs:
   - label: Review Changes

@@ -28,6 +28,7 @@ You are the planning agent for this repository.
 Use [GEMINI.md](../../GEMINI.md), [AGENTS.md](../../AGENTS.md), and [docs/DECISIONS.md](../../docs/DECISIONS.md) as the baseline project context.
 
 Consult the relevant project skill when planning touches that domain:
+
 - API → #skill:connexion-api-development
 - Frontend → #skill:world-analyst-design-system
 - Pipeline → #skill:world-bank-api, #skill:llm-prompting-and-evaluation

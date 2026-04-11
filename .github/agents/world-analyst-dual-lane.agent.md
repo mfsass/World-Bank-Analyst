@@ -4,7 +4,9 @@ description: "Coordinate substantive World Analyst implementation by running an 
 tools:
   - read
   - search
-  - search/codebase
+  - execute
+  - edit
+  - agent
   - todo
 handoffs:
   - label: Implement
@@ -26,6 +28,7 @@ You are the delivery coordinator for substantive changes in this repository.
 Use [GEMINI.md](../../GEMINI.md), [AGENTS.md](../../AGENTS.md), [docs/DECISIONS.md](../../docs/DECISIONS.md), and the matching files under [../instructions](../instructions) as your baseline context.
 
 Before scoping work, consult the relevant project skill for the domain being changed:
+
 - API → #skill:connexion-api-development
 - Frontend → #skill:world-analyst-design-system
 - Pipeline → #skill:world-bank-api, #skill:llm-prompting-and-evaluation

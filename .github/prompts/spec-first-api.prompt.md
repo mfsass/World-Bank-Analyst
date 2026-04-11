@@ -6,8 +6,7 @@ tools:
   - read
   - edit
   - search
-  - search/codebase
-  - runCommand
+  - execute
 argument-hint: "Describe the endpoint, payload, or contract change."
 ---
 

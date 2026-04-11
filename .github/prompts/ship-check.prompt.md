@@ -5,7 +5,7 @@ agent: world-analyst-reviewer
 tools:
   - read
   - search
-  - search/codebase
+  - execute
 argument-hint: "Describe the change, branch, or files you want reviewed."
 ---
 

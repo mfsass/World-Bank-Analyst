@@ -4,7 +4,8 @@ description: "Review World Analyst changes with a strict code review mindset. Us
 tools:
   - read
   - search
-  - search/codebase
+  - execute
+  - todo
 handoffs:
   - label: Fix Issues
     agent: world-analyst-implementer
