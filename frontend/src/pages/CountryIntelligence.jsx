@@ -47,7 +47,7 @@ export function CountryIntelligence() {
     async function loadCountry() {
       setViewState("loading");
       try {
-        const payload = await apiRequest(`/api/v1/countries/${countryCode}`);
+        const payload = await apiRequest(`/countries/${countryCode}`);
         if (isActive) {
           setCountry(payload);
           setViewState("ready");

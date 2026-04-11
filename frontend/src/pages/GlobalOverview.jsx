@@ -24,7 +24,7 @@ import {
 
 async function fetchCountryBriefing(countryCode) {
   try {
-    return await apiRequest(`/api/v1/countries/${countryCode}`);
+    return await apiRequest(`/countries/${countryCode}`);
   } catch (error) {
     if (error.status === 404) {
       return null;
@@ -36,9 +36,9 @@ async function fetchCountryBriefing(countryCode) {
 
 async function fetchOverviewData() {
   const [status, countries, indicators] = await Promise.all([
-    apiRequest("/api/v1/pipeline/status"),
-    apiRequest("/api/v1/countries"),
-    apiRequest("/api/v1/indicators"),
+    apiRequest("/pipeline/status"),
+    apiRequest("/countries"),
+    apiRequest("/indicators"),
   ]);
 
   // Coverage comes from materialised country briefings, not raw indicator rows.
@@ -101,7 +101,7 @@ export function GlobalOverview() {
     // Mirror the trigger page while the in-process local pipeline is still running.
     const intervalId = window.setInterval(async () => {
       try {
-        const nextStatus = await apiRequest("/api/v1/pipeline/status");
+        const nextStatus = await apiRequest("/pipeline/status");
         if (!isActive) {
           return;
         }

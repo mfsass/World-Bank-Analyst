@@ -1,0 +1,51 @@
+"""Security-focused runtime configuration tests for the API app."""
+
+from __future__ import annotations
+
+import pytest
+
+from app import create_app
+from handlers.auth import validate_api_key
+
+
+def test_create_app_allows_local_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local development should boot without extra runtime secrets."""
+    monkeypatch.delenv("WORLD_ANALYST_RUNTIME_ENV", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_API_KEY", raising=False)
+
+    connexion_app = create_app()
+
+    assert connexion_app is not None
+
+
+def test_create_app_requires_api_key_outside_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deployed runtimes should fail fast when the shared API key is missing."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.setenv("WORLD_ANALYST_ALLOWED_ORIGINS", "https://world-analyst.example")
+    monkeypatch.delenv("WORLD_ANALYST_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="WORLD_ANALYST_API_KEY"):
+        create_app()
+
+
+def test_create_app_rejects_wildcard_origins_outside_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deployed runtimes should not allow wildcard CORS origins."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.setenv("WORLD_ANALYST_API_KEY", "configured-secret")
+    monkeypatch.setenv("WORLD_ANALYST_ALLOWED_ORIGINS", "*")
+
+    with pytest.raises(RuntimeError, match="WORLD_ANALYST_ALLOWED_ORIGINS"):
+        create_app()
+
+
+def test_validate_api_key_rejects_missing_non_local_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requests should not authenticate when deployed auth is misconfigured."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.delenv("WORLD_ANALYST_API_KEY", raising=False)
+
+    assert validate_api_key("local-dev") is None

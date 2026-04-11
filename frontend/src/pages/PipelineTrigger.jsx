@@ -66,7 +66,7 @@ export function PipelineTrigger() {
 
     async function loadStatus() {
       try {
-        const nextStatus = await apiRequest("/api/v1/pipeline/status");
+        const nextStatus = await apiRequest("/pipeline/status");
         if (isActive) {
           setStatus(nextStatus);
           setRequestError("");
@@ -92,7 +92,7 @@ export function PipelineTrigger() {
 
     const intervalId = window.setInterval(async () => {
       try {
-        const nextStatus = await apiRequest("/api/v1/pipeline/status");
+        const nextStatus = await apiRequest("/pipeline/status");
         setStatus(nextStatus);
         setRequestError("");
         if (nextStatus.status !== "running") {
@@ -112,7 +112,7 @@ export function PipelineTrigger() {
   async function handleTrigger() {
     setIsSubmitting(true);
     try {
-      const nextStatus = await apiRequest("/api/v1/pipeline/trigger", {
+      const nextStatus = await apiRequest("/pipeline/trigger", {
         method: "POST",
       });
       setStatus(nextStatus);

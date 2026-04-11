@@ -1,7 +1,19 @@
 const DEFAULT_HEADERS = {
   Accept: "application/json",
-  "X-API-Key": "local-dev",
 };
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(
+  /\/$/,
+  "",
+);
+
+function buildApiUrl(path) {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+
+  return `${API_BASE_URL}${path}`;
+}
 
 export async function apiRequest(path, options = {}) {
   const headers = {
@@ -14,7 +26,7 @@ export async function apiRequest(path, options = {}) {
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(path, {
+  const response = await fetch(buildApiUrl(path), {
     ...options,
     headers,
     body: hasJsonBody ? JSON.stringify(options.body) : options.body,
