@@ -170,6 +170,11 @@ class AIClient(ABC):
         """
         ...
 
+    @abstractmethod
+    def get_provenance(self) -> dict[str, str]:
+        """Return the provider and model metadata for persisted provenance."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Gemini Client — Primary provider
@@ -221,6 +226,13 @@ class GeminiClient(AIClient):
         )
         synthesis = MacroSynthesis.model_validate_json(response.text)
         return synthesis.model_dump()
+
+    def get_provenance(self) -> dict[str, str]:
+        """Return the provider and model metadata for persisted provenance."""
+        return {
+            "provider": "google-genai",
+            "model": self._model_name,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +295,13 @@ class OpenAIClient(AIClient):
             ).model_dump()
 
         return response.choices[0].message.parsed.model_dump()
+
+    def get_provenance(self) -> dict[str, str]:
+        """Return the provider and model metadata for persisted provenance."""
+        return {
+            "provider": "openai",
+            "model": self._model_name,
+        }
 
 
 # ---------------------------------------------------------------------------

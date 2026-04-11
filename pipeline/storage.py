@@ -1,60 +1,174 @@
 """Storage operations for repository-backed insights and raw-data archival.
 
-Mixed-document insight writes now flow through the shared repository contract so
-the pipeline can target local or Firestore-backed persistence without changing
-its orchestration logic.
+Mixed-document insight writes now flow through one storage boundary that can
+archive raw payloads locally for deterministic tests or to GCS in deployed
+environments before persisting processed records.
 """
 
+from __future__ import annotations
+
+import copy
 import json
 import logging
+import os
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from shared.repository import InsightsRepository, get_repository
+from shared.repository import InsightsRepository, get_repository, get_repository_backend  # noqa: E402
 
 logger = logging.getLogger(__name__)
+DEFAULT_LOCAL_RAW_ARCHIVE_ROOT = REPO_ROOT / ".world_analyst" / "raw_archives"
+RAW_ARCHIVE_MANIFEST_KEY = "manifest"
+
+
+class RawArchiveStore(Protocol):
+    """Boundary for archiving raw payloads.
+
+    Local development and tests use a filesystem-backed implementation while the
+    deployed path uses GCS with the same run-scoped relative paths.
+    """
+
+    def archive_json(self, relative_path: str, payload: Any) -> str:
+        """Persist a JSON payload and return a stable reference string."""
+
+
+@dataclass(frozen=True)
+class RawArchiveResult:
+    """References created for one run-scoped raw archive."""
+
+    scope_references: dict[str, str]
+    manifest_reference: str
+
+
+class LocalRawArchiveStore:
+    """Persist raw payloads to the local filesystem for deterministic tests."""
+
+    def __init__(self, base_dir: Path | None = None) -> None:
+        """Initialise the local raw archive store.
+
+        Args:
+            base_dir: Optional filesystem root for local archives.
+        """
+        configured_root = os.environ.get("WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR")
+        self._base_dir = Path(configured_root) if configured_root else (base_dir or DEFAULT_LOCAL_RAW_ARCHIVE_ROOT)
+
+    def archive_json(self, relative_path: str, payload: Any) -> str:
+        """Persist one JSON payload under a run-scoped relative path.
+
+        Args:
+            relative_path: Run-scoped archive path.
+            payload: JSON-serialisable payload.
+
+        Returns:
+            Stable local archive reference.
+        """
+        normalized_path = relative_path.replace("\\", "/")
+        file_path = self._base_dir / Path(normalized_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        return f"local://{normalized_path}"
+
+
+class GCSRawArchiveStore:
+    """Persist raw payloads to Google Cloud Storage."""
+
+    def __init__(self, project_id: str, bucket_name: str) -> None:
+        """Initialise the GCS-backed raw archive store.
+
+        Args:
+            project_id: GCP project identifier.
+            bucket_name: GCS bucket used for raw archives.
+        """
+        from google.cloud import storage
+
+        self._bucket_name = bucket_name
+        self._client = storage.Client(project=project_id)
+        self._bucket = self._client.bucket(bucket_name)
+
+    def archive_json(self, relative_path: str, payload: Any) -> str:
+        """Persist one JSON payload to GCS.
+
+        Args:
+            relative_path: Run-scoped archive path.
+            payload: JSON-serialisable payload.
+
+        Returns:
+            GCS archive reference.
+        """
+        normalized_path = relative_path.replace("\\", "/")
+        blob = self._bucket.blob(normalized_path)
+        blob.upload_from_string(
+            json.dumps(payload, indent=2, sort_keys=True),
+            content_type="application/json",
+        )
+        return f"gs://{self._bucket_name}/{normalized_path}"
 
 
 def store_slice(
     insights: list[dict[str, Any]],
     country_syntheses: dict[str, dict[str, Any]],
+    raw_data_points: list[dict[str, Any]],
+    run_id: str,
+    ai_provenance: dict[str, Any] | None = None,
     repository: InsightsRepository | None = None,
+    raw_archive_store: RawArchiveStore | None = None,
 ) -> dict[str, int]:
     """Persist the current slice into the configured repository backend.
 
     Args:
         insights: Enriched per-indicator insight payloads.
         country_syntheses: Country synthesis payloads keyed by country code.
+        raw_data_points: Raw fetched payloads for the current run.
+        run_id: UUID v4 run identifier for durable provenance.
+        ai_provenance: Minimal AI provenance when narrative generation is available.
         repository: Shared repository instance.
+        raw_archive_store: Optional raw archive implementation override.
 
     Returns:
         Counts of indicator and country records written.
     """
     repo = repository or get_repository()
     updated_at = datetime.now(timezone.utc).isoformat()
+    grouped_raw_payloads = _group_raw_payloads_by_indicator(raw_data_points)
+    archive_result = archive_raw_payloads(grouped_raw_payloads, run_id, raw_archive_store)
+    source_provenance_by_indicator = {
+        indicator_code: _build_source_provenance(payload)
+        for indicator_code, payload in grouped_raw_payloads.items()
+    }
 
     indicator_writes = 0
     for insight in insights:
-        repo.upsert_indicator(
-            {
-                "indicator_code": insight["indicator_code"],
-                "indicator_name": insight["indicator_name"],
-                "country_code": insight["country_code"],
-                "latest_value": insight["latest_value"],
-                "previous_value": insight.get("previous_value"),
-                "percent_change": insight.get("percent_change"),
-                "is_anomaly": bool(insight.get("is_anomaly", False)),
-                "ai_analysis": insight.get("ai_analysis", ""),
-                "data_year": insight["data_year"],
-                "updated_at": updated_at,
-            }
-        )
+        indicator_record = {
+            "indicator_code": insight["indicator_code"],
+            "indicator_name": insight["indicator_name"],
+            "country_code": insight["country_code"],
+            "latest_value": insight["latest_value"],
+            "previous_value": insight.get("previous_value"),
+            "percent_change": insight.get("percent_change"),
+            "is_anomaly": bool(insight.get("is_anomaly", False)),
+            "ai_analysis": insight.get("ai_analysis", ""),
+            "data_year": insight["data_year"],
+            "updated_at": updated_at,
+            "run_id": run_id,
+            "raw_backup_reference": archive_result.scope_references.get(
+                insight["indicator_code"],
+                archive_result.manifest_reference,
+            ),
+        }
+        source_provenance = source_provenance_by_indicator.get(insight["indicator_code"])
+        if source_provenance:
+            indicator_record["source_provenance"] = source_provenance
+        if ai_provenance and insight.get("ai_analysis"):
+            indicator_record["ai_provenance"] = copy.deepcopy(ai_provenance)
+
+        repo.upsert_indicator(indicator_record)
         indicator_writes += 1
 
     country_writes = 0
@@ -63,40 +177,74 @@ def store_slice(
         if country_metadata is None:
             raise ValueError(f"Unsupported local country: {country_code}")
 
-        repo.upsert_country(
-            {
-                **country_metadata,
-                "macro_synthesis": synthesis["summary"],
-                "risk_flags": synthesis["risk_flags"],
-                "outlook": synthesis["outlook"],
-                "updated_at": updated_at,
-            }
+        country_record = {
+            **country_metadata,
+            "macro_synthesis": synthesis["summary"],
+            "risk_flags": synthesis["risk_flags"],
+            "outlook": synthesis["outlook"],
+            "updated_at": updated_at,
+            "run_id": run_id,
+            "raw_backup_reference": archive_result.manifest_reference,
+        }
+        country_source_provenance = _build_country_source_provenance(
+            country_code=country_code,
+            insights=insights,
+            source_provenance_by_indicator=source_provenance_by_indicator,
         )
+        if country_source_provenance:
+            country_record["source_provenance"] = country_source_provenance
+        if ai_provenance and synthesis.get("summary"):
+            country_record["ai_provenance"] = copy.deepcopy(ai_provenance)
+
+        repo.upsert_country(country_record)
         country_writes += 1
 
-    logger.info("Stored %d indicator insights and %d country syntheses", indicator_writes, country_writes)
+    logger.info(
+        "Stored %d indicator insights, %d country syntheses, and %d raw payload archives for run %s",
+        indicator_writes,
+        country_writes,
+        len(archive_result.scope_references) + 1,
+        run_id,
+    )
     return {
         "indicator_records": indicator_writes,
         "country_records": country_writes,
+        "raw_archives_written": len(archive_result.scope_references) + 1,
     }
 
 
 def store_local_slice(
     insights: list[dict[str, Any]],
     country_syntheses: dict[str, dict[str, Any]],
+    raw_data_points: list[dict[str, Any]],
+    run_id: str,
+    ai_provenance: dict[str, Any] | None = None,
     repository: InsightsRepository | None = None,
+    raw_archive_store: RawArchiveStore | None = None,
 ) -> dict[str, int]:
     """Backward-compatible wrapper for the original local-slice storage call.
 
     Args:
         insights: Enriched per-indicator insight payloads.
         country_syntheses: Country synthesis payloads keyed by country code.
+        raw_data_points: Raw fetched payloads for the current run.
+        run_id: UUID v4 run identifier for durable provenance.
+        ai_provenance: Minimal AI provenance when available.
         repository: Shared repository instance.
+        raw_archive_store: Optional raw archive implementation override.
 
     Returns:
         Counts of indicator and country records written.
     """
-    return store_slice(insights, country_syntheses, repository)
+    return store_slice(
+        insights=insights,
+        country_syntheses=country_syntheses,
+        raw_data_points=raw_data_points,
+        run_id=run_id,
+        ai_provenance=ai_provenance,
+        repository=repository,
+        raw_archive_store=raw_archive_store,
+    )
 
 
 def store_insights(insights: list[dict[str, Any]], project_id: str) -> int:
@@ -131,9 +279,7 @@ def store_insights(insights: list[dict[str, Any]], project_id: str) -> int:
 
 
 def archive_raw_data(data: list[dict[str, Any]], project_id: str, bucket_name: str) -> str:
-    """Archive raw World Bank API responses to GCS.
-
-    Creates timestamped JSON blobs for audit trail and reproducibility.
+    """Backward-compatible helper for archiving one raw payload to GCS.
 
     Args:
         data: Raw API response data.
@@ -141,21 +287,167 @@ def archive_raw_data(data: list[dict[str, Any]], project_id: str, bucket_name: s
         bucket_name: GCS bucket name for raw data archival.
 
     Returns:
-        GCS blob path of the archived file.
+        Archive reference string.
     """
-    from google.cloud import storage
+    relative_path = (
+        f"runs/manual-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}/"
+        "raw/raw-data.json"
+    )
+    return GCSRawArchiveStore(project_id=project_id, bucket_name=bucket_name).archive_json(relative_path, data)
 
-    client = storage.Client(project=project_id)
-    bucket = client.bucket(bucket_name)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    blob_name = f"raw_data/{timestamp}.json"
-    blob = bucket.blob(blob_name)
+def archive_raw_payloads(
+    grouped_raw_payloads: dict[str, list[dict[str, Any]]],
+    run_id: str,
+    raw_archive_store: RawArchiveStore | None = None,
+) -> RawArchiveResult:
+    """Archive run-scoped raw payloads before processed persistence.
 
-    blob.upload_from_string(
-        json.dumps(data, indent=2),
-        content_type="application/json",
+    Args:
+        grouped_raw_payloads: Raw payloads keyed by fetch scope.
+        run_id: UUID v4 run identifier.
+        raw_archive_store: Optional raw archive implementation override.
+
+    Returns:
+        Archive references for each scope and the run manifest.
+    """
+    archive_store = raw_archive_store or get_raw_archive_store()
+    scope_references: dict[str, str] = {}
+    for scope_name, payload in grouped_raw_payloads.items():
+        scope_references[scope_name] = archive_store.archive_json(
+            _raw_archive_relative_path(run_id, scope_name),
+            payload,
+        )
+
+    manifest_payload = {
+        "run_id": run_id,
+        "archived_at": datetime.now(timezone.utc).isoformat(),
+        "scopes": scope_references,
+    }
+    manifest_reference = archive_store.archive_json(
+        _raw_archive_relative_path(run_id, RAW_ARCHIVE_MANIFEST_KEY),
+        manifest_payload,
+    )
+    return RawArchiveResult(
+        scope_references=scope_references,
+        manifest_reference=manifest_reference,
     )
 
-    logger.info("Archived raw data to gs://%s/%s", bucket_name, blob_name)
-    return f"gs://{bucket_name}/{blob_name}"
+
+def get_raw_archive_store() -> RawArchiveStore:
+    """Select the configured raw archive backend.
+
+    Returns:
+        Raw archive implementation.
+
+    Raises:
+        ValueError: If Firestore mode is enabled without a raw archive bucket, or if a
+            GCS bucket is configured without a project identifier.
+    """
+    if get_repository_backend() != "firestore":
+        return LocalRawArchiveStore()
+
+    bucket_name = os.environ.get("WORLD_ANALYST_RAW_ARCHIVE_BUCKET")
+    if not bucket_name:
+        raise ValueError(
+            "REPOSITORY_MODE=firestore requires WORLD_ANALYST_RAW_ARCHIVE_BUCKET "
+            "so durable records point at GCS raw archives"
+        )
+
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT_ID")
+    if not project_id:
+        raise ValueError(
+            "WORLD_ANALYST_RAW_ARCHIVE_BUCKET requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
+        )
+    return GCSRawArchiveStore(project_id=project_id, bucket_name=bucket_name)
+
+
+def _build_country_source_provenance(
+    country_code: str,
+    insights: list[dict[str, Any]],
+    source_provenance_by_indicator: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a country-level source provenance envelope.
+
+    Args:
+        country_code: ISO 3166-1 alpha-2 country code.
+        insights: Stored indicator insights for the run.
+        source_provenance_by_indicator: Source provenance keyed by indicator code.
+
+    Returns:
+        Country-level source provenance when available.
+    """
+    indicator_codes = sorted(
+        {
+            insight["indicator_code"]
+            for insight in insights
+            if insight.get("country_code", "").upper() == country_code.upper()
+        }
+    )
+    if not indicator_codes:
+        return {}
+
+    exemplar = next(
+        (
+            source_provenance_by_indicator[indicator_code]
+            for indicator_code in indicator_codes
+            if source_provenance_by_indicator.get(indicator_code)
+        ),
+        {},
+    )
+    country_provenance = {key: copy.deepcopy(value) for key, value in exemplar.items()}
+    country_provenance["indicator_codes"] = indicator_codes
+    return country_provenance
+
+
+def _build_source_provenance(raw_payload: list[dict[str, Any]]) -> dict[str, Any]:
+    """Extract persisted source provenance from one raw payload scope.
+
+    Args:
+        raw_payload: Raw payload for one scope.
+
+    Returns:
+        Source provenance dictionary.
+    """
+    if not raw_payload:
+        return {}
+
+    exemplar = raw_payload[0]
+    provenance: dict[str, Any] = {}
+    for field_name in ("source_name", "source_date_range", "source_last_updated", "source_id"):
+        field_value = exemplar.get(field_name)
+        if field_value is not None:
+            provenance[field_name] = field_value
+    return provenance
+
+
+def _group_raw_payloads_by_indicator(raw_data_points: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group raw fetched data by indicator code for run-scoped archival.
+
+    Args:
+        raw_data_points: Raw fetched data points for the run.
+
+    Returns:
+        Raw payloads keyed by indicator code.
+    """
+    grouped_payloads: dict[str, list[dict[str, Any]]] = {}
+    for data_point in raw_data_points:
+        indicator_code = data_point["indicator_code"]
+        grouped_payloads.setdefault(indicator_code, []).append(copy.deepcopy(data_point))
+
+    for payload in grouped_payloads.values():
+        payload.sort(key=lambda item: (item.get("country_code", ""), item.get("year", 0)))
+    return grouped_payloads
+
+
+def _raw_archive_relative_path(run_id: str, scope_name: str) -> str:
+    """Build the run-scoped relative archive path for one raw payload.
+
+    Args:
+        run_id: UUID v4 run identifier.
+        scope_name: Fetch scope or manifest key.
+
+    Returns:
+        Run-scoped relative archive path.
+    """
+    return f"runs/{run_id}/raw/{scope_name}.json"

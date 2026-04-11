@@ -100,6 +100,7 @@ def fetch_indicator(
                 logger.warning("No data returned for %s", indicator_code)
                 return []
 
+            metadata = data[0] if isinstance(data[0], dict) else {}
             results = []
             for entry in data[1]:
                 if entry.get("value") is not None:
@@ -113,6 +114,10 @@ def fetch_indicator(
                         ),
                         "year": int(entry["date"]),
                         "value": float(entry["value"]),
+                        "source_name": "world_bank_indicators_api",
+                        "source_date_range": date_range,
+                        "source_last_updated": metadata.get("lastupdated"),
+                        "source_id": metadata.get("sourceid"),
                     })
 
             logger.info(

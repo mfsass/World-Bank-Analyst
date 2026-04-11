@@ -8,6 +8,9 @@ from typing import Any
 class DeterministicDevelopmentAIClient:
     """Generate repeatable indicator and country narratives for local runs."""
 
+    _PROVIDER_NAME = "deterministic-development"
+    _MODEL_NAME = "local-fixture-v1"
+
     def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
         """Return deterministic per-indicator analysis.
 
@@ -87,6 +90,17 @@ class DeterministicDevelopmentAIClient:
             "summary": summary,
             "risk_flags": risk_flags,
             "outlook": outlook,
+        }
+
+    def get_provenance(self) -> dict[str, str]:
+        """Return the provider and model metadata for persisted AI provenance.
+
+        Returns:
+            Minimal AI provenance payload.
+        """
+        return {
+            "provider": self._PROVIDER_NAME,
+            "model": self._MODEL_NAME,
         }
 
 

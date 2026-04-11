@@ -6,6 +6,8 @@ from typing import Any
 
 LOCAL_TARGET_COUNTRY = "ZA"
 LOCAL_TARGET_COUNTRY_NAME = "South Africa"
+LOCAL_SOURCE_NAME = "world_analyst_local_fixture"
+LOCAL_SOURCE_DATE_RANGE = "2017:2023"
 
 _LOCAL_DATA_BY_INDICATOR: dict[str, list[tuple[int, float]]] = {
     "NY.GDP.MKTP.CD": [
@@ -102,6 +104,8 @@ def load_local_data_points(country_code: str = LOCAL_TARGET_COUNTRY) -> list[dic
                     "indicator_name": _INDICATOR_NAMES[indicator_code],
                     "year": year,
                     "value": value,
+                    "source_name": LOCAL_SOURCE_NAME,
+                    "source_date_range": LOCAL_SOURCE_DATE_RANGE,
                 }
             )
 
