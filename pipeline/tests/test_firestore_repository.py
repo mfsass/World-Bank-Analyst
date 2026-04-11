@@ -7,6 +7,7 @@ import copy
 import pytest
 
 from shared.firestore_repository import FirestoreInsightsRepository
+from shared.repository import get_repository_backend, reset_repository_cache
 
 
 class FakeDocumentSnapshot:
@@ -94,9 +95,18 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
     repository.upsert_pipeline_status(
         {
             "status": "complete",
+            "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
             "started_at": "2026-04-09T12:00:00+00:00",
             "completed_at": "2026-04-09T12:00:05+00:00",
-            "steps": [{"name": "store", "status": "complete", "duration_ms": 42}],
+            "steps": [
+                {
+                    "name": "store",
+                    "status": "complete",
+                    "duration_ms": 42,
+                    "started_at": "2026-04-09T12:00:04+00:00",
+                    "completed_at": "2026-04-09T12:00:05+00:00",
+                }
+            ],
         }
     )
     repository.upsert_indicator(
@@ -111,6 +121,13 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "ai_analysis": "Growth has slowed materially.",
             "data_year": 2024,
             "updated_at": "2026-04-09T12:00:05+00:00",
+            "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
+            "raw_backup_reference": "gs://world-analyst-raw/runs/f9710a31-8f35-43d0-b75e-78054470ab80/raw/NY.GDP.MKTP.KD.ZG.json",
+            "source_provenance": {
+                "source_name": "world_bank_indicators_api",
+                "source_date_range": "2017:2023",
+            },
+            "ai_provenance": {"provider": "google-genai", "model": "gemma-4-31b-it"},
         }
     )
     repository.upsert_country(
@@ -123,6 +140,14 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "risk_flags": ["Growth is weak", "Inflation is sticky"],
             "outlook": "cautious",
             "updated_at": "2026-04-09T12:00:05+00:00",
+            "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
+            "raw_backup_reference": "gs://world-analyst-raw/runs/f9710a31-8f35-43d0-b75e-78054470ab80/raw/manifest.json",
+            "source_provenance": {
+                "source_name": "world_bank_indicators_api",
+                "source_date_range": "2017:2023",
+                "indicator_codes": ["NY.GDP.MKTP.KD.ZG"],
+            },
+            "ai_provenance": {"provider": "google-genai", "model": "gemma-4-31b-it"},
         }
     )
 
@@ -130,11 +155,17 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
     detail = repository.get_country_detail("ZA")
 
     assert status["status"] == "complete"
+    assert "run_id" not in status
     assert detail is not None
     assert detail["code"] == "ZA"
     assert detail["macro_synthesis"] == "The macro picture remains fragile."
     assert len(detail["indicators"]) == 1
     assert detail["indicators"][0]["country_code"] == "ZA"
+    assert "run_id" not in detail
+    assert "raw_backup_reference" not in detail
+    assert "source_provenance" not in detail["indicators"][0]
+    assert client.store["indicator:ZA:NY.GDP.MKTP.KD.ZG"]["run_id"] == "f9710a31-8f35-43d0-b75e-78054470ab80"
+    assert client.store["country:ZA"]["raw_backup_reference"].endswith("/manifest.json")
 
 
 def test_firestore_repository_reset_restores_idle_status() -> None:
@@ -174,3 +205,50 @@ def test_firestore_repository_rejects_missing_required_fields() -> None:
                 "data_year": 2024,
             }
         )
+
+
+def test_repository_backend_alias_remains_backward_compatible(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The legacy storage env var should still work when REPOSITORY_MODE is unset."""
+    monkeypatch.delenv("REPOSITORY_MODE", raising=False)
+    monkeypatch.setenv("WORLD_ANALYST_STORAGE_BACKEND", "local")
+    reset_repository_cache()
+
+    assert get_repository_backend() == "local"
+
+
+def test_firestore_status_write_clears_stale_failure_fields() -> None:
+    """A successful status rewrite should remove stale failure detail in Firestore mode."""
+    client = FakeFirestoreClient()
+    repository = FirestoreInsightsRepository(project_id="test-project", client=client)
+
+    repository.upsert_pipeline_status(
+        {
+            "status": "failed",
+            "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
+            "started_at": "2026-04-09T12:00:00+00:00",
+            "completed_at": "2026-04-09T12:00:05+00:00",
+            "steps": [{"name": "synthesise", "status": "failed"}],
+            "error": "Synthetic failure",
+            "failure_summary": {
+                "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
+                "step": "synthesise",
+                "message": "Synthetic failure",
+            },
+        }
+    )
+
+    repository.upsert_pipeline_status(
+        {
+            "status": "complete",
+            "run_id": "3b8e29c7-0b6b-4cdd-a36e-453403ce3c26",
+            "started_at": "2026-04-09T12:10:00+00:00",
+            "completed_at": "2026-04-09T12:10:05+00:00",
+            "steps": [{"name": "store", "status": "complete"}],
+        }
+    )
+
+    stored_status = repository.get_pipeline_status_record()
+
+    assert stored_status["status"] == "complete"
+    assert "error" not in stored_status
+    assert "failure_summary" not in stored_status

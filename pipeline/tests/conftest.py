@@ -14,12 +14,16 @@ for path in (REPO_ROOT, PIPELINE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from shared.repository import get_repository, reset_repository_cache
+from shared.repository import get_repository, reset_repository_cache  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def reset_repository() -> None:
+def reset_repository(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Reset the shared repository between tests."""
+    monkeypatch.setenv("WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR", str(tmp_path / "raw-archives"))
+    monkeypatch.delenv("REPOSITORY_MODE", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_STORAGE_BACKEND", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_RAW_ARCHIVE_BUCKET", raising=False)
     reset_repository_cache()
     repository = get_repository()
     repository.reset()
