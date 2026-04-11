@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deriveCoverageBoard,
+  deriveRegionalBreakdown,
   deriveOverviewMetrics,
   getOutlookTone,
   getSignalTone,
@@ -48,4 +50,50 @@ test("overview mapping counts only confirmed briefings and applies finance tones
   assert.equal(getSignalTone("GC.DOD.TOTL.GD.ZS", -1.2), "text-success");
   assert.equal(getOutlookTone("cautious"), "warning");
   assert.equal(getOutlookTone("bearish"), "critical");
+});
+
+test("regional breakdown reports monitored and materialised coverage by region", () => {
+  const regions = deriveRegionalBreakdown(
+    [
+      { code: "ZA", region: "Sub-Saharan Africa" },
+      { code: "NG", region: "Sub-Saharan Africa" },
+      { code: "DE", region: "Europe & Central Asia" },
+    ],
+    [
+      { code: "ZA", outlook: "cautious" },
+      { code: "DE", outlook: "bullish" },
+    ],
+  );
+
+  assert.equal(regions[0].region, "Sub-Saharan Africa");
+  assert.equal(regions[0].monitoredCount, 2);
+  assert.equal(regions[0].materialisedCount, 1);
+  assert.equal(regions[0].tone, "warning");
+  assert.equal(regions[0].summary, "1/2 live briefings");
+  assert.equal(regions[1].region, "Europe & Central Asia");
+  assert.equal(regions[1].tone, "success");
+});
+
+test("coverage board retains every monitored market without fabricating map state", () => {
+  const markets = deriveCoverageBoard(
+    [
+      { code: "ZA", name: "South Africa", region: "Sub-Saharan Africa" },
+      { code: "NG", name: "Nigeria", region: "Sub-Saharan Africa" },
+      { code: "DE", name: "Germany", region: "Europe & Central Asia" },
+    ],
+    [
+      { code: "ZA", outlook: "cautious" },
+      { code: "DE", outlook: "bullish" },
+    ],
+    "ZA",
+  );
+
+  assert.equal(markets.length, 3);
+  assert.equal(markets[0].code, "ZA");
+  assert.equal(markets[0].statusLabel, "Live");
+  assert.equal(markets[0].tone, "warning");
+  assert.equal(markets[0].isFeatured, true);
+  assert.equal(markets[1].statusLabel, "Pending");
+  assert.equal(markets[1].tone, "neutral");
+  assert.equal(markets[2].href, "/country/de");
 });
