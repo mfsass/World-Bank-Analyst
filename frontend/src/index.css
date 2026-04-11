@@ -27,6 +27,7 @@
   /* Accent & Semantic Colors */
   --color-accent: #FF4500;        /* International Orange — AI + CTA only */
   --color-accent-hover: #E63E00;  /* Darkened accent for hover states */
+  --color-accent-active: #CC3700;   /* Active accent for primary buttons */
   --color-accent-subtle: rgba(255, 69, 0, 0.05); /* 5% accent tint for active bg */
   --color-success: #22C55E;       /* Positive trends, operational */
   --color-warning: #F59E0B;       /* Caution indicators */
@@ -209,16 +210,18 @@ a {
   cursor: pointer;
   transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
-.btn-primary:hover {
-  background: var(--color-accent-hover);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover {
+    background: var(--color-accent-hover);
+    transform: translateY(-1px);
+  }
 }
 .btn-primary:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 .btn-primary:active {
-  background: #CC3700;
+  background: var(--color-accent-active);
   transform: translateY(0) scale(0.98);
 }
 .btn-primary:disabled {
@@ -244,10 +247,12 @@ a {
   cursor: pointer;
   transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 }
-.btn-ghost:hover {
-  border-color: var(--color-text-secondary);
-  background: var(--surface-nested);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .btn-ghost:hover {
+    border-color: var(--color-text-secondary);
+    background: var(--surface-nested);
+    transform: translateY(-1px);
+  }
 }
 .btn-ghost:focus-visible {
   outline: 2px solid var(--color-text-primary);
@@ -649,8 +654,10 @@ a {
   border-bottom: 2px solid transparent;
 }
 
-.shell-nav__link:hover {
-  color: var(--color-text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .shell-nav__link:hover {
+    color: var(--color-text-primary);
+  }
 }
 
 .shell-nav__link--active {
@@ -674,9 +681,11 @@ a {
   padding: 0;
   transition: transform var(--transition-fast), color var(--transition-fast);
 }
-.shell-topbar__icon-btn:hover {
-  color: var(--color-text-primary);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .shell-topbar__icon-btn:hover {
+    color: var(--color-text-primary);
+    transform: translateY(-1px);
+  }
 }
 .shell-topbar__icon-btn:active {
   transform: translateY(0) scale(0.95);
@@ -1282,9 +1291,11 @@ a {
   cursor: pointer;
 }
 
-.market-switcher__pill:hover {
-  color: var(--color-text-primary);
-  border-color: var(--color-accent);
+@media (hover: hover) and (pointer: fine) {
+  .market-switcher__pill:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-accent);
+  }
 }
 
 .market-switcher__pill--active {
@@ -1350,19 +1361,51 @@ a {
 .overview-map-surface {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
   overflow: hidden;
   border: var(--border-structural);
   border-radius: var(--radius);
   background: var(--surface-canvas);
+  cursor: default;
 }
 
 .overview-map-surface__image {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.52;
-  filter: grayscale(100%);
+  opacity: 0.32;
+  filter: grayscale(100%) contrast(0.85) brightness(0.72);
+}
+
+/* Inner canvas — clips the SVG to rounded edges without cutting the tooltip */
+.overview-map-surface__canvas {
+  position: relative;
+  /* aspect ratio must match SVG viewBox (800 × 420 = 40:21) so the projected
+     percentage coordinates map exactly to CSS percentages without letterboxing */
+  aspect-ratio: 40 / 21;
+  overflow: hidden;
+  border: var(--border-structural);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+}
+
+.overview-map-surface__canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 30%, var(--surface-canvas) 100%);
+}
+
+.overview-map-surface__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.overview-map-surface__land {
+  fill: var(--surface-canvas);
+  stroke: var(--color-border);
+  stroke-width: 0.75;
 }
 
 .overview-map-surface__markers {
@@ -1374,109 +1417,147 @@ a {
 .overview-map-marker {
   position: absolute;
   pointer-events: auto;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  outline: none;
+}
+
+@keyframes map-marker-ping {
+  0% {
+    transform: scale(1);
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2.8);
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0;
+  }
+}
+
+.overview-map-marker__pulse {
+  fill: none;
+  stroke: var(--color-text-primary);
+  stroke-width: 1.5;
+  animation: map-marker-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  pointer-events: none;
 }
 
 .overview-map-marker__dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  opacity: 0.6;
+  fill: var(--surface-canvas);
+  stroke: var(--color-border);
+  stroke-width: 1;
+  transition: stroke var(--transition-fast), transform var(--transition-fast);
 }
 
-.overview-map-marker__dot--featured {
-  width: 14px;
-  height: 14px;
-  opacity: 1;
-  border: 1px solid white;
-  animation: pulse-dot 2s ease-in-out infinite;
-  cursor: pointer;
+.overview-map-marker__dot-core {
+  fill: var(--color-text-secondary);
 }
 
-/* Map tooltip — visible for featured market */
-.map-tooltip {
+.overview-map-marker__dot--selected {
+  stroke: var(--color-text-primary);
+  transform: scale(1.15);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.overview-map-marker:focus-visible .overview-map-marker__dot,
+.overview-map-marker:hover .overview-map-marker__dot {
+  stroke: var(--color-text-primary);
+}
+
+.overview-map-marker__dot--pending {
+  fill: var(--color-text-secondary);
+}
+
+.overview-map-marker__dot--neutral {
+  fill: var(--color-text-primary);
+}
+
+.overview-map-marker__dot--success {
+  fill: var(--color-success);
+}
+
+.overview-map-marker__dot--warning {
+  fill: var(--color-warning);
+}
+
+.overview-map-marker__dot--critical {
+  fill: var(--color-critical);
+}
+
+.overview-map-tooltip {
   position: absolute;
-  bottom: calc(100% + var(--space-2));
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface-popover);
-  border: 1px solid var(--color-accent);
-  padding: var(--space-3);
-  width: 160px;
+  /* tooltip positioned by inline style (left/top from projection) */
+  /* translate: center horizontally, sit fully above the dot with a gap */
+  transform: translate(-50%, calc(-100% - 14px));
   z-index: 10;
-}
-
-.map-tooltip__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-1);
-  gap: var(--space-3);
-}
-
-.map-tooltip__market {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.map-tooltip__flag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 14px;
+  min-width: 180px;
+  max-width: 240px;
+  padding: var(--space-3) var(--space-4);
   border: var(--border-structural);
   border-radius: var(--radius);
-  overflow: hidden;
-  flex: none;
+  background: var(--surface-popover);
+  pointer-events: auto;
+  /* pop-in animation */
+  animation: tooltip-in 0.15s ease-out both;
 }
 
-.map-tooltip__name {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 700;
-  text-transform: uppercase;
+.overview-map-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--surface-popover);
+  border-right: var(--border-structural);
+  border-bottom: var(--border-structural);
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% - 18px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, calc(-100% - 14px));
+  }
+}
+
+.overview-map-tooltip__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+
+.overview-map-tooltip__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
-.map-tooltip__metric {
-  font-family: var(--font-mono);
+.overview-map-tooltip__name {
+  font-family: var(--font-sans);
   font-size: 0.875rem;
-  margin-top: var(--space-1);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.map-tooltip__divider {
-  height: 1px;
-  background: var(--color-border);
-  width: 100%;
-  margin: var(--space-2) 0;
+.overview-map-tooltip__link {
+  display: inline-block;
 }
-
-.map-tooltip__sentiment {
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-}
-
-/* Marker positions — approximate geographic */
-.overview-map-marker--za { top: 60%; left: 51%; }
-.overview-map-marker--ng { top: 45%; left: 18%; }
-.overview-map-marker--ke { top: 48%; left: 56%; }
-.overview-map-marker--eg { top: 30%; left: 48%; }
-.overview-map-marker--gh { top: 45%; left: 14%; }
-.overview-map-marker--et { top: 42%; left: 55%; }
-.overview-map-marker--ma { top: 28%; left: 14%; }
-.overview-map-marker--de { top: 22%; left: 42%; }
-.overview-map-marker--fr { top: 25%; left: 38%; }
-.overview-map-marker--br { top: 55%; left: 30%; }
-.overview-map-marker--in { top: 35%; left: 70%; }
-.overview-map-marker--cn { top: 28%; left: 78%; }
-.overview-map-marker--us { top: 30%; left: 22%; }
-.overview-map-marker--gb { top: 20%; left: 38%; }
-.overview-map-marker--jp { top: 28%; left: 85%; }
 
 /* --------------------------------------------------------------------------
    Country Table — Regional Breakdown
@@ -1594,8 +1675,10 @@ a {
   border-radius: var(--radius);
 }
 
-.market-card:hover {
-  border-color: var(--color-accent);
+@media (hover: hover) and (pointer: fine) {
+  .market-card:hover {
+    border-color: var(--color-accent);
+  }
 }
 
 .market-card__header {
@@ -2274,9 +2357,11 @@ a {
   transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.shell-command-link:hover {
-  color: var(--color-text-primary);
-  border-color: var(--color-text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .shell-command-link:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-primary);
+  }
 }
 
 .shell-command-link:focus-visible {
@@ -2396,69 +2481,17 @@ a {
   cursor: pointer;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .map-marker-btn:hover .overview-map-marker__dot {
+    border-color: var(--color-text-secondary);
+    transform: scale(1.1);
+  }
+}
+
 .map-marker-btn:focus-visible {
   outline: 1px solid var(--color-text-primary);
   outline-offset: 2px;
   border-radius: var(--radius);
-}
-
-.overview-map-marker__dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--surface-canvas);
-  border: 1px solid var(--color-border);
-  opacity: 1;
-  transition: border-color var(--transition-fast), transform var(--transition-fast);
-}
-
-.overview-map-marker__dot-core {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-text-secondary);
-}
-
-.overview-map-marker__dot--selected {
-  border-color: var(--color-text-primary);
-  transform: scale(1.1);
-}
-
-.overview-map-marker__dot--pending {
-  background: var(--color-text-secondary);
-}
-
-.overview-map-marker__dot--neutral {
-  background: var(--color-text-primary);
-}
-
-.overview-map-marker__dot--success {
-  background: var(--color-success);
-}
-
-.overview-map-marker__dot--warning {
-  background: var(--color-warning);
-}
-
-.overview-map-marker__dot--critical {
-  background: var(--color-critical);
-}
-
-.overview-map-surface {
-  aspect-ratio: 15 / 9;
-  background: var(--surface-card);
-}
-
-.overview-map-surface__image {
-  opacity: 0.32;
-  filter: grayscale(100%) contrast(0.85) brightness(0.72);
-}
-
-.overview-map-marker {
-  transform: translate(-50%, -50%);
 }
 
 .overview-map-popover {
@@ -2490,16 +2523,21 @@ a {
   justify-content: flex-start;
 }
 
+@keyframes radar-ping {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
 .overview-main-grid {
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
 }
 
 .overview-depth-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .overview-hero-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
 }
 
 .overview-context-market {
@@ -2556,10 +2594,12 @@ a {
   transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.overview-market-command:hover,
-.overview-market-command--active {
-  color: var(--color-text-primary);
-  border-color: var(--color-text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .overview-market-command:hover,
+  .overview-market-command--active {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-primary);
+  }
 }
 
 .overview-market-command__status {
@@ -2588,14 +2628,17 @@ a {
   text-transform: none;
 }
 
-.market-card:hover {
-  border-color: var(--color-text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .market-card:hover {
+    border-color: var(--color-text-primary);
+  }
 }
 
 .market-card__insight {
   font-style: normal;
   color: var(--color-text-secondary);
   display: -webkit-box;
+  line-clamp: 4;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -2779,3 +2822,13 @@ a {
   }
 }
 
+
+
+.shell-command-link:active {
+  transform: scale(0.98);
+}
+
+
+.shell-nav__link:active {
+  transform: scale(0.98);
+}

@@ -486,7 +486,7 @@ export function GlobalOverview() {
                   >
                     <button
                       className="map-marker-btn"
-                      aria-label={`Focus ${country.name} market`}
+                      aria-label={`Focus ${country.name} market on world map`}
                       aria-pressed={country.code === selectedMapCountry}
                       onClick={() => toggleMapFocus(country.code)}
                       title={`View ${country.name}`}

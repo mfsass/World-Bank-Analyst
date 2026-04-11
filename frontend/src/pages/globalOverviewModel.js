@@ -1,4 +1,5 @@
-export const TARGET_COUNTRY = "ZA";
+// First country in the 17-country exact-complete panel (ADR-041).
+export const TARGET_COUNTRY = "BR";
 
 export const SIGNAL_PRIORITY = [
   "NY.GDP.MKTP.KD.ZG",

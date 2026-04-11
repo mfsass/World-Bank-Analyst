@@ -69,7 +69,7 @@ function LoadingSwitcher() {
 
 function CountryIntelligence() {
   const { id } = useParams();
-  const countryCode = (id || "za").toUpperCase();
+  const countryCode = (id || "br").toUpperCase();
   const [country, setCountry] = useState(null);
   const [countries, setCountries] = useState([]);
   const [viewState, setViewState] = useState("loading");

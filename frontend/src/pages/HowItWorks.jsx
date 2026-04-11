@@ -136,7 +136,7 @@ export function HowItWorks() {
           </div>
           <pre className="architecture-code-block mt-4">
             {`{
-  "country_code": "ZA",
+  "country_code": "BR",
   "indicator_code": "FP.CPI.TOTL.ZG",
   "year": 2023,
   "latest_value": 5.9,
@@ -154,7 +154,7 @@ export function HowItWorks() {
         >
           <pre className="architecture-code-block">
             {`{
-  "code": "ZA",
+  "code": "BR",
   "macro_synthesis": "Inflation remains elevated...",
   "outlook": "cautious",
   "risk_flags": [

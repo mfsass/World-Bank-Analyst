@@ -7,7 +7,8 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { apiRequest } from "../api";
 
-const TARGET_COUNTRY = "ZA";
+// Default deep-link target after a successful run — first country in the monitored panel.
+const TARGET_COUNTRY = "BR";
 const DEFAULT_STEPS = [
   { name: "fetch", status: "pending" },
   { name: "analyse", status: "pending" },
@@ -146,7 +147,8 @@ function buildTerminalLines(status) {
   }
 
   const lines = [
-    `> TARGET COUNTRY: ${TARGET_COUNTRY}`,
+    "> TARGET SCOPE: 17-COUNTRY PANEL",
+    `> DEFAULT OPEN MARKET: ${TARGET_COUNTRY}`,
     `> STATUS: ${status.status.toUpperCase()}`,
   ];
 
@@ -274,7 +276,7 @@ export function PipelineTrigger() {
             >
               {status?.status === "running"
                 ? "Pipeline running"
-                : "Run ZA pipeline"}
+                : "Run pipeline"}
             </button>
             <button
               className="shell-command-link"
@@ -284,7 +286,7 @@ export function PipelineTrigger() {
               }
               disabled={!pipelineReady}
             >
-              Open ZA briefing
+              Open lead market
             </button>
           </div>
         }
@@ -325,11 +327,11 @@ export function PipelineTrigger() {
           value={completedSteps}
         />
         <KpiCard
-          freshness="SOUTH AFRICA IN CURRENT RUN"
+          freshness="17-COUNTRY PANEL ACTIVE"
           label="Current Scope"
-          status="Bounded"
-          statusTone="warning"
-          value="1 MARKET"
+          status="Live panel"
+          statusTone="success"
+          value="17 MARKETS"
         />
       </section>
 

@@ -11,7 +11,7 @@ vi.mock("../src/api", () => ({
   apiRequest: vi.fn(),
 }));
 
-function renderPage(initialEntry = "/country/za") {
+function renderPage(initialEntry = "/country/br") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
@@ -34,7 +34,7 @@ describe("CountryIntelligence", () => {
 
     expect(screen.getByText("Global Overview")).toBeInTheDocument();
     expect(screen.getByText("Switch market")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "ZA" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "BR" })).toBeInTheDocument();
     expect(container.querySelector(".flag-frame--placeholder")).toBeTruthy();
   });
 
@@ -42,16 +42,16 @@ describe("CountryIntelligence", () => {
     apiRequest.mockImplementation((path) => {
       if (path === "/countries") {
         return Promise.resolve([
-          { code: "ZA", name: "South Africa" },
-          { code: "NG", name: "Nigeria" },
+          { code: "BR", name: "Brazil" },
+          { code: "US", name: "United States" },
         ]);
       }
 
-      if (path === "/countries/ZA") {
+      if (path === "/countries/BR") {
         return Promise.resolve({
-          code: "ZA",
-          name: "South Africa",
-          region: "Sub-Saharan Africa",
+          code: "BR",
+          name: "Brazil",
+          region: "Latin America & Caribbean",
           income_level: "Upper middle income",
           outlook: "cautious",
           macro_synthesis: "Inflation remains elevated while growth is subdued.",
@@ -103,7 +103,7 @@ describe("CountryIntelligence", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", { name: "South Africa", level: 1 }),
+      await screen.findByRole("heading", { name: "Brazil", level: 1 }),
     ).toBeInTheDocument();
 
     const briefingHeading = screen.getByRole("heading", {
@@ -116,6 +116,6 @@ describe("CountryIntelligence", () => {
       briefingHeading.compareDocumentPosition(postureLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByRole("link", { name: "NG" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "US" })).toBeInTheDocument();
   });
 });

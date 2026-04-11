@@ -36,14 +36,14 @@ describe("GlobalOverview", () => {
       if (path === "/countries") {
         return Promise.resolve([
           {
-            code: "ZA",
-            name: "South Africa",
-            region: "Sub-Saharan Africa",
+            code: "BR",
+            name: "Brazil",
+            region: "Latin America & Caribbean",
           },
           {
-            code: "NG",
-            name: "Nigeria",
-            region: "Sub-Saharan Africa",
+            code: "US",
+            name: "United States",
+            region: "North America",
           },
         ]);
       }
@@ -51,7 +51,7 @@ describe("GlobalOverview", () => {
       if (path === "/indicators") {
         return Promise.resolve([
           {
-            country_code: "ZA",
+            country_code: "BR",
             indicator_code: "NY.GDP.MKTP.KD.ZG",
             latest_value: 0.6,
             percent_change: -1.3,
@@ -59,7 +59,7 @@ describe("GlobalOverview", () => {
             is_anomaly: false,
           },
           {
-            country_code: "NG",
+            country_code: "US",
             indicator_code: "NY.GDP.MKTP.KD.ZG",
             latest_value: 3.1,
             percent_change: 0.8,
@@ -69,11 +69,11 @@ describe("GlobalOverview", () => {
         ]);
       }
 
-      if (path === "/countries/ZA") {
+      if (path === "/countries/BR") {
         return Promise.resolve({
-          code: "ZA",
-          name: "South Africa",
-          region: "Sub-Saharan Africa",
+          code: "BR",
+          name: "Brazil",
+          region: "Latin America & Caribbean",
           outlook: "cautious",
           macro_synthesis: "Growth remains weak while inflation pressure persists.",
           indicators: [
@@ -99,11 +99,11 @@ describe("GlobalOverview", () => {
         });
       }
 
-      if (path === "/countries/NG") {
+      if (path === "/countries/US") {
         return Promise.resolve({
-          code: "NG",
-          name: "Nigeria",
-          region: "Sub-Saharan Africa",
+          code: "US",
+          name: "United States",
+          region: "North America",
           outlook: "bullish",
           macro_synthesis: "Growth is recovering with firmer domestic momentum.",
           indicators: [
@@ -142,20 +142,26 @@ describe("GlobalOverview", () => {
       screen.queryByRole("button", { name: "Open pipeline" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Focus Nigeria market" }));
+    expect(screen.getByAltText("World coverage map")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Focus United States market on world map" }),
+    );
 
     expect(screen.getByText("Map focus")).toBeInTheDocument();
     expect(screen.getByText("Focused market")).toBeInTheDocument();
-    expect(screen.getAllByText("Nigeria").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("United States").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("link", { name: "Open country intelligence" }),
-    ).toHaveAttribute("href", "/country/ng");
+    ).toHaveAttribute("href", "/country/us");
     expect(screen.getByRole("link", { name: "Open market" })).toHaveAttribute(
       "href",
-      "/country/ng",
+      "/country/us",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Focus Nigeria market" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Focus United States market on world map" }),
+    );
 
     expect(screen.queryByText("Map focus")).not.toBeInTheDocument();
   });
