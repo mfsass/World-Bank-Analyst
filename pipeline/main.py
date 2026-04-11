@@ -20,8 +20,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from pipeline.analyser import compute_changes, prepare_llm_context  # noqa: E402
 from pipeline.dev_ai_adapter import create_development_client  # noqa: E402
+from pipeline.fetcher import INDICATORS, WorldBankFetchError, fetch_live_data  # noqa: E402
 from pipeline.local_data import LOCAL_TARGET_COUNTRY, load_local_data_points  # noqa: E402
 from pipeline.storage import RawArchiveStore, store_slice  # noqa: E402
+from shared.country_catalog import MONITORED_COUNTRY_CODES  # noqa: E402
 from shared.repository import InsightsRepository, get_repository  # noqa: E402
 
 logging.basicConfig(
@@ -65,50 +67,75 @@ def run_pipeline(
     run_id: str | None = None,
     raw_archive_store: RawArchiveStore | None = None,
 ) -> dict[str, Any]:
-    """Execute the local first-slice pipeline.
+    """Execute the current pipeline slice for local or live data modes.
 
-    The current implementation keeps deterministic local data and AI output,
-    but writes through the configured repository backend so API reads can move
-    from process-local state to Firestore without changing payload shape.
+    Local mode keeps deterministic fixture data for tests and development.
+    Live mode fetches the canonical monitored-country set while preserving the
+    same downstream analysis and storage contracts.
 
     Returns:
         Pipeline execution summary dict.
     """
-    runtime_mode = os.environ.get("PIPELINE_MODE", "local")
+    runtime_mode = _resolve_pipeline_mode()
     repo = repository or get_repository()
     normalized_country_code = country_code.upper()
     current_run_id = run_id or str(uuid4())
-
-    if runtime_mode != "local":
-        _log_event(
-            logging.WARNING,
-            "pipeline_mode_fallback",
-            requested_mode=runtime_mode,
-            run_id=current_run_id,
-        )
+    target_country_codes = [normalized_country_code]
 
     _log_event(
         logging.INFO,
         "pipeline_run_started",
         run_id=current_run_id,
-        mode="local",
-        country_code=normalized_country_code,
+        mode=runtime_mode,
+        requested_country_code=normalized_country_code,
     )
 
     # Step 1: FETCH
     _notify_step(step_callback, "fetch", "running")
     try:
-        all_data_points = load_local_data_points(normalized_country_code)
+        target_country_codes = _resolve_target_country_codes(
+            runtime_mode=runtime_mode,
+            requested_country_code=normalized_country_code,
+        )
+        all_data_points, raw_fetch_payloads, fetch_failures = _fetch_pipeline_data(
+            runtime_mode=runtime_mode,
+            country_codes=target_country_codes,
+            run_id=current_run_id,
+        )
+    except WorldBankFetchError as exc:
+        raise PipelineExecutionError(
+            step_name="fetch",
+            message=str(exc),
+            country_codes=exc.country_codes or target_country_codes,
+            indicator_codes=[exc.indicator_code] if exc.indicator_code else None,
+        ) from exc
     except Exception as exc:
         raise PipelineExecutionError(
             step_name="fetch",
             message=str(exc),
-            country_codes=[normalized_country_code],
+            country_codes=target_country_codes,
         ) from exc
+    if not all_data_points:
+        failure_message = _build_live_failure_message(
+            run_id=current_run_id,
+            country_codes=target_country_codes,
+            fetch_failures=fetch_failures,
+        )
+        raise PipelineExecutionError(
+            step_name="fetch",
+            message=failure_message or (
+                f"run_id={current_run_id} mode={runtime_mode} returned no usable data "
+                f"for {_build_country_scope_label(target_country_codes)}"
+            ),
+            country_codes=_get_failure_country_codes(fetch_failures) or target_country_codes,
+            indicator_codes=_get_failure_indicator_codes(fetch_failures),
+        )
     _log_event(
         logging.INFO,
         "pipeline_fetch_complete",
         run_id=current_run_id,
+        mode=runtime_mode,
+        country_codes=target_country_codes,
         data_points_fetched=len(all_data_points),
     )
     _notify_step(step_callback, "fetch", "complete")
@@ -122,7 +149,7 @@ def run_pipeline(
         raise PipelineExecutionError(
             step_name="analyse",
             message=str(exc),
-            country_codes=[normalized_country_code],
+            country_codes=_get_country_codes_from_records(all_data_points) or target_country_codes,
         ) from exc
     _log_event(
         logging.INFO,
@@ -187,6 +214,7 @@ def run_pipeline(
             insights=llm_contexts,
             country_syntheses=country_syntheses,
             raw_data_points=all_data_points,
+            raw_fetch_payloads=raw_fetch_payloads,
             run_id=current_run_id,
             ai_provenance=ai_provenance,
             repository=repo,
@@ -196,7 +224,7 @@ def run_pipeline(
         raise PipelineExecutionError(
             step_name="store",
             message=str(exc),
-            country_codes=[normalized_country_code],
+            country_codes=_get_country_codes_from_records(llm_contexts) or target_country_codes,
             indicator_codes=[context["indicator_code"] for context in llm_contexts],
         ) from exc
     _notify_step(step_callback, "store", "complete")
@@ -209,6 +237,27 @@ def run_pipeline(
         "anomalies_detected": sum(1 for c in llm_contexts if c.get("is_anomaly")),
         **storage_summary,
     }
+    if runtime_mode == "live" and fetch_failures:
+        incomplete_coverage_message = _build_live_failure_message(
+            run_id=current_run_id,
+            country_codes=target_country_codes,
+            fetch_failures=fetch_failures,
+        )
+        _log_event(
+            logging.WARNING,
+            "pipeline_live_fetch_incomplete",
+            run_id=current_run_id,
+            requested_country_codes=target_country_codes,
+            country_codes=_get_failure_country_codes(fetch_failures),
+            indicator_codes=_get_failure_indicator_codes(fetch_failures),
+            failures=[str(failure) for failure in fetch_failures],
+        )
+        raise PipelineExecutionError(
+            step_name="fetch",
+            message=incomplete_coverage_message,
+            country_codes=_get_failure_country_codes(fetch_failures) or target_country_codes,
+            indicator_codes=_get_failure_indicator_codes(fetch_failures),
+        )
     _log_event(logging.INFO, "pipeline_run_complete", run_id=current_run_id, summary=summary)
     return summary
 
@@ -223,6 +272,174 @@ def _notify_step(step_callback: StepCallback | None, name: str, status: str) -> 
     """
     if step_callback is not None:
         step_callback(name, status)
+
+
+def _resolve_pipeline_mode() -> str:
+    """Resolve the configured pipeline runtime mode.
+
+    Returns:
+        Supported runtime mode name.
+    """
+    # Default to "live" so deployed Cloud Run Jobs run the real fetch path without
+    # requiring an explicit env var. Set PIPELINE_MODE=local to use the ZA fixture
+    # for local development or deterministic CI runs.
+    requested_mode = os.environ.get("PIPELINE_MODE", "live").lower()
+    if requested_mode in {"local", "live"}:
+        return requested_mode
+
+    _log_event(logging.WARNING, "pipeline_mode_fallback", requested_mode=requested_mode)
+    return "live"
+
+
+def _fetch_pipeline_data(
+    runtime_mode: str,
+    country_codes: list[str],
+    run_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[WorldBankFetchError]]:
+    """Load the pipeline input data for the selected runtime mode.
+
+    Args:
+        runtime_mode: Selected pipeline mode.
+        country_codes: ISO 3166-1 alpha-2 country codes in scope.
+        run_id: Pipeline run identifier.
+
+    Returns:
+        Normalized data points, optional raw fetch payloads, and live fetch failures.
+    """
+    if runtime_mode == "live":
+        live_fetch = fetch_live_data(country_codes=country_codes, run_id=run_id)
+        return live_fetch.data_points, live_fetch.raw_payloads, list(live_fetch.failures)
+
+    return load_local_data_points(country_codes[0]), None, []
+
+
+def _resolve_target_country_codes(
+    runtime_mode: str,
+    requested_country_code: str,
+) -> list[str]:
+    """Return the country scope for the selected runtime mode.
+
+    Live mode always runs the canonical monitored set so the trigger path,
+    repository metadata, and country listing stay aligned. Local mode keeps the
+    deterministic ZA fixture slice.
+
+    Args:
+        runtime_mode: Selected pipeline mode.
+        requested_country_code: Country code passed into the pipeline entry point.
+
+    Returns:
+        Country codes to fetch for this run.
+
+    Raises:
+        ValueError: If an explicit live-mode country code is outside the monitored set.
+    """
+    if runtime_mode != "live":
+        return [requested_country_code]
+
+    if requested_country_code == LOCAL_TARGET_COUNTRY:
+        return list(MONITORED_COUNTRY_CODES)
+
+    if requested_country_code not in MONITORED_COUNTRY_CODES:
+        raise ValueError(
+            "PIPELINE_MODE=live supports only the canonical monitored-country set: "
+            f"{', '.join(MONITORED_COUNTRY_CODES)}"
+        )
+
+    return list(MONITORED_COUNTRY_CODES)
+
+
+def _get_failure_indicator_codes(fetch_failures: list[WorldBankFetchError]) -> list[str]:
+    """Return the configured indicator codes that failed during live fetch.
+
+    Args:
+        fetch_failures: Live fetch failures gathered during the fetch stage.
+
+    Returns:
+        Sorted unique indicator codes with live fetch failures.
+    """
+    return sorted(
+        {
+            failure.indicator_code
+            for failure in fetch_failures
+            if failure.indicator_code in INDICATORS
+        }
+    )
+
+
+def _get_failure_country_codes(fetch_failures: list[WorldBankFetchError]) -> list[str]:
+    """Return the affected country codes gathered during live fetch.
+
+    Args:
+        fetch_failures: Live fetch failures gathered during the fetch stage.
+
+    Returns:
+        Unique ISO country codes in failure order.
+    """
+    country_codes: list[str] = []
+    for failure in fetch_failures:
+        for country_code in failure.country_codes:
+            normalized_country_code = country_code.upper()
+            if normalized_country_code and normalized_country_code not in country_codes:
+                country_codes.append(normalized_country_code)
+    return country_codes
+
+
+def _get_country_codes_from_records(records: list[dict[str, Any]]) -> list[str]:
+    """Return unique country codes present in normalized pipeline records.
+
+    Args:
+        records: Normalized data points or LLM contexts.
+
+    Returns:
+        Unique ISO country codes in record order.
+    """
+    country_codes: list[str] = []
+    for record in records:
+        normalized_country_code = str(record.get("country_code", "")).upper()
+        if normalized_country_code and normalized_country_code not in country_codes:
+            country_codes.append(normalized_country_code)
+    return country_codes
+
+
+def _build_live_failure_message(
+    run_id: str,
+    country_codes: list[str],
+    fetch_failures: list[WorldBankFetchError],
+) -> str | None:
+    """Summarize live fetch failures for terminal status reporting.
+
+    Args:
+        run_id: Pipeline run identifier.
+        country_codes: ISO 3166-1 alpha-2 country codes requested for the run.
+        fetch_failures: Live fetch failures gathered during the fetch stage.
+
+    Returns:
+        Human-readable incomplete-coverage summary, or None when there were no failures.
+    """
+    indicator_codes = _get_failure_indicator_codes(fetch_failures)
+    if not indicator_codes:
+        return None
+
+    failure_messages = "; ".join(str(failure) for failure in fetch_failures)
+    return (
+        f"run_id={run_id} live fetch preserved partial output for {_build_country_scope_label(country_codes)} "
+        f"but ended with incomplete coverage for indicators {', '.join(indicator_codes)}: "
+        f"{failure_messages}"
+    )
+
+
+def _build_country_scope_label(country_codes: list[str]) -> str:
+    """Build a readable label for one pipeline country scope.
+
+    Args:
+        country_codes: ISO 3166-1 alpha-2 country codes in scope.
+
+    Returns:
+        Human-readable scope label.
+    """
+    if len(country_codes) == 1:
+        return country_codes[0]
+    return f"monitored set ({', '.join(country_codes)})"
 
 
 def _resolve_ai_provenance(ai_client: Any) -> dict[str, Any] | None:

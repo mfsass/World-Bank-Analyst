@@ -39,15 +39,6 @@ COUNTRY_PUBLIC_FIELDS = (
     "updated_at",
 )
 
-LOCAL_COUNTRY_CATALOG: dict[str, dict[str, str]] = {
-    "ZA": {
-        "code": "ZA",
-        "name": "South Africa",
-        "region": "Sub-Saharan Africa",
-        "income_level": "Upper middle income",
-    }
-}
-
 _REPOSITORIES: dict[str, InsightsRepository] = {}
 _REPOSITORY_LOCK = Lock()
 logger = logging.getLogger(__name__)

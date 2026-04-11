@@ -64,8 +64,8 @@ paths:
   /countries:
     get:
       operationId: handlers.countries.get_all
-      summary: List available countries
-      description: Returns all countries with available economic data.
+      summary: List monitored countries
+      description: Returns the monitored-country catalog for the current product scope, including countries that do not yet have a materialized briefing.
       tags:
         - Countries
       responses:

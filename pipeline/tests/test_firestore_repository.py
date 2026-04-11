@@ -125,7 +125,7 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "raw_backup_reference": "gs://world-analyst-raw/runs/f9710a31-8f35-43d0-b75e-78054470ab80/raw/NY.GDP.MKTP.KD.ZG.json",
             "source_provenance": {
                 "source_name": "world_bank_indicators_api",
-                "source_date_range": "2017:2023",
+                "source_date_range": "2010:2024",
             },
             "ai_provenance": {"provider": "google-genai", "model": "gemma-4-31b-it"},
         }
@@ -144,7 +144,7 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "raw_backup_reference": "gs://world-analyst-raw/runs/f9710a31-8f35-43d0-b75e-78054470ab80/raw/manifest.json",
             "source_provenance": {
                 "source_name": "world_bank_indicators_api",
-                "source_date_range": "2017:2023",
+                "source_date_range": "2010:2024",
                 "indicator_codes": ["NY.GDP.MKTP.KD.ZG"],
             },
             "ai_provenance": {"provider": "google-genai", "model": "gemma-4-31b-it"},

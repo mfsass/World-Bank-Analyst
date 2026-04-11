@@ -10,8 +10,8 @@ import copy
 from threading import RLock
 from typing import Any
 
+from shared.country_catalog import MONITORED_COUNTRY_CATALOG
 from shared.repository import (
-    LOCAL_COUNTRY_CATALOG,
     default_pipeline_status,
     project_public_record,
     require_fields,
@@ -47,7 +47,7 @@ class InMemoryInsightsRepository:
         Returns:
             Country metadata entries.
         """
-        return [copy.deepcopy(country) for country in LOCAL_COUNTRY_CATALOG.values()]
+        return [copy.deepcopy(country) for country in MONITORED_COUNTRY_CATALOG.values()]
 
     def get_country_metadata(self, country_code: str) -> dict[str, Any] | None:
         """Return metadata for a supported country.
@@ -58,7 +58,7 @@ class InMemoryInsightsRepository:
         Returns:
             Country metadata dict when supported, else None.
         """
-        return copy.deepcopy(LOCAL_COUNTRY_CATALOG.get(country_code.upper()))
+        return copy.deepcopy(MONITORED_COUNTRY_CATALOG.get(country_code.upper()))
 
     def upsert_indicator(self, record: dict[str, Any]) -> None:
         """Store or replace an indicator insight record.

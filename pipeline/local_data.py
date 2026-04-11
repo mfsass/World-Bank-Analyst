@@ -1,4 +1,13 @@
-"""Deterministic local ZA fixture data for the first vertical slice."""
+"""Deterministic ZA fixture data for local development and CI.
+
+This module is NOT a runtime concern. It exists so that ``PIPELINE_MODE=local``
+(the dev/test override) and the live-pipeline unit tests can run without hitting
+the World Bank API. It must not be imported or exercised in any deployed Cloud Run
+environment.
+
+The ``PIPELINE_MODE`` runtime default is ``"live"``; ``"local"`` is only activated
+by an explicit environment variable override.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +15,8 @@ from typing import Any
 
 LOCAL_TARGET_COUNTRY = "ZA"
 LOCAL_TARGET_COUNTRY_NAME = "South Africa"
+LOCAL_TARGET_COUNTRY_REGION = "Sub-Saharan Africa"
+LOCAL_TARGET_COUNTRY_INCOME_LEVEL = "Upper middle income"
 LOCAL_SOURCE_NAME = "world_analyst_local_fixture"
 LOCAL_SOURCE_DATE_RANGE = "2017:2023"
 

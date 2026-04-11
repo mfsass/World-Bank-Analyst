@@ -21,6 +21,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from pipeline.local_data import (  # noqa: E402
+    LOCAL_TARGET_COUNTRY,
+    LOCAL_TARGET_COUNTRY_INCOME_LEVEL,
+    LOCAL_TARGET_COUNTRY_NAME,
+    LOCAL_TARGET_COUNTRY_REGION,
+)
 from shared.repository import InsightsRepository, get_repository, get_repository_backend  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -116,6 +122,7 @@ def store_slice(
     country_syntheses: dict[str, dict[str, Any]],
     raw_data_points: list[dict[str, Any]],
     run_id: str,
+    raw_fetch_payloads: dict[str, Any] | None = None,
     ai_provenance: dict[str, Any] | None = None,
     repository: InsightsRepository | None = None,
     raw_archive_store: RawArchiveStore | None = None,
@@ -126,6 +133,7 @@ def store_slice(
         insights: Enriched per-indicator insight payloads.
         country_syntheses: Country synthesis payloads keyed by country code.
         raw_data_points: Raw fetched payloads for the current run.
+        raw_fetch_payloads: Optional live request-response envelopes keyed by indicator code.
         run_id: UUID v4 run identifier for durable provenance.
         ai_provenance: Minimal AI provenance when narrative generation is available.
         repository: Shared repository instance.
@@ -137,10 +145,22 @@ def store_slice(
     repo = repository or get_repository()
     updated_at = datetime.now(timezone.utc).isoformat()
     grouped_raw_payloads = _group_raw_payloads_by_indicator(raw_data_points)
-    archive_result = archive_raw_payloads(grouped_raw_payloads, run_id, raw_archive_store)
+    archivable_raw_payloads: dict[str, Any] = {
+        indicator_code: copy.deepcopy(payload)
+        for indicator_code, payload in grouped_raw_payloads.items()
+    }
+    if raw_fetch_payloads:
+        archivable_raw_payloads.update(
+            {
+                indicator_code: copy.deepcopy(payload)
+                for indicator_code, payload in raw_fetch_payloads.items()
+            }
+        )
+
+    archive_result = archive_raw_payloads(archivable_raw_payloads, run_id, raw_archive_store)
     source_provenance_by_indicator = {
         indicator_code: _build_source_provenance(payload)
-        for indicator_code, payload in grouped_raw_payloads.items()
+        for indicator_code, payload in archivable_raw_payloads.items()
     }
 
     indicator_writes = 0
@@ -173,9 +193,7 @@ def store_slice(
 
     country_writes = 0
     for country_code, synthesis in country_syntheses.items():
-        country_metadata = repo.get_country_metadata(country_code)
-        if country_metadata is None:
-            raise ValueError(f"Unsupported local country: {country_code}")
+        country_metadata = _resolve_country_metadata(repo=repo, country_code=country_code)
 
         country_record = {
             **country_metadata,
@@ -218,6 +236,7 @@ def store_local_slice(
     country_syntheses: dict[str, dict[str, Any]],
     raw_data_points: list[dict[str, Any]],
     run_id: str,
+    raw_fetch_payloads: dict[str, Any] | None = None,
     ai_provenance: dict[str, Any] | None = None,
     repository: InsightsRepository | None = None,
     raw_archive_store: RawArchiveStore | None = None,
@@ -228,6 +247,7 @@ def store_local_slice(
         insights: Enriched per-indicator insight payloads.
         country_syntheses: Country synthesis payloads keyed by country code.
         raw_data_points: Raw fetched payloads for the current run.
+        raw_fetch_payloads: Optional live request-response envelopes keyed by indicator code.
         run_id: UUID v4 run identifier for durable provenance.
         ai_provenance: Minimal AI provenance when available.
         repository: Shared repository instance.
@@ -240,6 +260,7 @@ def store_local_slice(
         insights=insights,
         country_syntheses=country_syntheses,
         raw_data_points=raw_data_points,
+        raw_fetch_payloads=raw_fetch_payloads,
         run_id=run_id,
         ai_provenance=ai_provenance,
         repository=repository,
@@ -297,7 +318,7 @@ def archive_raw_data(data: list[dict[str, Any]], project_id: str, bucket_name: s
 
 
 def archive_raw_payloads(
-    grouped_raw_payloads: dict[str, list[dict[str, Any]]],
+    grouped_raw_payloads: dict[str, Any],
     run_id: str,
     raw_archive_store: RawArchiveStore | None = None,
 ) -> RawArchiveResult:
@@ -400,7 +421,31 @@ def _build_country_source_provenance(
     return country_provenance
 
 
-def _build_source_provenance(raw_payload: list[dict[str, Any]]) -> dict[str, Any]:
+def _resolve_country_metadata(
+    repo: InsightsRepository,
+    country_code: str,
+) -> dict[str, Any]:
+    """Resolve metadata for country syntheses persisted through the storage seam.
+
+    The live monitored panel is intentionally strict, but the deterministic ZA
+    development slice still needs stable metadata even after that panel changed.
+    """
+    country_metadata = repo.get_country_metadata(country_code)
+    if country_metadata is not None:
+        return country_metadata
+
+    if country_code.upper() == LOCAL_TARGET_COUNTRY:
+        return {
+            "code": LOCAL_TARGET_COUNTRY,
+            "name": LOCAL_TARGET_COUNTRY_NAME,
+            "region": LOCAL_TARGET_COUNTRY_REGION,
+            "income_level": LOCAL_TARGET_COUNTRY_INCOME_LEVEL,
+        }
+
+    raise ValueError(f"Unsupported local country: {country_code}")
+
+
+def _build_source_provenance(raw_payload: Any) -> dict[str, Any]:
     """Extract persisted source provenance from one raw payload scope.
 
     Args:
@@ -412,7 +457,13 @@ def _build_source_provenance(raw_payload: list[dict[str, Any]]) -> dict[str, Any
     if not raw_payload:
         return {}
 
-    exemplar = raw_payload[0]
+    if isinstance(raw_payload, list):
+        exemplar = raw_payload[0] if raw_payload else {}
+    elif isinstance(raw_payload, dict):
+        exemplar = raw_payload
+    else:
+        return {}
+
     provenance: dict[str, Any] = {}
     for field_name in ("source_name", "source_date_range", "source_last_updated", "source_id"):
         field_value = exemplar.get(field_name)

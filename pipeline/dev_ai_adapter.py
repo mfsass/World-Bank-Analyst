@@ -62,21 +62,24 @@ class DeterministicDevelopmentAIClient:
         unemployment = by_code.get("SL.UEM.TOTL.ZS", {})
         current_account = by_code.get("BN.CAB.XOKA.GD.ZS", {})
         debt = by_code.get("GC.DOD.TOTL.GD.ZS", {})
+        growth_value = growth.get("latest_value")
+        inflation_value = inflation.get("latest_value")
+        unemployment_value = unemployment.get("latest_value")
+        current_account_value = current_account.get("latest_value")
+        debt_value = debt.get("latest_value")
 
+        # Missing live series should be called unavailable explicitly instead of being narrated as a move to n/a.
         summary = (
-            f"{country_name} enters the latest reading with growth at {_format_value('NY.GDP.MKTP.KD.ZG', growth.get('latest_value'))}, "
-            f"inflation at {_format_value('FP.CPI.TOTL.ZG', inflation.get('latest_value'))}, and unemployment still elevated at "
-            f"{_format_value('SL.UEM.TOTL.ZS', unemployment.get('latest_value'))}. "
-            f"The macro mix remains fragile as fiscal pressure has pushed government debt to "
-            f"{_format_value('GC.DOD.TOTL.GD.ZS', debt.get('latest_value'))} while the current account sits at "
-            f"{_format_value('BN.CAB.XOKA.GD.ZS', current_account.get('latest_value'))}. "
+            f"{country_name} enters the latest reading with {_build_growth_summary(growth_value)}, "
+            f"{_build_inflation_summary(inflation_value)}, and {_build_unemployment_summary(unemployment_value)}. "
+            f"{_build_balance_summary(debt_value, current_account_value)} "
             "The balance of signals points to persistent sovereign and household stress rather than a clean recovery."
         )
 
         risk_flags = [
-            f"Growth is running at {_format_value('NY.GDP.MKTP.KD.ZG', growth.get('latest_value'))}, leaving little buffer against further supply or power shocks.",
-            f"Inflation remains sticky at {_format_value('FP.CPI.TOTL.ZG', inflation.get('latest_value'))}, limiting room for an easier policy stance.",
-            f"Government debt has climbed to {_format_value('GC.DOD.TOTL.GD.ZS', debt.get('latest_value'))} and the current account is at {_format_value('BN.CAB.XOKA.GD.ZS', current_account.get('latest_value'))}, tightening fiscal and external space.",
+            _build_growth_risk_flag(growth_value),
+            _build_inflation_risk_flag(inflation_value),
+            _build_balance_risk_flag(debt_value, current_account_value),
         ]
 
         high_risk_count = sum(
@@ -137,6 +140,102 @@ def _classify_risk(indicator_code: str, latest_value: float | None, is_anomaly: 
     if indicator_code == "BN.CAB.XOKA.GD.ZS" and latest_value < 0.0:
         return "moderate"
     return "high" if is_anomaly else "low"
+
+
+def _build_growth_summary(latest_value: float | None) -> str:
+    """Build the growth clause for country synthesis."""
+    if latest_value is None:
+        return "growth data unavailable"
+    return f"growth at {_format_value('NY.GDP.MKTP.KD.ZG', latest_value)}"
+
+
+def _build_inflation_summary(latest_value: float | None) -> str:
+    """Build the inflation clause for country synthesis."""
+    if latest_value is None:
+        return "inflation data unavailable"
+    return f"inflation at {_format_value('FP.CPI.TOTL.ZG', latest_value)}"
+
+
+def _build_unemployment_summary(latest_value: float | None) -> str:
+    """Build the unemployment clause for country synthesis."""
+    if latest_value is None:
+        return "unemployment data unavailable"
+    return f"unemployment still elevated at {_format_value('SL.UEM.TOTL.ZS', latest_value)}"
+
+
+def _build_balance_summary(debt_value: float | None, current_account_value: float | None) -> str:
+    """Build the fiscal and external balance clause for country synthesis."""
+    if debt_value is None and current_account_value is None:
+        return (
+            "The macro mix remains fragile, but government debt and current-account data are unavailable "
+            "in the live source."
+        )
+    if debt_value is None:
+        return (
+            "The macro mix remains fragile as the current account sits at "
+            f"{_format_value('BN.CAB.XOKA.GD.ZS', current_account_value)}, while government debt data is "
+            "unavailable in the live source."
+        )
+    if current_account_value is None:
+        return (
+            "The macro mix remains fragile as fiscal pressure has pushed government debt to "
+            f"{_format_value('GC.DOD.TOTL.GD.ZS', debt_value)}, while current-account data is unavailable "
+            "in the live source."
+        )
+    return (
+        "The macro mix remains fragile as fiscal pressure has pushed government debt to "
+        f"{_format_value('GC.DOD.TOTL.GD.ZS', debt_value)} while the current account sits at "
+        f"{_format_value('BN.CAB.XOKA.GD.ZS', current_account_value)}."
+    )
+
+
+def _build_growth_risk_flag(latest_value: float | None) -> str:
+    """Build the growth-focused risk flag for country synthesis."""
+    if latest_value is None:
+        return (
+            "Growth data is unavailable in the live source, so cyclical risk should be treated as incomplete."
+        )
+    return (
+        f"Growth is running at {_format_value('NY.GDP.MKTP.KD.ZG', latest_value)}, leaving little buffer "
+        "against further supply or power shocks."
+    )
+
+
+def _build_inflation_risk_flag(latest_value: float | None) -> str:
+    """Build the inflation-focused risk flag for country synthesis."""
+    if latest_value is None:
+        return (
+            "Inflation data is unavailable in the live source, so price-pressure risk should be treated as incomplete."
+        )
+    return (
+        f"Inflation remains sticky at {_format_value('FP.CPI.TOTL.ZG', latest_value)}, limiting room for an "
+        "easier policy stance."
+    )
+
+
+def _build_balance_risk_flag(debt_value: float | None, current_account_value: float | None) -> str:
+    """Build the fiscal and external risk flag for country synthesis."""
+    if debt_value is None and current_account_value is None:
+        return (
+            "Government debt and current-account data are unavailable in the live source, so fiscal and "
+            "external risk should be treated as incomplete."
+        )
+    if debt_value is None:
+        return (
+            "Government debt data is unavailable in the live source, while the current account is at "
+            f"{_format_value('BN.CAB.XOKA.GD.ZS', current_account_value)}; treat the fiscal risk readout as "
+            "incomplete."
+        )
+    if current_account_value is None:
+        return (
+            "Current-account data is unavailable in the live source, while government debt stands at "
+            f"{_format_value('GC.DOD.TOTL.GD.ZS', debt_value)}; treat the external-risk readout as incomplete."
+        )
+    return (
+        f"Government debt has climbed to {_format_value('GC.DOD.TOTL.GD.ZS', debt_value)} and the current "
+        f"account is at {_format_value('BN.CAB.XOKA.GD.ZS', current_account_value)}, tightening fiscal and "
+        "external space."
+    )
 
 
 def _indicator_significance(indicator_code: str, latest_value: float) -> str:

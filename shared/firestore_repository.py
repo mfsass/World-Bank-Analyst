@@ -13,8 +13,8 @@ from typing import Any
 
 from google.cloud import firestore
 
+from shared.country_catalog import MONITORED_COUNTRY_CATALOG
 from shared.repository import (
-    LOCAL_COUNTRY_CATALOG,
     default_pipeline_status,
     project_public_record,
     require_fields,
@@ -59,12 +59,12 @@ class FirestoreInsightsRepository:
         self.upsert_pipeline_status(default_pipeline_status())
 
     def list_countries(self) -> list[dict[str, Any]]:
-        """List monitored countries supported by the current slice.
+        """List monitored countries supported by the current product scope.
 
         Returns:
             Country metadata entries.
         """
-        return [copy.deepcopy(country) for country in LOCAL_COUNTRY_CATALOG.values()]
+        return [copy.deepcopy(country) for country in MONITORED_COUNTRY_CATALOG.values()]
 
     def get_country_metadata(self, country_code: str) -> dict[str, Any] | None:
         """Return metadata for a monitored country.
@@ -75,7 +75,7 @@ class FirestoreInsightsRepository:
         Returns:
             Country metadata dict when supported, else None.
         """
-        return copy.deepcopy(LOCAL_COUNTRY_CATALOG.get(country_code.upper()))
+        return copy.deepcopy(MONITORED_COUNTRY_CATALOG.get(country_code.upper()))
 
     def upsert_indicator(self, record: dict[str, Any]) -> None:
         """Store or replace an indicator insight record.

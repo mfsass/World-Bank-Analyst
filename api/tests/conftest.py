@@ -22,6 +22,9 @@ from shared.repository import get_repository, reset_repository_cache  # noqa: E4
 def reset_repository(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Reset the shared repository between tests."""
     monkeypatch.setenv("WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR", str(tmp_path / "raw-archives"))
+    # Default API tests to the deterministic local slice. Live trigger tests opt in explicitly.
+    monkeypatch.setenv("PIPELINE_MODE", "local")
+    monkeypatch.delenv("WORLD_ANALYST_WORLD_BANK_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("REPOSITORY_MODE", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_STORAGE_BACKEND", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_RAW_ARCHIVE_BUCKET", raising=False)

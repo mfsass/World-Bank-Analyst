@@ -101,13 +101,7 @@ def _execute_local_pipeline(run_id: str) -> None:
     except PipelineExecutionError as exc:
         logger.exception("Local pipeline execution failed")
         failed_status = repository.get_pipeline_status_record()
-        for step in failed_status.get("steps", []):
-            if step.get("status") == "running":
-                step["status"] = "failed"
-                if step.get("started_at"):
-                    step["completed_at"] = _utc_now()
-                if step.get("name") in _STEP_STARTED_AT:
-                    step["duration_ms"] = int((perf_counter() - _STEP_STARTED_AT.pop(step["name"])) * 1000)
+        _mark_failed_step(failed_status, exc.step_name)
         failed_status["status"] = "failed"
         failed_status["completed_at"] = _utc_now()
         failed_status["error"] = str(exc)
@@ -123,13 +117,7 @@ def _execute_local_pipeline(run_id: str) -> None:
         logger.exception("Local pipeline execution failed")
         failed_status = repository.get_pipeline_status_record()
         failure_step_name = _find_running_step_name(failed_status)
-        for step in failed_status.get("steps", []):
-            if step.get("status") == "running":
-                step["status"] = "failed"
-                if step.get("started_at"):
-                    step["completed_at"] = _utc_now()
-                if step.get("name") in _STEP_STARTED_AT:
-                    step["duration_ms"] = int((perf_counter() - _STEP_STARTED_AT.pop(step["name"])) * 1000)
+        _mark_failed_step(failed_status, failure_step_name)
         failed_status["status"] = "failed"
         failed_status["completed_at"] = _utc_now()
         failed_status["error"] = str(exc)
@@ -179,6 +167,44 @@ def _find_running_step_name(status: dict[str, Any]) -> str | None:
         if step.get("status") == "running":
             return step.get("name")
     return None
+
+
+def _mark_failed_step(status: dict[str, Any], fallback_step_name: str | None) -> None:
+    """Mark the most relevant pipeline step as failed.
+
+    Args:
+        status: Stored pipeline status payload.
+        fallback_step_name: Step name to fail when no step is still running.
+    """
+    running_step_marked = False
+    for step in status.get("steps", []):
+        if step.get("status") != "running":
+            continue
+        _apply_failed_step_state(step)
+        running_step_marked = True
+
+    if running_step_marked or fallback_step_name is None:
+        return
+
+    for step in status.get("steps", []):
+        if step.get("name") != fallback_step_name:
+            continue
+        _apply_failed_step_state(step)
+        break
+
+
+def _apply_failed_step_state(step: dict[str, Any]) -> None:
+    """Set one pipeline step to failed while preserving existing timing data.
+
+    Args:
+        step: Mutable pipeline step payload.
+    """
+    step_name = step.get("name")
+    step["status"] = "failed"
+    if step_name in _STEP_STARTED_AT:
+        step["duration_ms"] = int((perf_counter() - _STEP_STARTED_AT.pop(step_name)) * 1000)
+    if not step.get("completed_at"):
+        step["completed_at"] = _utc_now()
 
 
 def _build_preflight_failure_status(run_id: str, message: str) -> dict[str, Any]:

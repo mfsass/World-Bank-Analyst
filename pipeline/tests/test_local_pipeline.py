@@ -10,9 +10,46 @@ from pipeline.main import run_pipeline
 from pipeline.storage import LocalRawArchiveStore, get_raw_archive_store
 from shared.repository import get_repository, get_repository_backend
 
+EXPECTED_MONITORED_COUNTRY_CODES = [
+    "BR",
+    "CA",
+    "GB",
+    "US",
+    "BS",
+    "CO",
+    "SV",
+    "GE",
+    "HU",
+    "MY",
+    "NZ",
+    "RU",
+    "SG",
+    "ES",
+    "CH",
+    "TR",
+    "UY",
+]
+
+
+def test_repository_lists_canonical_monitored_countries() -> None:
+    """The repository should expose the approved monitored-country catalog."""
+    repository = get_repository()
+
+    countries = repository.list_countries()
+
+    assert [country["code"] for country in countries] == EXPECTED_MONITORED_COUNTRY_CODES
+    assert countries[0]["name"] == "Brazil"
+    assert countries[-1]["name"] == "Uruguay"
+    assert repository.get_country_metadata("UY") == {
+        "code": "UY",
+        "name": "Uruguay",
+        "region": "Latin America & Caribbean",
+        "income_level": "High income",
+    }
+
 
 def test_local_pipeline_persists_indicator_and_country_records() -> None:
-    """A local pipeline run should write the mixed document types needed by the API."""
+    """A local pipeline run should stay on the deterministic ZA slice."""
     repository = get_repository()
 
     summary = run_pipeline(repository=repository)
@@ -29,6 +66,7 @@ def test_local_pipeline_persists_indicator_and_country_records() -> None:
     assert len(detail["indicators"]) == 6
     assert detail["macro_synthesis"]
     assert len(detail["risk_flags"]) == 3
+    assert repository.get_country_detail("BE") is None
 
 
 def test_local_pipeline_is_deterministic_across_reruns() -> None:
