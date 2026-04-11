@@ -69,3 +69,6 @@ service-account-key.json
 *service-account*.json
 credentials*.json
 firebase-adminsdk-*.json
+
+# Local data cache
+.world_analyst/
