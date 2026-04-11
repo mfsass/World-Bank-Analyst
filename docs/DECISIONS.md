@@ -456,3 +456,44 @@
 **Trade-off:** Reviewers need Firestore inspection or repository-level tests to see the new provenance fields, because the API does not expose them yet. The repository layer also picks up a small projection and config-compatibility branch. We accept that because preserving the current product surface is more valuable in this phase than expanding the contract.
 
 **Date:** 2026-04-11
+
+---
+
+## ADR-033: Frontend Fidelity Keeps the Current API Boundary
+
+**Context:** The frontend-fidelity PRD needs to make the product look much closer to the finalized mockups, but the current API does not yet expose truthful data for every visual surface those mockups imply. The main alternatives were to expand the API now to satisfy overview maps, regional rollups, chart history, and architecture telemetry, or to keep the current API boundary and treat those richer surfaces as explicitly representative until later PRDs land.
+
+**Decision:** Keep the existing API boundary for the frontend-fidelity phase and implement richer non-live surfaces as clearly labeled representative UI shells rather than forcing backend contract changes for visual convenience.
+
+**Why:** This keeps the phase aligned with the approved implementation order, preserves spec-driven discipline, and avoids mixing a large UI refactor with new contract work that belongs to later live-data, live-AI, or architecture-explainability phases. It also keeps the product honest: overview maps, regional summaries, country charts, and architecture telemetry can exist structurally now without pretending the backend already provides those exact live values.
+
+**Trade-off:** Some surfaces in this pass are less dynamic than the final product shape and need explicit labeling so reviewers can distinguish live state from representative structure. We accept that because the alternative would widen scope, blur PRD boundaries, and risk shipping visual polish backed by invented or weakly supported data.
+
+**Date:** 2026-04-11
+
+---
+
+## ADR-034: Unified Navigation Rail and Strict Utility Pruning
+
+**Context:** The application previously had both a top-nav bar for main links and a side rail mirroring those same links, along with placeholder "Export" and "Documentation" buttons yielding alerts. This violated the single-navigation HIG patterns, created layout bugs (hiding the main content), and presented dead features in production.
+
+**Decision:** Consolidate navigation entirely to the side rail. Remove duplicate top-bar links. Strictly remove any placeholder buttons (Export, Documentation, Settings, Notifications) that do not have explicitly modeled behaviors in the PRD.
+
+**Why:** Duplicate navigation hierarchies confuse users and clutter the interface. "Apple-like" and professional UX demands a single clear structural hierarchy. Furthermore, shipping dead buttons (even with "coming soon" alerts) undermines trust and interface integrity, violating core UX/UI principles.
+
+**Trade-off:** If future requirements introduce dense secondary utilities, they must be explicitly planned in the PRD rather than living as permanent UI stubs. 
+
+**Date:** 2026-04-11
+---
+
+## ADR-035: Single Top Navigation and Summary-First Country Drill-In
+
+**Context:** ADR-034 pushed the app toward a side-rail-only shell, but the implemented product and latest frontend direction now favor one clear global navigation layer. The overview map also needed a faster way to move from point selection to country context without forcing reviewers to hunt for a separate detail path in `frontend/src/pages/GlobalOverview.jsx` and `frontend/src/pages/CountryIntelligence.jsx`.
+
+**Decision:** Keep one shared top navigation plus footer, drop the desktop side rail from the frontend-fidelity requirement, use click-driven map popovers as the overview drill-in pattern, and surface the country AI briefing above the deeper signal pack.
+
+**Why:** Four primary routes do not justify two structural navigation systems. A single top nav is cleaner on desktop, collapses more predictably on smaller screens, and removes duplicate active-state logic. Map popovers give quick context in place, and the elevated country briefing puts the main analyst takeaway before the lower-level indicator cards.
+
+**Trade-off:** We give up the denser always-visible side rail and stop reserving country-page real estate for a placeholder chart region in this phase. We accept that because the current product benefits more from a clear drill-in flow and stronger narrative hierarchy than from extra chrome or empty visual slots.
+
+**Date:** 2026-04-11
