@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.venv/
+venv/
+.tox/
+.nox/
+.mypy_cache/
+.ipynb_checkpoints/
+.coverage
+.coverage.*
+coverage/
+coverage.xml
+htmlcov/
+.eslintcache
+.vite/
+.cache/
+
+# Environment
+.env
+.env.local
+.env.*
+*.env
+!.env.example
+!.env.sample
+.envrc
+.direnv/
+.python-version
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.code-workspace
+
+# Local AI and planning state
+CLAUDE.local.md
+GEMINI.local.md
+tasks/*.local.md
+
+# Logs and temp files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.orig
+*.tmp
+*.temp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GCP
+*.json.key
+service-account-key.json
+*service-account*.json
+credentials*.json
+firebase-adminsdk-*.json
