@@ -61,17 +61,17 @@ paths:
             type: string
             description: ISO 3166-1 alpha-2 country code
       responses:
-        '200':
+        "200":
           description: List of indicator insights
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/IndicatorInsight'
-        '401':
+                  $ref: "#/components/schemas/IndicatorInsight"
+        "401":
           description: Unauthorized — missing or invalid API key
-        '500':
+        "500":
           description: Internal server error
 ```
 
@@ -184,8 +184,8 @@ def create_app() -> connexion.FlaskApp:
     return app
 ```
 
-  For deployed environments, prefer an explicit `WORLD_ANALYST_ALLOWED_ORIGINS`
-  configuration and reject `"*"` so the public runtime does not ship with wildcard CORS.
+For deployed environments, prefer an explicit `WORLD_ANALYST_ALLOWED_ORIGINS`
+configuration and reject `"*"` so the public runtime does not ship with wildcard CORS.
 
 ---
 
@@ -219,13 +219,13 @@ class TestGetAllIndicators:
 
 ## Common Pitfalls
 
-| Mistake | Fix |
-|---------|-----|
-| Handler returns dict without status code | Always return `(body, status_code)` tuple |
-| Route works but 404s | Check `operationId` matches `module.function` exactly |
-| Validation errors on valid requests | Check parameter names match between spec and handler args |
-| CORS blocked | Add CORSMiddleware via Connexion's middleware system |
-| Auth not enforced | Ensure `security` key is on each path, not just globally |
+| Mistake                                  | Fix                                                       |
+| ---------------------------------------- | --------------------------------------------------------- |
+| Handler returns dict without status code | Always return `(body, status_code)` tuple                 |
+| Route works but 404s                     | Check `operationId` matches `module.function` exactly     |
+| Validation errors on valid requests      | Check parameter names match between spec and handler args |
+| CORS blocked                             | Add CORSMiddleware via Connexion's middleware system      |
+| Auth not enforced                        | Ensure `security` key is on each path, not just globally  |
 
 ---
 

@@ -33,6 +33,7 @@ Use this skill when the task involves:
 Before writing code, the engineer must document the "why" and the trade-offs.
 
 **In practice:**
+
 - New features start with a plan in `docs/plans/` (see `@writing-plans`)
 - Architecture decisions are recorded in `docs/context/world-analyst-project.md`
 - The README explains choices, not just instructions
@@ -44,6 +45,7 @@ Before writing code, the engineer must document the "why" and the trade-offs.
 Context lives in the repo, not in ephemeral chats.
 
 **In practice:**
+
 - `GEMINI.md` / `AGENTS.md` / `.github/copilot-instructions.md` — agent context
 - `openapi.yaml` — API contract
 - `README.md` — the spec that guided the build
@@ -57,6 +59,7 @@ Context lives in the repo, not in ephemeral chats.
 Every line you commit is yours. "The AI wrote it" is not a defence.
 
 **In practice:**
+
 - Review all generated code before committing
 - Understand what every function does and why
 - Delete code you cannot explain
@@ -70,6 +73,7 @@ Every line you commit is yours. "The AI wrote it" is not a defence.
 Tests prove business requirements, not coverage metrics.
 
 **In practice:**
+
 - "Does the pipeline detect a 5% GDP anomaly?" ✓
 - "Does the function return 200?" ✗ (too shallow)
 - "Does the AI narrative include risk flags for negative GDP delta?" ✓
@@ -118,8 +122,10 @@ export function KPICard({ label, value, trend, freshness }) {
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
       <span className="kpi-card__value">{value}</span>
-      <span className={`kpi-card__trend kpi-card__trend--${trend > 0 ? 'up' : 'down'}`}>
-        {trend > 0 ? '▲' : '▼'} {Math.abs(trend).toFixed(1)}%
+      <span
+        className={`kpi-card__trend kpi-card__trend--${trend > 0 ? "up" : "down"}`}
+      >
+        {trend > 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%
       </span>
       <span className="kpi-card__freshness">{freshness}</span>
     </div>
@@ -129,7 +135,7 @@ export function KPICard({ label, value, trend, freshness }) {
 // ✗ Bad: default export, inline styles, no accessibility
 export default function Card(props) {
   return (
-    <div style={{background: '#1A1A1A', padding: 20}}>
+    <div style={{ background: "#1A1A1A", padding: 20 }}>
       <p>{props.v}</p>
     </div>
   );
@@ -150,14 +156,14 @@ When facing an architectural choice:
 
 ### Example: Firestore vs BigQuery
 
-| Criterion | Firestore | BigQuery |
-|-----------|----------|----------|
-| Data shape | Document (JSON) ✓ | Tabular |
-| Query pattern | doc.get() ✓ | SQL |
-| Workload | Read-heavy ✓ | Analytical |
-| Overhead | Zero management ✓ | Requires schema |
-| Cost | Pay-per-read ✓ | Minimum slot cost |
-| Future migration | → BigQuery possible ✓ | N/A |
+| Criterion        | Firestore             | BigQuery          |
+| ---------------- | --------------------- | ----------------- |
+| Data shape       | Document (JSON) ✓     | Tabular           |
+| Query pattern    | doc.get() ✓           | SQL               |
+| Workload         | Read-heavy ✓          | Analytical        |
+| Overhead         | Zero management ✓     | Requires schema   |
+| Cost             | Pay-per-read ✓        | Minimum slot cost |
+| Future migration | → BigQuery possible ✓ | N/A               |
 
 **Decision:** Firestore. **Defence:** "Our data is naturally document-shaped, our workload is read-heavy serving, and Firestore's serverless model matches Cloud Run's scale-to-zero. If analytical queries become a future requirement, migration is documented as a path."
 
@@ -165,28 +171,28 @@ When facing an architectural choice:
 
 ## Workflow Integration
 
-| Phase | Skill | Action |
-|-------|-------|--------|
-| Planning | `@writing-plans` | Create implementation plan with bite-sized tasks |
-| Design | `world-analyst-design-system` | Validate UI decisions against design tokens |
-| API | `connexion-api-development` | Write spec first, then handlers |
-| Implementation | `@test-driven-development` | RED → GREEN → REFACTOR cycle |
-| Review | `@code-reviewer` | Pre-commit quality check |
-| Debug | `@systematic-debugging` | Root-cause analysis before fixing |
+| Phase          | Skill                         | Action                                           |
+| -------------- | ----------------------------- | ------------------------------------------------ |
+| Planning       | `@writing-plans`              | Create implementation plan with bite-sized tasks |
+| Design         | `world-analyst-design-system` | Validate UI decisions against design tokens      |
+| API            | `connexion-api-development`   | Write spec first, then handlers                  |
+| Implementation | `@test-driven-development`    | RED → GREEN → REFACTOR cycle                     |
+| Review         | `@code-reviewer`              | Pre-commit quality check                         |
+| Debug          | `@systematic-debugging`       | Root-cause analysis before fixing                |
 
 ---
 
 ## Anti-Patterns (Red Flags)
 
-| Pattern | Why It's Wrong |
-|---------|---------------|
-| Writing code before writing a test | Violates TDD; you don't know if the test catches bugs |
-| Writing a handler before adding the route to openapi.yaml | Violates SDD; the spec must lead |
-| Using `print()` for debugging in committed code | Use `logging` module; print is not production-grade |
-| Hardcoding hex colors in components | Use CSS custom properties; hardcoded values drift from the design system |
-| Testing mock behaviour instead of business outcomes | You're testing your test infrastructure, not your product |
-| Committing code you can't explain | Violates Absolute Ownership; delete and rewrite |
-| Adding features not in the plan | YAGNI — if it's not scoped, it's scope creep |
+| Pattern                                                   | Why It's Wrong                                                           |
+| --------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Writing code before writing a test                        | Violates TDD; you don't know if the test catches bugs                    |
+| Writing a handler before adding the route to openapi.yaml | Violates SDD; the spec must lead                                         |
+| Using `print()` for debugging in committed code           | Use `logging` module; print is not production-grade                      |
+| Hardcoding hex colors in components                       | Use CSS custom properties; hardcoded values drift from the design system |
+| Testing mock behaviour instead of business outcomes       | You're testing your test infrastructure, not your product                |
+| Committing code you can't explain                         | Violates Absolute Ownership; delete and rewrite                          |
+| Adding features not in the plan                           | YAGNI — if it's not scoped, it's scope creep                             |
 
 ---
 

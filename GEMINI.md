@@ -13,18 +13,18 @@ You are working on **World Analyst**, a global economic intelligence dashboard t
 
 ## Tech Stack (Non-Negotiable)
 
-| Layer | Technology | Rationale |
-|-------|-----------|-----------|
-| Backend Framework | **Python 3.12 + Connexion** | OpenAPI-first, contract-enforced routing. The spec requires Connexion. |
-| API Spec | **openapi.yaml** | Single source of truth. Connexion reads this, not the other way around. |
-| Data Processing | **Pandas** | Statistical analysis (% changes, anomaly flags) before LLM receives data. |
-| AI Layer | **Vertex AI (Gemini) or OpenAI** | Two-step chain: per-indicator analysis → macro synthesis. Abstracted via `ai_client.py`. |
-| Storage | **Firestore** (insights) + **GCS** (raw backup) | Document-shaped, read-heavy. Not BigQuery. |
-| Frontend | **React 18 + Vite** | SPA served via nginx on Cloud Run. |
-| Styling | **Vanilla CSS** with CSS custom properties | Design system uses explicit tokens. No Tailwind, no CSS frameworks. |
-| Charts | **Recharts** (line/bar) + **react-simple-maps** (choropleth) | D3-based, React-native. |
-| Deployment | **Cloud Run** (3 services) + **Cloud Scheduler** | Scale-to-zero. Region: `europe-west1`. |
-| Auth | **API Key** in `X-API-Key` header | Stored in GCP Secret Manager. |
+| Layer             | Technology                                                   | Rationale                                                                                |
+| ----------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Backend Framework | **Python 3.12 + Connexion**                                  | OpenAPI-first, contract-enforced routing. The spec requires Connexion.                   |
+| API Spec          | **openapi.yaml**                                             | Single source of truth. Connexion reads this, not the other way around.                  |
+| Data Processing   | **Pandas**                                                   | Statistical analysis (% changes, anomaly flags) before LLM receives data.                |
+| AI Layer          | **Vertex AI (Gemini) or OpenAI**                             | Two-step chain: per-indicator analysis → macro synthesis. Abstracted via `ai_client.py`. |
+| Storage           | **Firestore** (insights) + **GCS** (raw backup)              | Document-shaped, read-heavy. Not BigQuery.                                               |
+| Frontend          | **React 18 + Vite**                                          | SPA served via nginx on Cloud Run.                                                       |
+| Styling           | **Vanilla CSS** with CSS custom properties                   | Design system uses explicit tokens. No Tailwind, no CSS frameworks.                      |
+| Charts            | **Recharts** (line/bar) + **react-simple-maps** (choropleth) | D3-based, React-native.                                                                  |
+| Deployment        | **Cloud Run** (3 services) + **Cloud Scheduler**             | Scale-to-zero. Region: `europe-west1`.                                                   |
+| Auth              | **API Key** in `X-API-Key` header                            | Stored in GCP Secret Manager.                                                            |
 
 ---
 
@@ -59,14 +59,14 @@ Read `docs/design-mockups/Design System.md` for full tokens. Hard rules:
 
 Use these project-specific skills for domain guidance:
 
-| Skill | Path | When |
-|-------|------|------|
-| Design System | `.github/skills/world-analyst-design-system/SKILL.md` | Any frontend/UI work |
-| Connexion API | `.github/skills/connexion-api-development/SKILL.md` | API routes, handlers, openapi.yaml |
-| Engineering WoW | `.github/skills/world-analyst-engineering/SKILL.md` | Architecture decisions, testing philosophy, code quality |
-| World Bank API | `.github/skills/world-bank-api/SKILL.md` | Pipeline data fetching, indicator codes, response parsing |
-| LLM Prompting | `.github/skills/llm-prompting-and-evaluation/SKILL.md` | AI prompts, structured output, evaluation, LLM-as-Judge |
-| Humanizer Pro | `.github/skills/humanizer-pro/SKILL.md` | ADRs, README prose, presentation copy, user-facing narrative, and other writing that must sound direct and credible |
+| Skill           | Path                                                   | When                                                                                                                |
+| --------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Design System   | `.github/skills/world-analyst-design-system/SKILL.md`  | Any frontend/UI work                                                                                                |
+| Connexion API   | `.github/skills/connexion-api-development/SKILL.md`    | API routes, handlers, openapi.yaml                                                                                  |
+| Engineering WoW | `.github/skills/world-analyst-engineering/SKILL.md`    | Architecture decisions, testing philosophy, code quality                                                            |
+| World Bank API  | `.github/skills/world-bank-api/SKILL.md`               | Pipeline data fetching, indicator codes, response parsing                                                           |
+| LLM Prompting   | `.github/skills/llm-prompting-and-evaluation/SKILL.md` | AI prompts, structured output, evaluation, LLM-as-Judge                                                             |
+| Humanizer Pro   | `.github/skills/humanizer-pro/SKILL.md`                | ADRs, README prose, presentation copy, user-facing narrative, and other writing that must sound direct and credible |
 
 ## Global Skills (Antigravity)
 
@@ -84,6 +84,7 @@ The following globally-installed skills are relevant. Invoke with `@skill-name`:
 ## Code Style
 
 ### Python
+
 - Formatter: `ruff format`
 - Linter: `ruff check`
 - Type hints on all function signatures
@@ -92,6 +93,7 @@ The following globally-installed skills are relevant. Invoke with `@skill-name`:
 - Imports: stdlib → third-party → local, separated by blank line
 
 ### JavaScript/React
+
 - Formatter: Prettier (default config)
 - Linter: ESLint
 - Functional components only, hooks for state
@@ -100,6 +102,7 @@ The following globally-installed skills are relevant. Invoke with `@skill-name`:
 - Add concise file or section comments when derived state, polling, or data flow would otherwise be hard to explain in review
 
 ### General
+
 - No `console.log` or `print()` in production code — use proper logging
 - No commented-out code
 - No TODO without a linked plan reference
@@ -148,10 +151,9 @@ frontend/
 
 ## Workflows
 
-| Workflow | Path | Command |
-|----------|------|---------|
-| Build | `.agents/workflows/build.md` | Lint + install + build |
-| Test | `.agents/workflows/test.md` | pytest + npm test |
-| Deploy | `.agents/workflows/deploy.md` | gcloud run deploy |
+| Workflow | Path                            | Command                         |
+| -------- | ------------------------------- | ------------------------------- |
+| Build    | `.agents/workflows/build.md`    | Lint + install + build          |
+| Test     | `.agents/workflows/test.md`     | pytest + npm test               |
+| Deploy   | `.agents/workflows/deploy.md`   | gcloud run deploy               |
 | Decision | `.agents/workflows/decision.md` | Append ADR to docs/DECISIONS.md |
-
