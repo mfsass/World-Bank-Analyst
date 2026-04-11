@@ -33,6 +33,22 @@ const OUTLOOK_TONE_MAP = {
   neutral: "neutral",
 };
 
+function getRegionalTone(outlookCounts) {
+  if (outlookCounts.bearish > 0) {
+    return "critical";
+  }
+
+  if (outlookCounts.cautious > 0) {
+    return "warning";
+  }
+
+  if (outlookCounts.bullish > 0) {
+    return "success";
+  }
+
+  return "neutral";
+}
+
 export function formatTimestamp(value) {
   if (!value) {
     return "NOT AVAILABLE";
@@ -89,10 +105,11 @@ export function getOverviewNarrative(
   monitoredCountries,
   materialisedCountries,
 ) {
-  const monitoredCountryLabel = monitoredCountries === 1 ? "country" : "countries";
+  const monitoredCountryLabel =
+    monitoredCountries === 1 ? "country" : "countries";
 
   if (status === "running") {
-    return "Polling the in-process local pipeline while the current South Africa slice materialises. Counts below reflect confirmed country briefings until the run completes.";
+    return "Polling the active pipeline run while the current coverage slice materialises. Counts below reflect confirmed country briefings until the run completes.";
   }
 
   if (status === "complete") {
@@ -108,7 +125,7 @@ export function getOverviewNarrative(
 
 export function getEmptyStateHeading(status) {
   if (status === "running") {
-    return "Materialising South Africa";
+    return "Materialising Coverage";
   }
 
   if (status === "failed") {
@@ -120,28 +137,29 @@ export function getEmptyStateHeading(status) {
 
 export function getEmptyStateBody(status) {
   if (status === "running") {
-    return "The first slice is fetching, analysing, synthesising, and storing South Africa in-process. This page will refresh the briefing surface once the status feed leaves the running state.";
+    return "The current slice is fetching, analysing, synthesising, and storing monitored market data in-process. This page will refresh once the status feed leaves the running state.";
   }
 
   if (status === "failed") {
-    return "The last trigger ended in failure before the country briefing could be refreshed. Review the step status, rerun the pipeline, and reopen the ZA briefing once the local slice completes.";
+    return "The last trigger ended in failure before the market briefing could be refreshed. Review the step status, rerun the pipeline, and reopen the market view once the slice completes.";
   }
 
-  return "Run the local pipeline to materialise the first South Africa briefing and populate anomaly, outlook, and macro synthesis fields on this page.";
+  return "Run the pipeline to materialise the next market briefing and populate anomaly, outlook, and macro synthesis fields on this page.";
 }
 
 export function getLeadSignals(featuredCountry, indicators) {
+  const featuredCode = featuredCountry?.code || indicators[0]?.country_code;
   const sourceIndicators =
     featuredCountry?.indicators ||
-    indicators.filter((indicator) => indicator.country_code === TARGET_COUNTRY);
+    indicators.filter((indicator) => indicator.country_code === featuredCode);
 
   const byCode = new Map(
     sourceIndicators.map((indicator) => [indicator.indicator_code, indicator]),
   );
 
-  return SIGNAL_PRIORITY.map((indicatorCode) => byCode.get(indicatorCode)).filter(
-    Boolean,
-  );
+  return SIGNAL_PRIORITY.map((indicatorCode) =>
+    byCode.get(indicatorCode),
+  ).filter(Boolean);
 }
 
 export function getStepTone(status) {
@@ -215,9 +233,7 @@ export function deriveOverviewMetrics(overview) {
     (indicator) => indicator.is_anomaly,
   ).length;
   const latestRefresh = getLatestRefresh(overview.indicators, overview.status);
-  const featuredCountry =
-    overview.briefings.find((briefing) => briefing.code === TARGET_COUNTRY) ||
-    null;
+  const featuredCountry = overview.briefings[0] || null;
   const leadSignals = getLeadSignals(featuredCountry, overview.indicators);
   const pipelineSteps = overview.status?.steps?.length
     ? overview.status.steps
@@ -233,4 +249,82 @@ export function deriveOverviewMetrics(overview) {
     leadSignals,
     pipelineSteps,
   };
+}
+
+export function deriveRegionalBreakdown(countries = [], briefings = []) {
+  const briefingByCode = new Map(
+    briefings.map((briefing) => [briefing.code, briefing]),
+  );
+  const regionMap = new Map();
+
+  countries.forEach((country) => {
+    const regionName = country.region || "Unassigned";
+    const region = regionMap.get(regionName) || {
+      region: regionName,
+      monitoredCount: 0,
+      materialisedCount: 0,
+      outlookCounts: {
+        bearish: 0,
+        bullish: 0,
+        cautious: 0,
+        neutral: 0,
+      },
+    };
+
+    region.monitoredCount += 1;
+
+    const briefing = briefingByCode.get(country.code);
+    if (briefing) {
+      region.materialisedCount += 1;
+      const outlookKey = briefing.outlook?.toLowerCase() || "neutral";
+      region.outlookCounts[outlookKey] =
+        (region.outlookCounts[outlookKey] || 0) + 1;
+    }
+
+    regionMap.set(regionName, region);
+  });
+
+  return [...regionMap.values()]
+    .map((region) => ({
+      ...region,
+      tone: getRegionalTone(region.outlookCounts),
+      summary: `${region.materialisedCount}/${region.monitoredCount} live briefings`,
+    }))
+    .sort((left, right) => {
+      if (right.materialisedCount !== left.materialisedCount) {
+        return right.materialisedCount - left.materialisedCount;
+      }
+
+      return right.monitoredCount - left.monitoredCount;
+    });
+}
+
+export function deriveCoverageBoard(
+  countries = [],
+  briefings = [],
+  featuredCode = null,
+) {
+  const briefingByCode = new Map(
+    briefings.map((briefing) => [briefing.code, briefing]),
+  );
+
+  return countries.map((country) => {
+    const briefing = briefingByCode.get(country.code);
+    const isMaterialised = Boolean(briefing);
+    const isFeatured = country.code === featuredCode;
+
+    return {
+      code: country.code,
+      href: `/country/${country.code.toLowerCase()}`,
+      isFeatured,
+      isMaterialised,
+      name: country.name,
+      region: country.region || "Unassigned",
+      statusLabel: isMaterialised ? "Live" : "Pending",
+      summary: isMaterialised
+        ? `${country.name} briefing materialised in the current slice.`
+        : `${country.name} is monitored but not yet materialised.`,
+      tone: isMaterialised ? getOutlookTone(briefing.outlook) : "neutral",
+    };
+  });
 }
