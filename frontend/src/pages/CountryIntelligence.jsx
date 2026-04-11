@@ -1,13 +1,13 @@
-/**
- * Country Intelligence — per-country deep dive.
- *
- * Indicator charts, AI analysis narrative, risk flags.
- * Each country gets its own URL (/country/:id) so it's shareable.
- */
+import Flag from "react-world-flags";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { AIInsightPanel } from "../components/AIInsightPanel";
+import { MarketSwitcher } from "../components/MarketSwitcher";
+import { PageHeader } from "../components/PageHeader";
+import { StatusPill } from "../components/StatusPill";
 import { apiRequest } from "../api";
+import { getOutlookTone, getSignalTone } from "./globalOverviewModel";
 
 const FEATURED_INDICATORS = [
   "NY.GDP.MKTP.KD.ZG",
@@ -34,10 +34,44 @@ function formatChange(value) {
   return `${direction}${Math.abs(value).toFixed(2)}% YOY`;
 }
 
-export function CountryIntelligence() {
+function buildTitle(code, label, isPlaceholder = false) {
+  return (
+    <span className="page-title-with-flag">
+      <span
+        className={`flag-frame flag-frame--lg page-title-with-flag__flag${
+          isPlaceholder ? " flag-frame--placeholder" : ""
+        }`}
+      >
+        {isPlaceholder ? null : <Flag code={code} height="100%" />}
+      </span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function LoadingSwitcher() {
+  return (
+    <section className="market-switcher market-switcher--placeholder">
+      <p className="text-label">Switch market</p>
+      <div className="market-switcher__row mt-3">
+        {Array.from({ length: 8 }, (_, index) => (
+          <span
+            className="market-switcher__pill market-switcher__pill--placeholder"
+            key={index}
+          >
+            --
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CountryIntelligence() {
   const { id } = useParams();
   const countryCode = (id || "za").toUpperCase();
   const [country, setCountry] = useState(null);
+  const [countries, setCountries] = useState([]);
   const [viewState, setViewState] = useState("loading");
   const [requestError, setRequestError] = useState("");
 
@@ -47,9 +81,21 @@ export function CountryIntelligence() {
     async function loadCountry() {
       setViewState("loading");
       try {
-        const payload = await apiRequest(`/countries/${countryCode}`);
+        const [countryResult, countriesResult] = await Promise.allSettled([
+          apiRequest(`/countries/${countryCode}`),
+          apiRequest("/countries"),
+        ]);
+
+        if (countriesResult.status === "fulfilled" && isActive) {
+          setCountries(countriesResult.value);
+        }
+
+        if (countryResult.status === "rejected") {
+          throw countryResult.reason;
+        }
+
         if (isActive) {
-          setCountry(payload);
+          setCountry(countryResult.value);
           setViewState("ready");
           setRequestError("");
         }
@@ -57,13 +103,15 @@ export function CountryIntelligence() {
         if (!isActive) {
           return;
         }
+
         if (error.status === 404) {
           setViewState("not-found");
           setRequestError(
-            "Run the local pipeline to materialise the ZA country briefing.",
+            "This market is monitored, but its briefing is not yet materialised in the current run.",
           );
           return;
         }
+
         setViewState("error");
         setRequestError(error.message);
       }
@@ -82,143 +130,226 @@ export function CountryIntelligence() {
     ),
   ).filter(Boolean);
 
+  const sharedActions = (
+    <div className="shell-command-row">
+      <Link className="shell-command-link shell-command-link--accent" to="/trigger">
+        Open pipeline
+      </Link>
+      <Link className="shell-command-link" to="/">
+        Return to overview
+      </Link>
+    </div>
+  );
+
+  const marketSwitcher = countries.length ? (
+    <MarketSwitcher
+      activeCode={viewState === "ready" ? country.code : countryCode}
+      getHref={(market) => `/country/${market.code.toLowerCase()}`}
+      items={countries}
+      label="Switch market"
+    />
+  ) : (
+    <LoadingSwitcher />
+  );
+
   if (viewState === "loading") {
     return (
-      <main className="container">
-        <header className="section-gap">
-          <p className="text-label">COUNTRY INTELLIGENCE</p>
-          <h1 className="text-display">{countryCode}</h1>
-        </header>
+      <div className="page page--country container">
+        <nav className="breadcrumb-row breadcrumb-row--loading">
+          <Link className="shell-inline-link" to="/">
+            Global Overview
+          </Link>
+          <span className="breadcrumb-row__separator">/</span>
+          <span className="text-label">{countryCode}</span>
+        </nav>
 
-        <section className="section-gap">
-          <div className="card">
-            <p className="text-body text-secondary">
-              Loading live country intelligence from the local slice.
-            </p>
+        {marketSwitcher}
+
+        <PageHeader
+          actions={sharedActions}
+          description="Loading the latest country briefing and monitored market list from the active slice."
+          eyebrow="COUNTRY INTELLIGENCE"
+          meta={`Market code · ${countryCode}`}
+          title={buildTitle(countryCode, countryCode, true)}
+        />
+
+        <section className="country-identity section-gap">
+          <div className="card state-panel">
+            <p className="text-label">Loading country posture</p>
+            <div className="mt-3">
+              <div className="skeleton skeleton-title" />
+            </div>
+            <div className="mt-4">
+              <div className="skeleton skeleton-text overview-skeleton-line" />
+            </div>
+          </div>
+          <div className="card state-panel">
+            <p className="text-label">Loading briefing depth</p>
+            <div className="mt-3">
+              <div className="skeleton skeleton-title overview-skeleton-line--short" />
+            </div>
           </div>
         </section>
-      </main>
+      </div>
     );
   }
 
   if (viewState !== "ready") {
     return (
-      <main className="container">
-        <header className="section-gap">
-          <p className="text-label">COUNTRY INTELLIGENCE</p>
-          <h1 className="text-display">{countryCode}</h1>
-        </header>
+      <div className="page page--country container">
+        <nav className="breadcrumb-row">
+          <Link className="shell-inline-link" to="/">
+            Global Overview
+          </Link>
+          <span className="breadcrumb-row__separator">/</span>
+          <span className="text-label">{countryCode}</span>
+        </nav>
+
+        {marketSwitcher}
+
+        <PageHeader
+          actions={sharedActions}
+          description={requestError}
+          eyebrow="COUNTRY INTELLIGENCE"
+          meta={`Market code · ${countryCode}`}
+          title={buildTitle(countryCode, countryCode, true)}
+        />
 
         <section className="section-gap">
-          <div className="card">
-            <h2 className="text-headline">Briefing Unavailable</h2>
+          <div className="card state-panel">
+            <h2 className="text-headline">Briefing unavailable</h2>
             <p className="text-body text-secondary mt-4">{requestError}</p>
-            <div className="button-row mt-4">
-              <Link className="btn-primary" to="/trigger">
-                OPEN PIPELINE TRIGGER
-              </Link>
-            </div>
           </div>
         </section>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="container">
-      <header className="section-gap">
-        <p className="text-label">COUNTRY INTELLIGENCE</p>
-        <h1 className="text-display">{country.name}</h1>
-        <p className="text-body text-secondary mt-4">
-          {country.code}
-          {' // '}
-          {country.region}
-          {' // '}
-          {country.income_level}
-        </p>
-      </header>
+    <div className="page page--country container">
+      <nav className="breadcrumb-row">
+        <Link className="shell-inline-link" to="/">
+          Global Overview
+        </Link>
+        <span className="breadcrumb-row__separator">/</span>
+        <span className="text-label">{country.name}</span>
+      </nav>
+
+      {marketSwitcher}
+
+      <PageHeader
+        actions={sharedActions}
+        description={`Current signals, macro synthesis, and forward-looking risk for ${country.name}.`}
+        eyebrow="COUNTRY INTELLIGENCE"
+        meta={`${country.code} · ${country.region} · ${country.income_level}`}
+        title={buildTitle(country.code, country.name)}
+      />
+
+      <section className="section-gap">
+        <AIInsightPanel
+          eyebrow="AI analyst synthesis"
+          footer={
+            <div className="country-briefing-meta">
+              <span className="text-label">Outlook // {country.outlook.toUpperCase()}</span>
+              <span className="text-label">Risk flags // {country.risk_flags.length}</span>
+            </div>
+          }
+          status={country.outlook.toUpperCase()}
+          title="Country briefing"
+          tone={getOutlookTone(country.outlook)}
+        >
+          <p className="text-body">{country.macro_synthesis}</p>
+        </AIInsightPanel>
+      </section>
+
+      <section className="country-identity section-gap">
+        <div className="card country-identity__primary">
+          <p className="text-label">Current posture</p>
+          <div className="panel-header mt-4">
+            <div>
+              <h2 className="text-headline">{country.name}</h2>
+              <p className="text-body text-secondary mt-3">
+                {country.region} · {country.income_level}
+              </p>
+            </div>
+            <StatusPill tone={getOutlookTone(country.outlook)}>
+              {country.outlook.toUpperCase()}
+            </StatusPill>
+          </div>
+        </div>
+        <div className="card country-identity__secondary">
+          <p className="text-label">Briefing depth</p>
+          <span className="text-metric mt-3">{country.indicators.length}</span>
+          <p className="text-body text-secondary mt-3">
+            Live indicator narratives available in this country briefing.
+          </p>
+        </div>
+      </section>
 
       <section className="kpi-row section-gap">
         {featuredIndicators.map((indicator) => (
-          <div className="kpi-card" key={indicator.indicator_code}>
+          <article className="kpi-card" key={indicator.indicator_code}>
             <span className="kpi-card__label">{indicator.indicator_name}</span>
             <span className="kpi-card__value">
               {formatMetric(indicator.indicator_code, indicator.latest_value)}
             </span>
             <span
-              className={`kpi-card__trend ${indicator.percent_change >= 0 ? "kpi-card__trend--up" : "kpi-card__trend--down"}`}
+              className={`kpi-card__trend kpi-card__trend--${
+                indicator.percent_change >= 0 ? "up" : "down"
+              }`}
             >
+              {indicator.percent_change >= 0 ? "▲" : "▼"}{" "}
               {formatChange(indicator.percent_change)}
             </span>
-            <span className="kpi-card__freshness">
-              YEAR {indicator.data_year}
-            </span>
-          </div>
+          </article>
         ))}
       </section>
 
       <section className="section-gap">
-        <div className="detail-grid">
-          <div className="card">
-            <p className="text-label">INDICATOR ANALYSIS</p>
-            <h2 className="text-headline mt-4">Risk-Weighted Signals</h2>
-            <div className="indicator-list mt-4">
-              {country.indicators.map((indicator) => (
-                <article
-                  className="indicator-card"
-                  key={indicator.indicator_code}
-                >
-                  <div className="panel-header">
-                    <h3 className="text-title">{indicator.indicator_name}</h3>
-                    {indicator.is_anomaly ? (
-                      <span className="status-pill status-pill--failed">
-                        ANOMALY
+        <div className="country-detail-grid">
+          <div className="panel-stack">
+            <div className="card">
+              <p className="text-label">Analyst signal pack</p>
+              <h2 className="text-headline mt-3">Current risk signals</h2>
+              <div className="indicator-list mt-4">
+                {country.indicators.map((indicator) => (
+                  <article className="indicator-card" key={indicator.indicator_code}>
+                    <div className="panel-header">
+                      <h3 className="text-title">{indicator.indicator_name}</h3>
+                      {indicator.is_anomaly ? (
+                        <StatusPill tone="critical">Anomaly</StatusPill>
+                      ) : null}
+                    </div>
+                    <div className="indicator-meta mt-3">
+                      <span className="text-metric">
+                        {formatMetric(
+                          indicator.indicator_code,
+                          indicator.latest_value,
+                        )}
                       </span>
-                    ) : null}
-                  </div>
-                  <div className="indicator-meta mt-3">
-                    <span className="text-metric">
-                      {formatMetric(
-                        indicator.indicator_code,
-                        indicator.latest_value,
-                      )}
-                    </span>
-                    <span
-                      className={`text-label ${indicator.percent_change >= 0 ? "text-success" : "text-critical"}`}
-                    >
-                      {formatChange(indicator.percent_change)}
-                    </span>
-                    <span className="text-label">
-                      YEAR {indicator.data_year}
-                    </span>
-                  </div>
-                  <p className="text-body text-secondary mt-4">
-                    {indicator.ai_analysis}
-                  </p>
-                </article>
-              ))}
+                      <span
+                        className={`text-label ${getSignalTone(
+                          indicator.indicator_code,
+                          indicator.percent_change,
+                        )}`}
+                      >
+                        {formatChange(indicator.percent_change)}
+                      </span>
+                      <span className="text-label">YEAR {indicator.data_year}</span>
+                    </div>
+                    <p className="text-body text-secondary mt-4">
+                      {indicator.ai_analysis}
+                    </p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
 
           <div className="panel-stack">
-            <div className="ai-insight">
-              <h2 className="text-headline">
-                <span className="ai-insight__icon">✦ </span>
-                Macro Synthesis
-              </h2>
-              <p className="text-body mt-4">{country.macro_synthesis}</p>
-            </div>
-
             <div className="card">
-              <p className="text-label">OUTLOOK</p>
-              <div className="panel-header mt-4">
-                <h2 className="text-headline">Forward View</h2>
-                <span
-                  className={`status-pill status-pill--${country.outlook === "bearish" ? "failed" : "running"}`}
-                >
-                  {country.outlook.toUpperCase()}
-                </span>
-              </div>
+              <p className="text-label">Analyst outlook</p>
+              <h2 className="text-headline mt-4">Forward view</h2>
               <ul className="risk-list mt-4">
                 {country.risk_flags.map((riskFlag) => (
                   <li className="text-body" key={riskFlag}>
@@ -228,16 +359,14 @@ export function CountryIntelligence() {
               </ul>
             </div>
 
-            <div className="card">
-              <p className="text-label">RESPONSIBLE AI</p>
-              <p className="text-body text-secondary mt-4">
-                AI-generated content may contain inaccuracies. Verify before
-                acting.
-              </p>
-            </div>
+
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
+
+
+export { CountryIntelligence };
+export default CountryIntelligence;
