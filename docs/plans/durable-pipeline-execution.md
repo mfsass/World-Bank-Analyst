@@ -1,48 +1,52 @@
 # Goal
 
-Replace process-local repository state with a durable mixed-document storage/status adapter, then harden pipeline execution onto production boundaries without changing the current frontend contract.
+Implement durable storage, status, and provenance behind the current API contract. Keep the trigger flow and frontend response shapes stable while replacing thin process-local state with durable mixed-document persistence, run-scoped raw archival linkage, and persisted-only provenance.
+
+## Approved Choices
+
+- `1A`: Persist run-scoped provenance now, but keep it out of the public API unless a field is required to preserve current behavior.
+- `2A`: Standardize on `REPOSITORY_MODE=local|firestore`, with `WORLD_ANALYST_STORAGE_BACKEND` retained only as a backward-compatible alias.
+- `3A`: Update this plan artifact in place rather than creating a new implementation brief.
 
 ## Context
 
-- The local slice is validated: trigger, status, country detail, Global Overview, and Pipeline Trigger all work against the current API contract.
-- The biggest remaining production gap is state ownership. Indicator insights, country briefings, and pipeline status still depend on a shared in-memory repository inside one process.
-- The frontend contract is already good enough for the current product surface, so this phase should preserve response shapes and polling behavior.
-- This work is substantial enough to justify the dual-lane implementation plus review workflow because it touches shared state, API behavior, tests, and deployment assumptions.
-- Relevant skills: `world-analyst-engineering`, `connexion-api-development`, `llm-prompting-and-evaluation`, and `humanizer-pro` for ADR and plan clarity.
+- The current frontend contract is already acceptable for the bounded product surface. This phase should strengthen the storage and status boundary without forcing new routes or payload redesign.
+- The local slice still relies on process-local state ownership. That is the main credibility gap for restart safety, cross-service parity, and reviewable provenance.
+- Raw archival now belongs in the same bounded phase as processed persistence because the challenge brief explicitly calls for raw data storage in GCP, and the stored records need a stable raw-backup reference.
+- The current pipeline still runs inside the API process. This implementation keeps that execution model and hardens storage/status only.
 
 ## Affected Areas
 
 - Shared repository boundary: `shared/repository.py`, `shared/local_repository.py`, `shared/firestore_repository.py`
-- Pipeline orchestration and storage: `pipeline/main.py`, `pipeline/storage.py`
-- API handlers that read or write repository state: `api/handlers/pipeline.py`, `api/handlers/countries.py`, `api/handlers/indicators.py`
-- Tests covering repository behavior and end-to-end status flows: `api/tests/`, `pipeline/tests/`
+- Pipeline orchestration and storage: `pipeline/main.py`, `pipeline/storage.py`, `pipeline/local_data.py`, `pipeline/fetcher.py`, `pipeline/dev_ai_adapter.py`
+- API status handling: `api/handlers/pipeline.py`
+- Contract and parity tests: `api/tests/`, `pipeline/tests/`
 - Decision log: `docs/DECISIONS.md`
 
 ## Implementation Steps
 
-1. Introduce a backend-selected repository contract that supports both local and Firestore-backed mixed-document storage while preserving the current payload shapes.
-2. Keep local mode as the default for tests and deterministic development, but add a Firestore-backed adapter for indicator, country, and pipeline-status records in the same logical collection.
-3. Route the API and pipeline through the shared repository selector so both services read and write the same durable state when Firestore mode is enabled.
-4. Validate that the current frontend contract remains stable by keeping `GET /pipeline/status`, `GET /countries`, `GET /countries/{country_code}`, and `GET /indicators` unchanged.
-5. Add adapter-level tests to prove the Firestore-backed repository returns the same logical shapes as local mode.
-6. After the durable repository boundary is stable, implement out-of-process pipeline execution and persisted status transitions on the real job boundary rather than inside the API process.
+1. Refactor the shared repository selector to prefer `REPOSITORY_MODE` while keeping the legacy storage env var as an alias, and make repository reads project stored records back to the existing API shapes.
+2. Persist richer pipeline status internally: run id, step timestamps, step durations, and failure summary detail, while keeping `GET /pipeline/status` on the current public contract.
+3. Generate a UUID v4 run id at pipeline entry and thread it through status, raw archive naming, and stored indicator/country records.
+4. Add a raw archive boundary that can write to local filesystem storage in tests and development, or GCS in deployed environments, using the same run-scoped path scheme.
+5. Archive raw payloads before processed persistence completes, then write indicator and country records with run id, raw backup reference, source provenance, and minimal AI provenance when available.
+6. Extend tests to prove repository parity, API contract stability, persisted provenance, raw archive linkage, and backend-selection semantics.
 
 ## Validation
 
 - `cd api && python -m pytest tests/ -v`
 - `cd pipeline && python -m pytest tests/ -v`
-- `cd frontend && npm run lint && npm run build`
-- Manual check: the current frontend still renders idle, running, complete, and country-detail states without contract changes.
-- Manual check: enabling Firestore mode through environment configuration materialises pipeline status and country detail across process boundaries.
-- Review risk: this phase intentionally fixes durable state first; execution is still in-process until the next hardening step.
+- `cd api && python -m pytest tests/test_local_vertical_slice.py -v`
+- `cd pipeline && python -m pytest tests/test_local_pipeline.py tests/test_firestore_repository.py -v`
+- Manual check: the current frontend still renders idle, running, complete, failed, and country-detail states without contract changes.
+- Manual check: when Firestore mode is enabled, API and pipeline processes read and write the same persisted status and country detail records.
 
 ## ADR Check
 
 - ADR required: yes.
-- This change chooses a durable mixed-document repository boundary and keeps the API contract stable while deferring job-dispatch hardening to the next step.
+- This implementation introduces a local raw-archive adapter behind the same run-scoped archive contract used by GCS. That trade-off belongs in `docs/DECISIONS.md`.
 
 ## Open Questions
 
 - Which service should own the authoritative transition from `running` to terminal states once execution moves to Cloud Run Jobs?
-- Do we want a dedicated trigger-run identifier in the API contract, or do we keep the single `current` status document until concurrent runs become a real requirement?
-- Should raw data archival to GCS happen inside the same durable execution phase or remain a separate hardening task?
+- Do we keep the single `current` status document until concurrent runs become a real requirement, or does a future runtime phase justify exposing a run identifier publicly?
