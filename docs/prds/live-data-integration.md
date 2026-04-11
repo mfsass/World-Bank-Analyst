@@ -158,7 +158,7 @@ World Analyst should analyze the real source it claims to use. This PRD replaces
 - Existing API contract in `api/openapi.yaml` must remain stable.
 - Storage and provenance handoff in `pipeline/storage.py`.
 - Shared repository and status behavior defined by adjacent PRDs.
-- Project-level indicator and country decisions in `Project Context/WORLD_ANALYST_PROJECT.md`.
+- Project-level indicator and country decisions in `docs/context/world-analyst-project.md`.
 - Runtime source selection should remain configuration-driven through `PIPELINE_MODE=local|live`.
 - `PIPELINE_MODE` controls the data source only. Storage backend selection remains independent through `REPOSITORY_MODE`, as defined by the durable storage and status PRD.
 

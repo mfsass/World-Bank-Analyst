@@ -30,7 +30,7 @@ You are working on **World Analyst**, a global economic intelligence dashboard t
 
 ## Design System (Mandatory Constraints)
 
-Read `Design Mockups/Design System.md` for full tokens. Hard rules:
+Read `docs/design-mockups/Design System.md` for full tokens. Hard rules:
 
 - **Canvas:** `#0E0E0E`. Cards: `#1A1A1A`. Nested: `#201F1F`.
 - **Primary accent:** `#FF4500` (International Orange) — reserved for AI insights and primary CTAs only.
@@ -47,7 +47,7 @@ Read `Design Mockups/Design System.md` for full tokens. Hard rules:
 
 ## Architecture Principles (ML6 WoW)
 
-1. **Intent-First Development** — Document the "why" and trade-offs before writing code. `WORLD_ANALYST_PROJECT.md` is the intent document.
+1. **Intent-First Development** — Document the "why" and trade-offs before writing code. `docs/context/world-analyst-project.md` is the intent document.
 2. **PaperTrail of Context** — Context lives in the repo (this file, README.md, openapi.yaml), not in ephemeral chats.
 3. **Absolute Ownership** — Every line must be explainable and defensible. No blind AI generation. Use docstrings and targeted inline comments so non-obvious logic can be defended from the repo alone.
 4. **Business-Driven Testing** — Tests prove business requirements, not coverage metrics. "Does the pipeline detect an anomaly when GDP drops 5%?" > "Does the function return 200?"

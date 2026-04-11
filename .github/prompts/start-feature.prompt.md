@@ -21,7 +21,7 @@ Consult [GEMINI.md](../../GEMINI.md), [AGENTS.md](../../AGENTS.md), and [docs/DE
 
 If the request leaves material ambiguity around the outcome, constraints, stakeholders, acceptance criteria, or file scope, stop and use #tool:vscode/askQuestions before drafting.
 
-If the user wants a repo-backed planning artifact, create or update it directly under [docs/plans](../../docs/plans) or [tasks.txt](../../tasks.txt) instead of only returning a plan in chat.
+If the user wants a repo-backed planning artifact, create or update it directly under [docs/plans](../../docs/plans), [docs/plans/task-board.md](../../docs/plans/task-board.md), or [docs/plans/implementation-sequence.md](../../docs/plans/implementation-sequence.md) instead of only returning a plan in chat.
 
 Return:
 

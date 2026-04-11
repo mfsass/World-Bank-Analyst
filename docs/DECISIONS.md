@@ -13,7 +13,7 @@
 
 **Why:** The data shape is a JSON document per country-indicator pair. Access pattern is key-value lookup (`doc.get()`), not analytical queries. BigQuery's strength (columnar scanning across millions of rows) is irrelevant here — we have ~90 documents refreshed weekly.
 
-**Trade-off:** If analytical queries become a requirement (e.g., "compare GDP trends across all countries over 10 years"), we'd need to migrate. Documented as a future path in `WORLD_ANALYST_PROJECT.md`, not a current concern.
+**Trade-off:** If analytical queries become a requirement (e.g., "compare GDP trends across all countries over 10 years"), we'd need to migrate. Documented as a future path in `docs/context/world-analyst-project.md`, not a current concern.
 
 ---
 
@@ -414,3 +414,17 @@
 **Trade-off:** The frontend deployment gains proxy configuration and an extra request hop. The API still uses a shared secret rather than per-user auth. We accept that because it closes the most obvious trust gap without adding infrastructure the product does not need.
 
 **Date:** 2026-04-10
+
+---
+
+## ADR-030: Public Repo Curation Over Raw Interview Prep
+
+**Context:** The repo started to accumulate design assets, planning notes, employer research, and workflow scaffolding in a way that was useful locally but cluttered the public-facing root and exposed prep material that did not strengthen the engineering story.
+
+**Decision:** Curate the repo around product code, public docs, and repo-owned workflow guidance. Move design and architecture context under `docs/`, replace loose root planning files with repo-backed plan documents, and keep employer-specific research in ignored local files instead of tracked markdown.
+
+**Why:** The repo needs to read as a deliberate engineering artifact, not a working folder. Reviewers should be able to find the design system, product brief, ADRs, and plans quickly without wading through candidate-prep material or stale scratch files.
+
+**Trade-off:** Some local research stays outside version control, and a few paths become longer because they now sit under `docs/`. We accept that because the cleaner public surface is easier to review and easier to defend.
+
+**Date:** 2026-04-11

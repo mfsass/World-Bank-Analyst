@@ -5,7 +5,7 @@ This repo is part product artifact and part paper trail. Treat both as first-cla
 ## What Belongs In Git
 
 - Product code in `api/`, `pipeline/`, `frontend/`, and `shared/`
-- Design and planning context in `docs/`, `docs/prds/`, `docs/plans/`, `Design Mockups/`, and `Project Context/`
+- Design and planning context in `docs/`, `docs/prds/`, `docs/plans/`, `docs/design-mockups/`, and `docs/context/`
 - AI workflow assets in `.github/`, `.agents/`, `AGENTS.md`, and `GEMINI.md`
 - `.vscode/extensions.json` by default, with any other editor files added only by deliberate exception
 

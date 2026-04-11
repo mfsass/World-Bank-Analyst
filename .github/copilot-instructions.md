@@ -56,8 +56,8 @@ Read these for domain guidance before writing code in their area:
 - `api/` — Connexion backend (openapi.yaml, app.py, handlers/)
 - `pipeline/` — Data pipeline (fetcher, analyser, ai_client, storage)
 - `frontend/` — React 18 + Vite (pages, components, index.css)
-- `Design Mockups/` — Design tokens and visual references
-- `Project Context/` — Architecture decisions and ML6 context
+- `docs/design-mockups/` — Design tokens and visual references
+- `docs/context/` — Public architecture and product context
 
 ## Testing Philosophy
 

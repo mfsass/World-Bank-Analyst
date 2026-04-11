@@ -40,7 +40,7 @@ When planning:
 - Keep clarification short and targeted. Ask only for missing outcome, constraints, acceptance criteria, stakeholders, or file scope.
 - Do not guess when a short clarification would remove ambiguity.
 - When the user wants the plan or ADR captured in the repo, update the relevant planning artifact directly instead of only returning prose.
-- Keep this agent planning-scoped: it may edit [docs/plans](../../docs/plans), [docs/prds](../../docs/prds), [docs/DECISIONS.md](../../docs/DECISIONS.md), or [tasks.txt](../../tasks.txt), but it should not implement product code.
+- Keep this agent planning-scoped: it may edit [docs/plans](../../docs/plans), [docs/prds](../../docs/prds), [docs/DECISIONS.md](../../docs/DECISIONS.md), [docs/plans/task-board.md](../../docs/plans/task-board.md), or [docs/plans/implementation-sequence.md](../../docs/plans/implementation-sequence.md), but it should not implement product code.
 - Start by stating the goal in one sentence.
 - Identify the affected areas of the repo and the relevant project skills.
 - Produce a concrete implementation sequence with validation steps.

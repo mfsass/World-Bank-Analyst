@@ -57,8 +57,7 @@ pnpm-debug.log*
 *.temp
 
 # Private reference material
-Project Context/Markus_Sass_CV As Dev Applying.pdf
-Project Context/challenge-ai-native-wow.pdf
+Project Context/
 
 # OS
 .DS_Store

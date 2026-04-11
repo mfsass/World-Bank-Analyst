@@ -1,9 +1,8 @@
-# World Analyst — Project Brief & Build Context
+# World Analyst — Product Brief & Architecture Context
 
-**Document Type:** Engineering Challenge Brief + Architecture Decision Record  
-**Challenge:** ML6 AI Native WOW Engineering Challenge  
-**Role Applied For:** Product Engineer — Unum Enterprise AI Platform  
-**Document Status:** Active — Implementation Baseline  
+**Document Type:** Repo-owned product brief and architecture context  
+**Origin:** Created for the ML6 AI Native WoW Engineering Challenge  
+**Document Status:** Active — Implementation baseline  
 
 ---
 
@@ -29,7 +28,7 @@
 ## 1. Original Challenge Brief
 
 ### Source
-ML6 AI Native WOW Engineering Challenge — distributed to candidates by Julie Plusquin.
+ML6 AI Native WoW Engineering Challenge brief.
 
 ### Interview Format
 - `[05 min]` Introductions
@@ -325,7 +324,7 @@ Intelligence Layer Cloud Run—Serverless  Firestore + GCS   Cloud Scheduler (Py
 
 ### Page 4 — Pipeline Trigger
 
-**The most important page for the presentation.** An ML6 engineer clicks one button and watches the entire pipeline execute end-to-end in real time.
+This is the clearest end-to-end product proof point. A reviewer clicks one button and watches the pipeline execute in real time.
 
 **Structure:**
 ```
@@ -791,7 +790,7 @@ Walk through README. Justify Firestore over BigQuery. Explain Connexion. Show Cl
 > API key in the `X-API-Key` header, validated by Connexion's security scheme before any handler executes. Key stored as a Cloud Run environment variable sourced from Secret Manager. In production, the frontend reaches the API through a same-origin proxy that injects the header server-side, so the browser never carries the shared secret.
 
 **"Why europe-west1?"**
-> Belgium — your home market. Latency advantage for Benelux clients, and it signals I understood where ML6 operates.
+> Belgium-centered demo region with clear Benelux relevance and an easy operational story for one primary environment.
 
 ---
 
@@ -803,10 +802,10 @@ The following are intentionally left open pending testing or further input:
 The live baseline is now fixed to `gemma-4-31b-it`, but one open question remains: is that model good enough for both AI steps, or only for per-indicator analysis? The answer depends on the evaluation gate defined by the Live AI integration PRD.
 
 ### Netherlands as a Country
-Currently 15 countries include Netherlands (NL). Decision: include it. ML6 has an Amsterdam office. Minor signal worth keeping.
+Currently 15 countries include Netherlands (NL). Decision: include it. The country set already aims for economically relevant geographic coverage, and the Netherlands remains a defensible inclusion.
 
 ### Browser-Facing Auth Hardening
-Resolved by the Security, Testing, And Hardening PRD. The deployed frontend uses a same-origin proxy path to the API, and that proxy injects the shared API key server-side. Local development may still use the simpler direct-header pattern.
+Resolved by the Security, Testing, And Hardening PRD. The deployed frontend uses a same-origin proxy path to the API, and that proxy injects the shared API key server-side. Local development mirrors that shape through the Vite proxy.
 
 ### Caching vs Live Pipeline
 "Refresh Data" should re-fetch the latest persisted state, not trigger a new pipeline run. Running the pipeline remains a separate explicit action.
@@ -818,21 +817,15 @@ The current two-step chain yields 105 AI calls per full run. Step 1 parallelism 
 
 ## 14. What Makes This Different
 
-A direct assessment of differentiators versus a typical challenge submission.
-
-### What Most Candidates Will Submit
-- A Python script that calls the World Bank API
-- A single OpenAI call that summarises the data
-- A Streamlit dashboard or basic React table
-- A README that lists the tech stack
+The goal is not novelty for its own sake. The differentiators below matter because they make the system easier to review, easier to demo, and easier to defend.
 
 ### What This Submission Demonstrates
 
 **1. The Two-Step Agentic Chain**
-No other candidate will have visualised their prompt architecture as a deliberate design decision with explicit justification. This directly answers ML6's "agentic thinking" criterion and shows you understand that AI reliability comes from how you structure the reasoning — not which model you use.
+The prompt architecture is treated as a design decision with explicit justification. This directly answers the brief's "agentic thinking" criterion and shows that AI reliability comes from structured reasoning, not just model choice.
 
 **2. The Pipeline Trigger Page**
-An interactive live execution page with animated step states and a terminal log is well beyond the brief. It turns a technical requirement into a product moment. The "Run Pipeline" button gives ML6 engineers instant hands-on access to the full system — exactly what the brief says they value.
+An interactive live execution page with animated step states and a terminal log turns a technical requirement into a product moment. The "Run Pipeline" button gives reviewers direct hands-on access to the full system.
 
 **3. Production Thinking Throughout**
 System Telemetry KPIs, `europe-west1` region choice, Cloud Run scale-to-zero, Secret Manager for API keys, Connexion's OpenAPI-first contract, Firestore schema design — these are production engineering decisions applied to a demo. Most candidates build demos. This is a system.

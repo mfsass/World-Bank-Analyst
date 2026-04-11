@@ -34,7 +34,7 @@ Before writing code, the engineer must document the "why" and the trade-offs.
 
 **In practice:**
 - New features start with a plan in `docs/plans/` (see `@writing-plans`)
-- Architecture decisions are recorded in `WORLD_ANALYST_PROJECT.md`
+- Architecture decisions are recorded in `docs/context/world-analyst-project.md`
 - The README explains choices, not just instructions
 
 **Test:** Can you explain every architectural choice without notes?
@@ -47,7 +47,7 @@ Context lives in the repo, not in ephemeral chats.
 - `GEMINI.md` / `AGENTS.md` / `.github/copilot-instructions.md` — agent context
 - `openapi.yaml` — API contract
 - `README.md` — the spec that guided the build
-- `Design Mockups/` — visual language
+- `docs/design-mockups/` — visual language
 - Code comments and docstrings — the local explanation for business rules, orchestration, and trade-offs that are not obvious from function names alone
 
 **Test:** Can a new engineer understand every design decision from the repo alone?

@@ -165,7 +165,7 @@ World Analyst already knows where AI belongs. Pandas calculates the signal. The 
 - Storage handoff in `pipeline/storage.py` and shared repository adapters.
 - ADR-002 and ADR-003 for the two-step chain rationale and structured-output discipline.
 - ADR-026 and ADR-027 for the baseline model and exact-input reuse policy.
-- Adjacent architecture and challenge-fit guidance in `Project Context/WORLD_ANALYST_PROJECT.md` and `docs/DECISIONS.md`.
+- Adjacent architecture and challenge-fit guidance in `docs/context/world-analyst-project.md` and `docs/DECISIONS.md`.
 
 ### 8.2 Data storage and privacy
 - Model provider credentials must remain in server-side runtime configuration and secret management, not in frontend bundles.

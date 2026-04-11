@@ -177,12 +177,15 @@ def create_app() -> connexion.FlaskApp:
     app.add_middleware(
         CORSMiddleware,
         position=MiddlewarePosition.BEFORE_EXCEPTION,
-        allow_origins=["*"],
-        allow_methods=["GET", "POST"],
+      allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+      allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["X-API-Key", "Content-Type"],
     )
     return app
 ```
+
+  For deployed environments, prefer an explicit `WORLD_ANALYST_ALLOWED_ORIGINS`
+  configuration and reject `"*"` so the public runtime does not ship with wildcard CORS.
 
 ---
 

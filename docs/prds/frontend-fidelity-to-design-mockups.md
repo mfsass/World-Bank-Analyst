@@ -161,7 +161,7 @@ World Analyst should look like the product it claims to be. This PRD closes the 
 - Page implementations in `frontend/src/pages/GlobalOverview.jsx`, `frontend/src/pages/CountryIntelligence.jsx`, `frontend/src/pages/HowItWorks.jsx`, and `frontend/src/pages/PipelineTrigger.jsx`.
 - Existing frontend API integration in `frontend/src/api.js`.
 - Frontend build configuration in `vite.config.js` and environment-specific API base URL handling aligned with ADR-023 and the cloud deployment PRD.
-- Design references in `Design Mockups/Global Overview Finalized.html`, `Design Mockups/Country Intelligence Finalized.html`, `Design Mockups/How It Works Finalized.html`, `Design Mockups/Pipeline Trigger Finalized.html`, and `Design Mockups/Design System.md`.
+- Design references in `docs/design-mockups/Global Overview Finalized.html`, `docs/design-mockups/Country Intelligence Finalized.html`, `docs/design-mockups/How It Works Finalized.html`, `docs/design-mockups/Pipeline Trigger Finalized.html`, and `docs/design-mockups/Design System.md`.
 
 ### 8.2 Data storage and privacy
 - This PRD does not introduce new storage requirements.

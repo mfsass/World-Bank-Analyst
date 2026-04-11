@@ -7,7 +7,7 @@ This repo already had strong global context in [GEMINI.md](../GEMINI.md), [AGENT
 - File-scoped instructions in [.github/instructions](../.github/instructions) so the right rules load for API, pipeline, frontend, and tests.
 - Custom agents in [.github/agents](../.github/agents) for planning, implementation, and review with explicit handoffs.
 - Prompt files in [.github/prompts](../.github/prompts) for the highest-value recurring tasks.
-- Planning and task scaffolds in [docs/plans/TEMPLATE.md](../docs/plans/TEMPLATE.md) and [tasks/todo.md](../tasks/todo.md).
+- Planning and task scaffolds in [docs/plans/TEMPLATE.md](plans/TEMPLATE.md), [docs/plans/implementation-sequence.md](plans/implementation-sequence.md), and [docs/plans/task-board.md](plans/task-board.md).
 - Recommended extensions in [.vscode/extensions.json](../.vscode/extensions.json).
 
 ## Recommended Copilot Loop

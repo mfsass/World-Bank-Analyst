@@ -95,8 +95,8 @@ This PRD follows a simple rule: every architecture claim shown on the page must 
   - The content structure should help the reviewer move from high-level system shape to specific design choices without friction.
 
 - **Documentation alignment** (Priority: Medium)
-  - Key claims on the How It Works page must remain consistent with the project brief, ADRs, and the architecture sections of `Project Context/WORLD_ANALYST_PROJECT.md`.
-  - Supporting documentation edits are limited to `docs/DECISIONS.md` and the relevant architecture sections of `Project Context/WORLD_ANALYST_PROJECT.md` when contradiction would otherwise remain visible.
+  - Key claims on the How It Works page must remain consistent with the project brief, ADRs, and the architecture sections of `docs/context/world-analyst-project.md`.
+  - Supporting documentation edits are limited to `docs/DECISIONS.md` and the relevant architecture sections of `docs/context/world-analyst-project.md` when contradiction would otherwise remain visible.
   - If alignment would require changes to more than three supporting files or a broad README rewrite, that work must be split out.
 
 - **Simplicity and proportionality** (Priority: High)
@@ -152,7 +152,7 @@ World Analyst does not need a flashy architecture page. It needs a truthful one.
 - Pipeline orchestration and stage boundaries in `pipeline/main.py`.
 - Storage responsibilities in `pipeline/storage.py` and shared repository adapters.
 - API contract and serving model in `api/openapi.yaml`, `api/app.py`, and relevant handlers.
-- Architecture guidance and review story in `Project Context/WORLD_ANALYST_PROJECT.md` and `docs/DECISIONS.md`.
+- Architecture guidance and review story in `docs/context/world-analyst-project.md` and `docs/DECISIONS.md`.
 
 ### 8.2 Data storage and privacy
 - The page should explain Firestore and GCS roles accurately at a product level.

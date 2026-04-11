@@ -15,8 +15,8 @@ Pandas detects _that_ GDP dropped 4.2%. The LLM explains _why_ — what it means
 This repository is meant to show both the product and the working method behind it. The tracked surface is intentionally broader than a runtime-only app repository.
 
 - Product code lives in `api/`, `pipeline/`, `frontend/`, and `shared/`.
-- The paper trail lives in `docs/`, `docs/prds/`, `docs/plans/`, `Design Mockups/`, and `Project Context/`.
-- The AI workflow assets live in `.github/`, `.agents/`, `AGENTS.md`, and `GEMINI.md`.
+- The paper trail lives in `docs/`, `docs/prds/`, `docs/plans/`, `docs/design-mockups/`, and `docs/context/`.
+- Scoped workflow assets live in `.github/`, `.agents/`, `AGENTS.md`, and `GEMINI.md`.
 
 That mix is deliberate. The challenge is partly about whether the repo can explain why decisions were made, how AI was used, and what was kept out of scope.
 
@@ -72,6 +72,7 @@ BigQuery is a data warehouse for analytical queries over large datasets. World A
 ## Quick Start
 
 Local development defaults to `WORLD_ANALYST_STORAGE_BACKEND=local` and `WORLD_ANALYST_API_KEY=local-dev`.
+The browser does not send that key directly. The Vite dev proxy injects it server-side, which matches the deployed same-origin proxy story.
 
 ```bash
 # Backend
@@ -109,7 +110,7 @@ When a trade-off would matter in review, log it in `docs/DECISIONS.md`. When a c
 
 ## Design System
 
-See `Design Mockups/Design System.md` for the full specification. Key constraints:
+See `docs/design-mockups/Design System.md` for the full specification. Key constraints:
 
 - Dark canvas (`#0E0E0E`), no shadows, no blur
 - `#FF4500` accent reserved for AI insights and primary CTAs
@@ -123,9 +124,9 @@ See `Design Mockups/Design System.md` for the full specification. Key constraint
 | ------------------------------------------ | ---------------------------------------------------------------- |
 | `docs/DECISIONS.md`                        | **Why** — trade-offs, alternatives considered, rationale         |
 | `CONTRIBUTING.md`                          | How we stage, split, and curate commits into a clear audit trail |
-| `Project Context/WORLD_ANALYST_PROJECT.md` | Full project brief, data model, pipeline architecture            |
+| `docs/context/world-analyst-project.md`    | Full project brief, data model, pipeline architecture            |
 | `.github/skills/`                          | Domain-specific guidance for each area of the codebase           |
-| `Design Mockups/Design System.md`          | Complete design token specification                              |
+| `docs/design-mockups/Design System.md`     | Complete design token specification                              |
 
 ## Engineering Principles
 

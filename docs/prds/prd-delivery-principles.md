@@ -41,4 +41,4 @@ These principles apply across World Analyst PRDs. They exist to keep the solutio
 
 ## 8. Recommended Order
 - Implement durable system truth before review-facing explanation.
-- Recommended implementation order lives in `tasks.txt` and should be treated as the working sequence unless a new ADR changes it.
+- Recommended implementation order lives in `docs/plans/implementation-sequence.md` and should be treated as the working sequence unless a new ADR changes it.

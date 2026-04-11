@@ -30,7 +30,7 @@ Integrate the Global Overview landing page with the current local/API slice so t
 - Frontend routing and CTA touchpoints if needed: `frontend/src/App.jsx`
 - Existing API boundaries expected to be consumed as-is: `api/openapi.yaml`, `api/handlers/indicators.py`, `api/handlers/countries.py`, `api/handlers/pipeline.py`
 - Optional API/test changes only if a real data gap appears: `api/tests/`
-- Design references: `Design Mockups/Global Overview Finalized.html`, `Design Mockups/Design System.md`
+- Design references: `docs/design-mockups/Global Overview Finalized.html`, `docs/design-mockups/Design System.md`
 - Relevant skills/docs: `world-analyst-design-system`, `world-analyst-engineering`, and `connexion-api-development` if the contract must change
 
 ## In Scope
