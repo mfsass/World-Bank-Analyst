@@ -28,11 +28,11 @@ The delivery scope remains deliberately bounded around a 17-country exact-comple
 
 ## Architecture
 
-The deployed target is Firestore plus GCS, but local development currently defaults to the in-memory repository so the vertical slice can run without cloud dependencies.
+The deployed target is Firestore plus GCS, but repo defaults stay local and deterministic until Cloud Run env vars opt into live data and durable storage explicitly.
 
 ```text
 World Bank API → Cloud Run Job (Python + Pandas)
-    → AI Chain (Gemini/OpenAI: indicator analysis → macro synthesis)
+    → Two-step synthesis contract
     → Firestore (insights) + GCS (raw backup)
     → Connexion REST API
     → React Frontend (World Bank Analyst Dashboard)
@@ -43,7 +43,7 @@ World Bank API → Cloud Run Job (Python + Pandas)
 | Service                  | Technology            | Role                                                         |
 | ------------------------ | --------------------- | ------------------------------------------------------------ |
 | `world-analyst-api`      | Python + Connexion    | REST API serving insights from the active repository backend |
-| `world-analyst-pipeline` | Python + Pandas + LLM | Data fetch → analysis → storage pipeline                     |
+| `world-analyst-pipeline` | Python + Pandas       | Data fetch → analysis → storage pipeline                     |
 | `world-analyst-frontend` | React 18 + Vite       | Dashboard served via nginx                                   |
 
 ### Four Pages
@@ -62,7 +62,7 @@ World Bank API → Cloud Run Job (Python + Pandas)
 | Storage      | **Local in-memory for development; Firestore + GCS for deployment** | Local runs stay dependency-light, while the deployed target remains document-shaped and read-heavy. |
 | Backend      | **Connexion**                                                       | OpenAPI-first, contract-enforced routing. Spec is source of truth.                                  |
 | Frontend CSS | **Vanilla CSS**                                                     | Design system uses explicit tokens. No Tailwind, no frameworks.                                     |
-| AI Chain     | **Two-step**                                                        | Per-indicator analysis → macro synthesis. Prevents context collapse.                                |
+| AI Chain     | **Two-step contract**                                               | Per-indicator analysis → macro synthesis. Real provider wiring is deferred; the repo still ships a deterministic development adapter. |
 | Deployment   | **Cloud Run**                                                       | Scale-to-zero, europe-west1 region.                                                                 |
 
 ### Why Not BigQuery?
@@ -71,23 +71,50 @@ BigQuery is a data warehouse for analytical queries over large datasets. World B
 
 ## Quick Start
 
-Local development defaults to `REPOSITORY_MODE=local` and `WORLD_ANALYST_API_KEY=local-dev`. `WORLD_ANALYST_STORAGE_BACKEND` remains supported as a backward-compatible alias.
+Local development defaults to `PIPELINE_MODE=local`, `REPOSITORY_MODE=local`, and `WORLD_ANALYST_API_KEY=local-dev`. `WORLD_ANALYST_STORAGE_BACKEND` remains supported as a backward-compatible alias.
 The browser does not send that key directly. The Vite dev proxy injects it server-side, which matches the deployed same-origin proxy story.
 
 ```bash
 # Backend
 cd api && pip install -r requirements.txt
 export WORLD_ANALYST_API_KEY=local-dev
+export PIPELINE_MODE=local
 python app.py
 
 # Pipeline
 cd pipeline && pip install -r requirements.txt
+export PIPELINE_MODE=local
 python main.py
 
 # Frontend
 cd frontend && npm install
 npm run dev
 ```
+
+For deployed runtimes, keep the code default local and set the cloud services explicitly instead:
+
+| Surface | Required runtime/build configuration |
+| --- | --- |
+| API service | `WORLD_ANALYST_RUNTIME_ENV=production`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_API_KEY`, `WORLD_ANALYST_ALLOWED_ORIGINS`, optional `WORLD_ANALYST_FIRESTORE_COLLECTION` |
+| Pipeline job | `PIPELINE_MODE=live`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_RAW_ARCHIVE_BUCKET`, `GEMINI_API_KEY` for the default Google path, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_AI_PROVIDER`, `WORLD_ANALYST_GEMINI_MODEL`, `WORLD_ANALYST_OPENAI_MODEL`, `WORLD_ANALYST_AI_MAX_ATTEMPTS` |
+| Frontend runtime | The frontend already defaults to `/api/v1`; Cloud Run must set `WORLD_ANALYST_API_UPSTREAM` and `WORLD_ANALYST_PROXY_API_KEY` for the nginx same-origin proxy |
+
+Before the first cloud deployment, create or confirm:
+
+1. A GCP project with billing enabled
+2. A Firestore Native database in `europe-west1` or the corresponding EU multi-region
+3. A GCS bucket for raw World Bank archives
+4. A Secret Manager secret for `WORLD_ANALYST_API_KEY`
+5. Cloud Run service accounts for the API service, pipeline job, and Cloud Scheduler trigger
+6. IAM bindings that give those identities only the roles they need for Firestore, GCS, Secret Manager, and Cloud Run job invocation
+
+See `.agents/workflows/deploy.md` for copy-pasteable service-account, secret-creation, IAM, deploy, and scheduler commands.
+
+Cloud rollout notes:
+
+- `frontend/nginx/default.conf.template` already proxies `/api/v1/` and injects `X-API-Key` server-side. Do not bake the API key into frontend assets.
+- Firestore mode requires the paired GCS bucket because stored records keep raw archive references alongside processed documents.
+- Live AI now runs through `pipeline/ai_client.py`. The default live baseline is Google GenAI `gemma-4-31b-it` with `GEMINI_API_KEY` supplied server-side; switch providers deliberately with `WORLD_ANALYST_AI_PROVIDER=openai` plus `OPENAI_API_KEY`.
 
 ## Development
 
@@ -100,6 +127,21 @@ cd frontend && npm run lint
 cd api && pytest tests/ -v
 cd pipeline && pytest tests/ -v
 cd frontend && npm run test:overview
+```
+
+Opt-in live World Bank smoke:
+
+```bash
+cd pipeline && WORLD_ANALYST_RUN_LIVE_TESTS=1 pytest tests/test_live_world_bank_integration.py -v
+```
+
+Live AI evaluation gate:
+
+```bash
+# From the repo root. Exits non-zero when the Gemma 4 baseline misses the
+# documented live-AI gate. Uses the built-in rubric by default; add
+# --judge-model gemma-4-31b-it when you want a live Google judge overlay too.
+python -m pipeline.evaluation
 ```
 
 ## Git Workflow

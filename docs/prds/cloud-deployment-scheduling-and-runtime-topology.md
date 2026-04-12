@@ -57,7 +57,7 @@ This PRD moves World Analyst from a local-first execution model to a real GCP ru
   - The frontend, API, and pipeline execution path must run as separate cloud resources rather than one local process.
   - The deployed API must no longer perform the full pipeline inside its own process when cloud mode is enabled.
   - The pipeline must execute in a dedicated Cloud Run Job runtime.
-  - `PIPELINE_MODE` must default to `"live"` in all Cloud Run environments. The `"local"` mode remains available for local development and CI only (via explicit env var override). It is not a valid posture for any deployed service.
+  - The repo default may remain `"local"` for deterministic development, but every Cloud Run pipeline deployment must set `PIPELINE_MODE=live` explicitly. Deployed services must not rely on the code default.
 
 - **Scheduled push execution** (Priority: High)
   - Cloud Scheduler must trigger the Cloud Run Job on a defined cadence.
@@ -85,13 +85,13 @@ This PRD moves World Analyst from a local-first execution model to a real GCP ru
 - **Live deployed frontend surface** (Priority: High)
   - A reviewer must be able to open one live dashboard URL.
   - The deployed frontend must communicate with the deployed API using a production-safe base URL pattern.
-  - The frontend build must receive `VITE_API_BASE_URL` as a build-time environment variable so the deployed bundle does not depend on hardcoded API URLs. In the deployed build, that value should be `/api/v1` so browser requests target the same-origin frontend proxy rather than the API origin directly.
+  - The frontend should default `VITE_API_BASE_URL` to `/api/v1` so browser requests target the same-origin frontend proxy rather than the API origin directly. Override it only if a future deployment topology changes that assumption.
   - The deployed experience must preserve the current route structure even if the visual fidelity is improved later.
 
 - **Runtime configuration and secrets management** (Priority: High)
   - Runtime configuration must be provided through environment variables or equivalent service configuration, not hardcoded values.
   - Secrets such as API keys and model credentials must come from Secret Manager or an equivalent secure runtime path.
-  - AI provider credentials for the pipeline job belong to this PRD's Secret Manager wiring. The browser-facing auth pattern stays on the current direct API-key path during this phase only and is finalized by the Security, Testing, and Hardening PRD.
+  - AI provider credentials are deferred to the live-AI phase. This rollout prepares only the Cloud Run, Firestore, GCS, and shared API-key wiring needed for a truthful cloud deployment story.
   - Service identities must be scoped to the resources they actually use.
   - API, job, and scheduler service accounts must have only the minimum roles needed for their specific duties.
 
@@ -161,7 +161,6 @@ World Analyst should not claim a cloud architecture that only exists in diagrams
 - Pipeline orchestration in `pipeline/main.py`.
 - Storage writes in `pipeline/storage.py` and shared repository adapters.
 - Frontend API integration in `frontend/src/api.js`.
-- The deployed frontend service is expected to remain nginx-served on Cloud Run. In the deployed build, `VITE_API_BASE_URL` should be `/api/v1`, and that same runtime becomes the proxy mechanism hardened later by the Security, Testing, and Hardening PRD against `${WORLD_ANALYST_API_UPSTREAM}`.
 - The deployed frontend service is expected to remain nginx-served on Cloud Run. In the deployed build, `VITE_API_BASE_URL` should be `/api/v1`, and that same runtime becomes the proxy mechanism hardened later by the Security, Testing, and Hardening PRD against `${WORLD_ANALYST_API_UPSTREAM}`. That upstream runtime value should include the API service origin plus `/api/v1/` so proxied browser routes map cleanly onto the Connexion base path.
 - Deployment documentation and resource explanation in `README.md` and `docs/DECISIONS.md`.
 - The durable storage and status PRD must complete its shared repository and durable status contract before this PRD can be implemented safely.
@@ -244,7 +243,7 @@ This is a medium-to-large integration PRD. It touches deployment, runtime contro
 - **Description**: As an engineer, I want deployment-time configuration and secret handling so that the live system is secure enough for review and does not depend on hardcoded credentials.
 - **Acceptance criteria**:
   - [ ] Runtime configuration is supplied through environment variables or equivalent service configuration.
-  - [ ] The frontend build receives `VITE_API_BASE_URL` at build time so the deployed bundle does not contain a hardcoded API origin.
+  - [ ] The deployed frontend uses the same-origin `/api/v1` path by default, with Cloud Run supplying only the nginx upstream and shared proxy key at runtime.
   - [ ] Sensitive values used by cloud services come from Secret Manager or an equivalent secure runtime path.
   - [ ] No sensitive secret is required inside the built frontend bundle.
   - [ ] API, job, and scheduler service accounts have only the minimum roles required for their work.

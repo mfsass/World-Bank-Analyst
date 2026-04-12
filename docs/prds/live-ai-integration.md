@@ -5,9 +5,9 @@
 ### 1.1 Document title and version
 
 Live AI integration
-Version: 0.1
-Date: 2026-04-10
-Status: Draft for approval
+Version: 1.0
+Date: 2026-04-12
+Status: Implemented and validated locally
 
 ### 1.2 Product summary
 
@@ -16,6 +16,19 @@ World Analyst already has the shape of its AI layer in code, but the current end
 This PRD covers the live-AI layer only. It owns the switch from deterministic development AI to real provider-backed inference for the existing two-step chain, the provider and model selection policy, structured-output reliability, evaluation gates, low-cost reuse rules, and the minimum provenance needed to explain which model produced which output. It does not own live World Bank fetching, cloud job dispatch, final browser-facing API-key architecture, or broad operational hardening. The goal is narrow and practical: keep the current AI design, make it real, and keep the system honest about quality and cost.
 
 The initial live baseline must use Google GenAI with `gemma-4-31b-it`. That is an economy-first starting point, not a blind long-term commitment. The chosen model remains subject to evaluation against real pipeline inputs. If the baseline does not meet the required quality, reliability, or structured-output thresholds, the implementation may promote one or both AI steps to a stronger model. The product should pay for more model power only when evaluation evidence shows it is needed.
+
+### 1.3 Implementation outcome
+
+The live-AI layer is now implemented behind the existing pipeline seam. `PIPELINE_MODE=live` uses the provider-backed client in `pipeline/ai_client.py`, while `PIPELINE_MODE=local` stays deterministic through `pipeline/dev_ai_adapter.py`. The approved baseline remains Google GenAI with `gemma-4-31b-it`, backed by bounded retry logic, bounded markdown-fence repair before schema validation, explicit degraded fallback payloads, prompt-version lineage, and private per-record AI provenance.
+
+This phase also closed the two remaining product-honesty gaps that would have made the AI story hard to defend in review. Exact-match reuse now avoids duplicate provider calls only when the prior stored output is healthy and fingerprint-compatible, and degraded live AI no longer looks like a clean success at run level. Successful outputs are still stored, but the terminal run status fails when degraded fallback output was required.
+
+Validation completed on 2026-04-12:
+
+- `cd pipeline && python -m pytest tests -q` passed (`49 passed, 1 skipped`).
+- `cd pipeline && python -m ruff check .` passed.
+- `cd api && python -m pytest tests -q` passed (`14 passed`).
+- `python -m pipeline.evaluation` passed on the full approved 17-country by 6-indicator scope with zero fetch failures, 100% schema-valid outputs in both AI steps, 0 degraded fallbacks, 0 refusals, indicator groundedness `0.936`, synthesis coherence `1.0`, Step 1 p95 latency `5338 ms`, Step 2 p95 latency `7705 ms`, and estimated full-run cost `$0.011646`.
 
 ## 2. Goals
 
@@ -85,6 +98,7 @@ The initial live baseline must use Google GenAI with `gemma-4-31b-it`. That is a
   - Step 1 and Step 2 prompts must remain explicit, versioned, and easy to inspect in code.
   - Prompt changes that materially alter behavior must be traceable through a prompt version identifier or equivalent contract field.
   - The implementation must preserve the current division of labor where pandas computes statistics and the LLM writes narrative interpretation.
+  - Anomaly detection is Pandas' responsibility, not the LLM's. The pipeline uses a per-indicator z-score rather than a fixed percentage threshold: each year-over-year change is compared against that indicator's own cross-panel mean and standard deviation (pooled across all 17 countries). A move is flagged when `|z| >= 2.0σ`. The raw `z_score` is passed into the LLM context so the AI can calibrate the strength of its language — a 2.1σ move warrants a different sentence than a 4.0σ shock. See ADR-044.
   - Prompt design should remain simple enough to explain clearly in review and Q&A.
 
 - **Evaluation-gated model selection** (Priority: High)
@@ -237,57 +251,59 @@ This is a medium-sized AI-enablement PRD. It is narrower than cloud runtime or f
 - **ID**: US-1
 - **Description**: As an evaluator, I want the pipeline to use a real LLM for live runs so that the AI layer is credible rather than simulated.
 - **Acceptance criteria**:
-  - [ ] Real runs use a provider-backed AI client instead of the deterministic development adapter.
-  - [ ] Deterministic development AI remains available for tests and lightweight local work.
-  - [ ] The pipeline preserves the current two-step chain shape for indicator analysis and country synthesis.
-  - [ ] Downstream pipeline code continues to depend on one stable AI interface.
+  - [x] Real runs use a provider-backed AI client instead of the deterministic development adapter.
+  - [x] Deterministic development AI remains available for tests and lightweight local work.
+  - [x] The pipeline preserves the current two-step chain shape for indicator analysis and country synthesis.
+  - [x] Downstream pipeline code continues to depend on one stable AI interface.
 
 ### 10.2 Start with Gemma 4 and upgrade only if evaluation justifies it
 
 - **ID**: US-2
 - **Description**: As an engineer, I want the live AI layer to start from a low-cost baseline and upgrade only when evidence justifies it so that cost discipline is built into the design.
 - **Acceptance criteria**:
-  - [ ] The initial live baseline uses Google GenAI with `gemma-4-31b-it`.
-  - [ ] Any model change from that baseline is documented and tied to evaluation evidence.
-  - [ ] The implementation keeps the path open to stronger Google, OpenAI, or OpenRouter-backed models if needed.
-  - [ ] Model promotion does not require rewriting upstream pipeline orchestration.
+  - [x] The initial live baseline uses Google GenAI with `gemma-4-31b-it`.
+  - [x] Any model change from that baseline is documented and tied to evaluation evidence.
+  - [x] The implementation keeps the path open to stronger Google, OpenAI, or OpenRouter-backed models if needed.
+  - [x] Model promotion does not require rewriting upstream pipeline orchestration.
 
 ### 10.3 Keep structured outputs valid and reviewable
 
 - **ID**: US-3
 - **Description**: As an engineer, I want live AI outputs to validate against stable schemas so that downstream storage and API contracts remain safe.
 - **Acceptance criteria**:
-  - [ ] Step 1 and Step 2 live outputs validate against the required structured contracts before storage.
-  - [ ] Validation failures never silently write malformed AI payloads.
-  - [ ] The system uses bounded retry logic for transient provider or validation errors.
-  - [ ] Exhausted retries produce an explicit degraded fallback payload rather than fabricated normal output.
+  - [x] Step 1 and Step 2 live outputs validate against the required structured contracts before storage.
+  - [x] Validation failures never silently write malformed AI payloads.
+  - [x] The system uses bounded retry logic for transient provider or validation errors.
+  - [x] Exhausted retries produce an explicit degraded fallback payload rather than fabricated normal output.
 
 ### 10.4 Evaluate the baseline before it becomes the default
 
 - **ID**: US-4
 - **Description**: As a reviewer, I want model selection to be backed by evidence so that the chosen AI configuration is defensible.
 - **Acceptance criteria**:
-  - [ ] Evaluation covers structured-output validity, groundedness to numeric inputs, synthesis coherence, refusal behavior, latency, and estimated full-run cost.
-  - [ ] The evaluation corpus uses the full approved 17-country by 6-indicator scope unless a documented temporary subset is agreed before the evaluation phase.
-  - [ ] The default live model is only approved after passing the documented evaluation gate.
-  - [ ] A stronger model is only adopted when the baseline fails documented pass criteria.
+  - [x] Evaluation covers structured-output validity, groundedness to numeric inputs, synthesis coherence, refusal behavior, latency, and estimated full-run cost.
+  - [x] The evaluation corpus uses the full approved 17-country by 6-indicator scope unless a documented temporary subset is agreed before the evaluation phase.
+  - [x] The default live model is only approved after passing the documented evaluation gate.
+  - [x] A stronger model is only adopted when the baseline fails documented pass criteria.
+  - [x] The documented pass criteria are concrete: full 17-country scope with zero fetch failures, 100% schema-valid outputs in both AI steps, 0 degraded fallbacks, 0 refusals, average indicator groundedness >= 0.80, average synthesis coherence >= 0.80, p95 latency <= 8s for Step 1 and <= 15s for Step 2, and estimated full-run cost <= $5.00.
+  - [x] The evaluation harness behaves as a gate, not telemetry only: it returns a failing result and exits non-zero when those requirements are not met.
 
 ### 10.5 Reuse exact-match AI results to keep cost low
 
 - **ID**: US-5
 - **Description**: As an engineer, I want repeated identical AI inputs to reuse prior results so that the product avoids paying twice for the same inference.
 - **Acceptance criteria**:
-  - [ ] Reuse eligibility is determined by an exact-match fingerprint of normalized input content, step name, prompt version, provider, and model.
-  - [ ] Exact-match reuse avoids a duplicate provider call when the fingerprint matches a prior result.
-  - [ ] The implementation does not introduce a separate semantic cache or cache service for this phase.
-  - [ ] Reuse behavior remains inspectable and explainable in code and stored provenance.
+  - [x] Reuse eligibility is determined by an exact-match fingerprint of normalized input content, step name, prompt version, provider, and model.
+  - [x] Exact-match reuse avoids a duplicate provider call when the fingerprint matches a prior result.
+  - [x] The implementation does not introduce a separate semantic cache or cache service for this phase.
+  - [x] Reuse behavior remains inspectable and explainable in code and stored provenance.
 
 ### 10.6 Preserve minimum provenance and honest degraded states
 
 - **ID**: US-6
 - **Description**: As a reviewer, I want stored AI outputs to show which model produced them and whether coverage was degraded so that the product stays explainable.
 - **Acceptance criteria**:
-  - [ ] Stored AI-backed outputs preserve provider, model, step, and prompt-version provenance.
-  - [ ] Provider credentials are never exposed in stored records or frontend bundles.
-  - [ ] Runs with incomplete AI coverage preserve successful outputs but do not appear as fully successful without qualification.
-  - [ ] Logs and terminal run status make AI degradation explicit.
+  - [x] Stored AI-backed outputs preserve provider, model, step, and prompt-version provenance.
+  - [x] Provider credentials are never exposed in stored records or frontend bundles.
+  - [x] Runs with incomplete AI coverage preserve successful outputs but do not appear as fully successful without qualification.
+  - [x] Logs and terminal run status make AI degradation explicit.

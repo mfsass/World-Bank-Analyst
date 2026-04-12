@@ -594,3 +594,106 @@
 **Trade-off:** We give up the earlier geographic-representation and ML6-market narrative. The new core panel has no Africa, MENA, or South Asia coverage, and Russia stays in scope because the shortlist is mechanically derived from the completeness rule rather than chosen editorially. If future product goals require broader regional representation, that should become an explicit second-tier watchlist with documented partial-coverage rules instead of silently weakening the exact-complete core panel.
 
 **Date:** 2026-04-11
+
+---
+
+## ADR-042: Keep Repo Defaults Local and Make Cloud Runtime Selection Explicit
+
+**Context:** The next rollout phase needs truthful Cloud Run, Firestore, GCS, and frontend-proxy deployment guidance, but the repo still serves two audiences at once: deterministic local development and a future cloud deployment. Letting code defaults drift toward cloud-only behavior would make local validation more fragile and would hide critical deployment intent inside implicit fallbacks instead of explicit service configuration.
+
+**Decision:** Keep the repo defaults on deterministic local mode where practical, including `PIPELINE_MODE=local` and `REPOSITORY_MODE=local`, and require Cloud Run services to opt into production behavior through explicit environment variables such as `PIPELINE_MODE=live` and `REPOSITORY_MODE=firestore`.
+
+**Why:** This keeps local commands, tests, and review demos dependency-light while making the cloud rollout more honest. A reviewer can now see exactly which settings turn on live World Bank fetches, Firestore persistence, GCS raw archives, and the frontend proxy path instead of inferring them from code defaults.
+
+**Trade-off:** Cloud deployment commands become a little longer because they must carry the runtime contract explicitly. We accept that because the alternative is a more fragile local experience and a less auditable deployment story.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-043: Replace the Global Overview Raster Map With a Bundled Vector Geography
+
+**Context:** The Global Overview map had already moved away from percentage-based marker placement, but it still depended on a cropped raster basemap, custom projection math, and country-specific nudges to make the pins look approximately right. That made the UI more stable than the old CSS overlay, but it still was not geographically trustworthy enough for an analyst-facing surface.
+
+**Decision:** Replace the raster-backed map with a `react-simple-maps` vector geography rendered from a bundled `world-atlas` topology asset. Country pins now use real latitude and longitude projected by the same map engine that draws the world geometry, and the selected-market tooltip stays attached to that projected point inside the SVG layer.
+
+**Why:** This removes the manual pin nudges from the geographic placement path, keeps marker positions consistent across screen sizes, and keeps the map self-contained in the production bundle instead of depending on an external runtime fetch. It also stays within the existing frontend stack rather than introducing a second mapping library.
+
+**Trade-off:** The bundle grows because the world topology asset ships with the frontend, and the selected tooltip still uses edge-aware clamping so it stays readable near the map boundary. We accept that because geographic accuracy is more important here than preserving the smaller raster asset or a perfectly centered tooltip in every case.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-045: Exact-Match AI Reuse Reuses Only Healthy Outputs and Fails Runs Honestly on Degradation
+
+**Context:** The live-AI PRD still needed exact-match reuse and clearer run-level honesty when the provider fell back to degraded structured output. The repo already persisted per-record AI lineage fingerprints and private provenance, but it did not yet avoid duplicate calls or reflect degraded AI coverage in terminal run status.
+
+**Decision:** Reuse prior AI outputs only from persisted non-degraded records whose exact input fingerprint matches, and keep that reuse inside the current mixed-document repository instead of adding a cache tier. When a live run stores degraded AI fallback output, preserve the successful records but end the run as failed through the existing status, error, and failure-summary mechanics.
+
+**Why:** Exact-match reuse from current records is the smallest auditable path to lower repeat AI cost. Skipping degraded source records avoids turning transient provider failures into sticky cached fallbacks. Marking the run failed after storing degraded output keeps the product honest: reviewers can still inspect the useful output, but the terminal status no longer suggests full healthy AI coverage.
+
+**Trade-off:** The first run after rollout still has to materialize reuse-ready records, and degraded outputs are re-attempted on later runs rather than reused. The public API also continues to express this state through the existing failed run status instead of a richer status taxonomy. We accept that because it keeps the contract stable while making the run outcome materially more truthful.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-046: Treat `pipeline/evaluation.py` as the Live-AI Approval Gate
+
+**Context:** The live-AI PRD required a repeatable evaluation gate, but a reporting script without concrete thresholds, a non-zero exit path, or a runnable judge configuration would still leave model approval open to ad hoc interpretation.
+
+**Decision:** Use `pipeline/evaluation.py` as the repo-owned approval gate for the live baseline. The gate must run the full approved 17-country by 6-indicator scope, fail non-zero when evidence misses the documented bar, score groundedness and coherence through the repo's built-in rubric by default with an optional live judge model overlay, and estimate full-run cost with a versioned pricing table for the active baseline.
+
+**Why:** This makes model approval something a reviewer can reproduce from the repo instead of a chat-only judgment call. It also keeps the cost, latency, and quality trade-offs explicit at the same boundary where provider selection already lives.
+
+**Trade-off:** Gate runs are slower and more expensive than a normal validation pass because they add live inference and judge-scoring overhead. Pricing tables will also need occasional refreshes when provider rates change. We accept that because sign-off is infrequent and reviewability matters more than minimizing one-off evaluation overhead.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-044: Per-Indicator Z-Score Anomaly Detection Over a Fixed Percentage Threshold
+
+**Context:** The original analyser flagged any year-over-year percent change above a fixed 3% constant as anomalous. That constant was applied uniformly across all six indicators: GDP growth, CPI, unemployment, debt-to-GDP, current account balance, and broad money. The problem is that each indicator has a completely different natural volatility range. GDP growth crossing 3% is routine for emerging markets. CPI crossing 3% in a developed economy may signal overheating. A 3-point shift in debt-to-GDP is almost invisible in most cycles. A uniform threshold produces both under-flagging (misses real shocks in low-volatility indicators) and over-flagging (treats routine growth as a risk event).
+
+**Decision:** Replace the fixed constant with a cross-panel z-score per indicator. Compute the mean and standard deviation of the year-over-year percent change across all 17 countries for each indicator, then flag any observation where `|z| >= 2.0`. Pass the raw `z_score` value into the LLM context so the AI can reason about magnitude — a 2.1σ move is notable, a 4.0σ shock warrants a strong statement.
+
+**Why:**
+
+1. **Indicator-relative baseline.** GDP growth of +8% is routine for an emerging market; it is not anomalous relative to the GDP growth distribution. The same absolute move in unemployment would be catastrophic. Z-score puts each indicator against its own historical panel distribution.
+2. **Cross-panel pooling.** Per-country std would require roughly 30+ years of data per country to be stable. The 17-country cross-panel pool gives ~119 observations per indicator — enough for a meaningful baseline while also anchoring each country against its global peers, which is the correct frame for sovereign risk analysis.
+3. **Conventional significance threshold.** 2.0σ corresponds to roughly the outer 5% of a normal distribution. This is a standard and defensible choice in quantitative finance, and it gives the project a clear, explainable methodology during review.
+4. **Brief alignment.** The challenge brief requires "identifying trends, anomalies, or specific financial risks." Pandas does the statistical detection; the LLM receives `z_score` and `is_anomaly` and writes the narrative. This keeps the responsibilities clean.
+
+**Trade-off:** Cross-panel pooling works when the 17-country panel is complete. If panel coverage shrinks to fewer than 4–5 countries per indicator, the std becomes unreliable. A zero-std guard is implemented: when std is 0 or undefined, every point in that indicator group is treated as non-anomalous rather than crashing or producing infinite z-scores. This is conservative and appropriate for the current state of the pipeline.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-047: Keep the Shell Interaction Language Structural and Monochrome
+
+**Context:** The frontend shell had drifted into two competing interaction languages. Header actions, overview actions, and utility links all reused the underlined command-link treatment, while the shell CSS still carried duplicate nav and header-action definitions. That blurred hierarchy and made the topbar telemetry louder than it needed to be for simple runtime metadata.
+
+**Decision:** Keep the shell structural and mostly monochrome. Primary header actions use the orange button treatment. Secondary header actions use ghost buttons. Primary navigation stays white-on-structure, with active state expressed through tone and borders instead of orange. Underlined command links stay in the system only as tertiary utility actions. Topbar runtime telemetry stays quiet and subdued.
+
+**Why:** This gives the app one readable interaction hierarchy. Orange keeps its semantic weight for AI surfaces and true primary actions. Navigation reads as shell structure rather than promotion. Utility links read like utilities instead of competing CTAs.
+
+**Trade-off:** Some overview-level actions now look calmer than before, and the shell relies more heavily on button hierarchy than on command-link styling. We accept that because the old mix made the product feel less intentional and made it harder to tell what the primary action actually was.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-048: Score Built-In Step 1 Groundedness on Data Anchoring, Not Repo-Implied Risk Judgments
+
+**Context:** The live-AI evaluation gate initially failed the indicator groundedness threshold even though the underlying outputs were schema-valid, numerically specific, and directionally sensible. The miss came from the built-in rubric over-penalizing auxiliary fields such as `risk_level` when those labels did not line up with the repo's own implied interpretation, especially on CPI, debt, and current-dollar GDP cases.
+
+**Decision:** Keep the built-in indicator judge focused on what the PRD actually requires for approval: grounding to the supplied data. The default rubric now scores Step 1 outputs on numeric references, direction-of-travel alignment, data-year references, indicator-specific language, and honest missing-data language. It no longer treats agreement with repo-implied risk semantics as a required groundedness condition. The optional live judge overlay remains available for richer qualitative review when quota allows.
+
+**Why:** This makes the gate measure the thing it claims to measure. A grounded output should pass because it cites the right figures and describes the move correctly, not because it happens to match a hidden risk heuristic. It also keeps the default gate deterministic, reproducible from the repo, and usable even when a live judge model is quota-constrained.
+
+**Trade-off:** The built-in gate is now narrower. It is strong at catching weak numeric anchoring and weak directionality, but it will not catch every subtle issue in risk framing or macro judgment. We accept that because PRD sign-off needs a stable approval gate for grounding and contract safety first, while richer judgment can stay in the optional live-judge path and human review.
+
+**Date:** 2026-04-12
