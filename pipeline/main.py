@@ -31,7 +31,12 @@ from pipeline.ai_client import (  # noqa: E402
     build_input_fingerprint,
     create_client,
 )
-from pipeline.analyser import compute_changes, prepare_llm_context  # noqa: E402
+from pipeline.analyser import (  # noqa: E402
+    build_indicator_time_series,
+    classify_country_regimes,
+    compute_changes,
+    prepare_llm_context,
+)
 from pipeline.dev_ai_adapter import create_development_client  # noqa: E402
 from pipeline.fetcher import INDICATORS, WorldBankFetchError, fetch_live_data  # noqa: E402
 from pipeline.local_data import LOCAL_TARGET_COUNTRY, load_local_data_points  # noqa: E402
@@ -383,6 +388,7 @@ def run_pipeline(
     try:
         df = compute_changes(all_data_points)
         llm_contexts = prepare_llm_context(df)
+        indicator_time_series = build_indicator_time_series(df)
     except Exception as exc:
         raise PipelineExecutionError(
             step_name="analyse",
@@ -507,6 +513,20 @@ def run_pipeline(
         country_count=len(overview_input),
         risk_flags=len(global_overview.get("risk_flags", [])),
     )
+
+    # Keep the AI prompts latest-focused, then attach the heavier historical
+    # payload only once the narrative stages are done and persistence begins.
+    for context in llm_contexts:
+        history_key = (
+            str(context["country_code"]).upper(),
+            str(context["indicator_code"]),
+        )
+        context["time_series"] = indicator_time_series.get(history_key, [])
+
+    country_regime_labels = classify_country_regimes(llm_contexts)
+    for country_code, synthesis in country_syntheses.items():
+        synthesis["regime_label"] = country_regime_labels.get(country_code, "stagnation")
+
     _notify_step(step_callback, "synthesise", "complete")
 
     # Step 4: STORE

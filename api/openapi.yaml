@@ -219,9 +219,39 @@ components:
           description: LLM-generated narrative for this indicator
         data_year:
           type: integer
+        time_series:
+          type: array
+          description: Ascending yearly history for the observed source window. Missing years are omitted rather than padded with null placeholder rows.
+          items:
+            $ref: "#/components/schemas/IndicatorTimeSeriesPoint"
         updated_at:
           type: string
           format: date-time
+
+    IndicatorTimeSeriesPoint:
+      type: object
+      required:
+        - year
+        - value
+      properties:
+        year:
+          type: integer
+          example: 2024
+        value:
+          type: number
+          example: 1.9
+        previous_value:
+          type: number
+          description: Prior observed yearly value when available.
+        percent_change:
+          type: number
+          description: Year-over-year change for this point when a prior observation exists.
+        z_score:
+          type: number
+          description: Cross-panel anomaly z-score for this point when the indicator history supports it.
+        is_anomaly:
+          type: boolean
+          description: True when this yearly move is anomalous relative to the indicator's pooled panel history.
 
     Country:
       type: object
@@ -268,6 +298,10 @@ components:
             type: string
         outlook:
           type: string
+        regime_label:
+          type: string
+          enum: [recovery, expansion, overheating, contraction, stagnation]
+          description: Deterministic macro regime label derived from the latest GDP growth, inflation, and labor-market signal mix.
         source_date_range:
           type: string
           description: Source coverage window for the underlying World Bank data in YYYY:YYYY format

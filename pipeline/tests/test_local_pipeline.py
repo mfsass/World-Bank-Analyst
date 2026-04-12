@@ -76,7 +76,17 @@ def test_local_pipeline_persists_indicator_and_country_records() -> None:
     assert len(detail["indicators"]) == 6
     assert detail["macro_synthesis"]
     assert len(detail["risk_flags"]) == 3
+    assert detail["regime_label"] in {
+        "recovery",
+        "expansion",
+        "overheating",
+        "contraction",
+        "stagnation",
+    }
     assert detail["source_date_range"] == "2017:2023"
+    assert all(indicator["time_series"] for indicator in detail["indicators"])
+    assert all(indicator["time_series"][0]["year"] == 2017 for indicator in detail["indicators"])
+    assert all(indicator["time_series"][-1]["year"] == 2023 for indicator in detail["indicators"])
     assert overview["country_count"] == 1
     assert overview["country_codes"] == ["ZA"]
     assert overview["summary"]
@@ -102,10 +112,14 @@ def test_local_pipeline_is_deterministic_across_reruns() -> None:
     assert second_overview is not None
     assert first_detail["macro_synthesis"] == second_detail["macro_synthesis"]
     assert first_detail["risk_flags"] == second_detail["risk_flags"]
+    assert first_detail["regime_label"] == second_detail["regime_label"]
     assert first_overview["summary"] == second_overview["summary"]
     assert first_overview["risk_flags"] == second_overview["risk_flags"]
     assert [indicator["ai_analysis"] for indicator in first_detail["indicators"]] == [
         indicator["ai_analysis"] for indicator in second_detail["indicators"]
+    ]
+    assert [indicator["time_series"] for indicator in first_detail["indicators"]] == [
+        indicator["time_series"] for indicator in second_detail["indicators"]
     ]
 
 
@@ -163,7 +177,7 @@ def test_local_pipeline_persists_private_provenance_and_raw_archives(
         country_record["raw_backup_reference"]
         == f"local://runs/{run_id}/raw/manifest.json"
     )
-    assert country_record["ai_provenance"]["prompt_version"] == "step2.v1.0.0"
+    assert country_record["ai_provenance"]["prompt_version"] == "step2.v2.0.0"
     assert country_record["ai_provenance"]["degraded"] is False
     assert country_record["source_provenance"]["indicator_codes"] == sorted(
         [

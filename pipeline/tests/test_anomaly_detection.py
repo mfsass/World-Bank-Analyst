@@ -10,7 +10,15 @@ and in ADR-008.
 
 from __future__ import annotations
 
-from pipeline.analyser import Z_SCORE_THRESHOLD, compute_changes, prepare_llm_context
+import pytest
+
+from pipeline.analyser import (
+    Z_SCORE_THRESHOLD,
+    build_indicator_time_series,
+    classify_country_regimes,
+    compute_changes,
+    prepare_llm_context,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -226,3 +234,108 @@ def test_llm_context_z_score_none_when_no_history() -> None:
 
     assert contexts[0]["z_score"] is None
     assert contexts[0]["is_anomaly"] is False
+
+
+def test_indicator_time_series_keeps_year_order_and_anomaly_flags() -> None:
+    """Phase 1 history should expose ascending yearly points with analysed signal fields."""
+    normal_series = [(2017, 100.0), (2018, 102.0), (2019, 104.0)]
+    shock_series = [(2017, 100.0), (2018, 102.0), (2019, 50.0)]
+
+    panel = {f"C{i}": normal_series for i in range(8)}
+    panel["SHOCK"] = shock_series
+
+    df = compute_changes(_make_panel("NY.GDP.MKTP.KD.ZG", panel))
+    time_series = build_indicator_time_series(df)
+    shock_history = time_series[("SHOCK", "NY.GDP.MKTP.KD.ZG")]
+
+    assert [point["year"] for point in shock_history] == [2017, 2018, 2019]
+    assert "percent_change" not in shock_history[0]
+    assert shock_history[-1]["is_anomaly"] is True
+    assert shock_history[-1]["previous_value"] == 102.0
+    assert shock_history[-1]["value"] == 50.0
+    assert abs(shock_history[-1]["z_score"]) >= Z_SCORE_THRESHOLD
+
+
+def _build_regime_contexts(
+    *,
+    gdp_latest: float,
+    gdp_previous: float | None,
+    inflation_latest: float,
+    unemployment_change: float,
+) -> list[dict]:
+    """Build the minimum latest-indicator context set for regime tests."""
+    return [
+        {
+            "country_code": "BR",
+            "indicator_code": "NY.GDP.MKTP.KD.ZG",
+            "latest_value": gdp_latest,
+            "previous_value": gdp_previous,
+        },
+        {
+            "country_code": "BR",
+            "indicator_code": "FP.CPI.TOTL.ZG",
+            "latest_value": inflation_latest,
+        },
+        {
+            "country_code": "BR",
+            "indicator_code": "SL.UEM.TOTL.ZS",
+            "percent_change": unemployment_change,
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("indicators", "expected_regime"),
+    [
+        (
+            _build_regime_contexts(
+                gdp_latest=-0.6,
+                gdp_previous=0.8,
+                inflation_latest=4.2,
+                unemployment_change=4.5,
+            ),
+            "contraction",
+        ),
+        (
+            _build_regime_contexts(
+                gdp_latest=2.1,
+                gdp_previous=-1.4,
+                inflation_latest=4.1,
+                unemployment_change=-3.2,
+            ),
+            "recovery",
+        ),
+        (
+            _build_regime_contexts(
+                gdp_latest=4.3,
+                gdp_previous=3.7,
+                inflation_latest=6.4,
+                unemployment_change=-0.8,
+            ),
+            "overheating",
+        ),
+        (
+            _build_regime_contexts(
+                gdp_latest=0.9,
+                gdp_previous=0.7,
+                inflation_latest=3.5,
+                unemployment_change=0.6,
+            ),
+            "stagnation",
+        ),
+        (
+            _build_regime_contexts(
+                gdp_latest=2.8,
+                gdp_previous=2.2,
+                inflation_latest=3.2,
+                unemployment_change=-0.5,
+            ),
+            "expansion",
+        ),
+    ],
+)
+def test_regime_labels_follow_the_documented_signal_rules(
+    indicators: list[dict], expected_regime: str
+) -> None:
+    """Each approved regime should map from a deterministic macro signal mix."""
+    assert classify_country_regimes(indicators) == {"BR": expected_regime}

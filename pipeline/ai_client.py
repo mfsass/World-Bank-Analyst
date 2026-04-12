@@ -33,7 +33,7 @@ STEP1_NAME = "indicator_analysis"
 STEP2_NAME = "macro_synthesis"
 STEP3_NAME = "panel_overview"
 STEP1_PROMPT_VERSION = "step1.v1.0.0"
-STEP2_PROMPT_VERSION = "step2.v1.0.0"
+STEP2_PROMPT_VERSION = "step2.v2.0.0"
 STEP3_PROMPT_VERSION = "step3.v2.0.0"
 
 
@@ -71,6 +71,12 @@ class MacroSynthesis(BaseModel):
     outlook: Literal["bullish", "cautious", "bearish"] = Field(
         description="Forward-looking assessment based on indicator consensus"
     )
+    regime_label: Literal[
+        "recovery", "expansion", "overheating", "contraction", "stagnation"
+    ] = Field(
+        default="stagnation",
+        description="Macroeconomic regime classification derived from the indicator consensus",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +103,10 @@ You receive multiple indicator insights for a single country. Your task:
 2. Flag the top 2-3 risk factors with supporting data points.
 3. Write an executive summary suitable for a policy brief (max 200 words).
 4. Assign an outlook based on indicator consensus.
+5. Classify the macroeconomic regime: recovery (improving from trough),
+   expansion (broad-based growth), overheating (growth with rising imbalances),
+   contraction (declining output or demand), or stagnation (flat growth with
+   persistent structural weakness).
 
 Cross-reference indicators. If GDP is weak but employment is strong,
 acknowledge the tension. Be specific — cite exact figures."""

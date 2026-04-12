@@ -151,7 +151,17 @@ def test_trigger_status_transition_and_country_detail_flow(client) -> None:
     assert detail["macro_synthesis"]
     assert len(detail["risk_flags"]) >= 2
     assert detail["outlook"] in {"cautious", "bearish", "neutral", "bullish"}
+    assert detail["regime_label"] in {
+        "recovery",
+        "expansion",
+        "overheating",
+        "contraction",
+        "stagnation",
+    }
     assert detail["source_date_range"] == "2017:2023"
+    assert all(indicator["time_series"] for indicator in detail["indicators"])
+    assert all(indicator["time_series"][0]["year"] == 2017 for indicator in detail["indicators"])
+    assert all(indicator["time_series"][-1]["year"] == 2023 for indicator in detail["indicators"])
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert all("run_id" not in indicator for indicator in detail["indicators"])

@@ -640,7 +640,7 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
     assert indicator_record["ai_provenance"]["prompt_version"] == "step1.v1.0.0"
     assert indicator_record["ai_provenance"]["degraded"] is False
     assert country_record["ai_provenance"]["provider"] == "stub-live-provider"
-    assert country_record["ai_provenance"]["prompt_version"] == "step2.v1.0.0"
+    assert country_record["ai_provenance"]["prompt_version"] == "step2.v2.0.0"
     assert country_record["ai_provenance"]["degraded"] is False
     assert overview_record["ai_provenance"]["provider"] == "stub-live-provider"
     assert overview_record["ai_provenance"]["prompt_version"] == STEP3_PROMPT_VERSION
@@ -656,8 +656,31 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
     assert brazil_detail["code"] == "BR"
     assert brazil_detail["name"] == "Brazil"
     assert len(brazil_detail["indicators"]) == len(INDICATORS)
+    assert brazil_detail["regime_label"] in {
+        "recovery",
+        "expansion",
+        "overheating",
+        "contraction",
+        "stagnation",
+    }
+    assert all(len(indicator["time_series"]) == 15 for indicator in brazil_detail["indicators"])
+    assert all(
+        indicator["time_series"][0]["year"] == LIVE_START_YEAR
+        for indicator in brazil_detail["indicators"]
+    )
+    assert all(
+        indicator["time_series"][-1]["year"] == LIVE_END_YEAR
+        for indicator in brazil_detail["indicators"]
+    )
     assert uruguay_detail["code"] == "UY"
     assert len(uruguay_detail["indicators"]) == len(INDICATORS)
+    assert uruguay_detail["regime_label"] in {
+        "recovery",
+        "expansion",
+        "overheating",
+        "contraction",
+        "stagnation",
+    }
     assert global_overview["country_count"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
     assert global_overview["summary"]
 

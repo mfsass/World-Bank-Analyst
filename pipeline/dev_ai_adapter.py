@@ -112,10 +112,28 @@ class DeterministicDevelopmentAIClient(AIClient):
         )
         outlook = "bearish" if high_risk_count >= 3 else "cautious"
 
+        # Derive a deterministic regime label from the indicator signals.
+        if growth_value is not None and growth_value < 0:
+            regime_label = "contraction"
+        elif high_risk_count >= 3:
+            regime_label = "stagnation"
+        elif (
+            growth_value is not None
+            and growth_value > 4
+            and inflation_value is not None
+            and inflation_value > 6
+        ):
+            regime_label = "overheating"
+        elif growth_value is not None and growth_value > 2:
+            regime_label = "expansion"
+        else:
+            regime_label = "recovery"
+
         return {
             "summary": summary,
             "risk_flags": risk_flags,
             "outlook": outlook,
+            "regime_label": regime_label,
             "ai_provenance": _build_ai_provenance(
                 step_name=STEP2_NAME,
                 prompt_version=STEP2_PROMPT_VERSION,

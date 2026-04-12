@@ -185,6 +185,7 @@ def store_slice(
             "is_anomaly": bool(insight.get("is_anomaly", False)),
             "ai_analysis": insight.get("ai_analysis", ""),
             "data_year": insight["data_year"],
+            "time_series": copy.deepcopy(insight.get("time_series", [])),
             "updated_at": updated_at,
             "run_id": run_id,
             "raw_backup_reference": archive_result.scope_references.get(
@@ -218,6 +219,7 @@ def store_slice(
             "macro_synthesis": synthesis["summary"],
             "risk_flags": synthesis["risk_flags"],
             "outlook": synthesis["outlook"],
+            "regime_label": synthesis.get("regime_label"),
             "updated_at": updated_at,
             "run_id": run_id,
             "raw_backup_reference": archive_result.manifest_reference,

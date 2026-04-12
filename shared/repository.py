@@ -32,6 +32,7 @@ INDICATOR_PUBLIC_FIELDS = (
     "is_anomaly",
     "ai_analysis",
     "data_year",
+    "time_series",
     "updated_at",
 )
 COUNTRY_PUBLIC_FIELDS = (
@@ -42,6 +43,7 @@ COUNTRY_PUBLIC_FIELDS = (
     "macro_synthesis",
     "risk_flags",
     "outlook",
+    "regime_label",
     "source_date_range",
     "updated_at",
 )

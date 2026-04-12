@@ -178,6 +178,11 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "is_anomaly": True,
             "ai_analysis": "Growth has slowed materially.",
             "data_year": 2024,
+            "time_series": [
+                {"year": 2022, "value": 2.5, "percent_change": 4.1, "is_anomaly": False},
+                {"year": 2023, "value": 1.2, "percent_change": -52.0, "is_anomaly": False},
+                {"year": 2024, "value": 0.6, "percent_change": -50.0, "is_anomaly": True},
+            ],
             "updated_at": "2026-04-09T12:00:05+00:00",
             "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
             "raw_backup_reference": "gs://world-analyst-raw/runs/f9710a31-8f35-43d0-b75e-78054470ab80/raw/NY.GDP.MKTP.KD.ZG.json",
@@ -197,6 +202,7 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "macro_synthesis": "The macro picture remains fragile.",
             "risk_flags": ["Growth is weak", "Inflation is sticky"],
             "outlook": "cautious",
+            "regime_label": "stagnation",
             "source_date_range": "2010:2024",
             "updated_at": "2026-04-09T12:00:05+00:00",
             "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
@@ -218,9 +224,16 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
     assert detail is not None
     assert detail["code"] == "ZA"
     assert detail["macro_synthesis"] == "The macro picture remains fragile."
+    assert detail["regime_label"] == "stagnation"
     assert detail["source_date_range"] == "2010:2024"
     assert len(detail["indicators"]) == 1
     assert detail["indicators"][0]["country_code"] == "ZA"
+    assert [point["year"] for point in detail["indicators"][0]["time_series"]] == [
+        2022,
+        2023,
+        2024,
+    ]
+    assert detail["indicators"][0]["time_series"][-1]["is_anomaly"] is True
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert "source_provenance" not in detail["indicators"][0]
