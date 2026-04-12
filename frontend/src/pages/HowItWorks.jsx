@@ -7,32 +7,32 @@ import { StatusPill } from "../components/StatusPill";
 
 const TELEMETRY_CARDS = [
   {
-    label: "Current delivery slice",
-    value: "LOCAL DEFAULTS",
+    label: "Runtime baseline",
+    value: "LOCAL-FIRST",
     status: "Current",
     tone: "success",
-    freshness: "Deterministic local mode stays default; cloud services opt in explicitly",
+    freshness: "Deterministic local mode stays default; deploy-only switches stay explicit.",
   },
   {
     label: "Narrative chain",
-    value: "2-STEP",
-    status: "Current",
+    value: "LIVE 2-STEP",
+    status: "Validated",
     tone: "success",
-    freshness: "Two-stage synthesis contract; provider wiring remains a later phase",
+    freshness: "Provider-backed AI runs in live mode; local mode stays deterministic for tests.",
   },
   {
-    label: "Live monitored panel",
+    label: "Core panel",
     value: "17 x 6",
     status: "Validated",
     tone: "success",
-    freshness: "Seventeen approved countries and six indicators validated against the World Bank API",
+    freshness: "Exact-complete 2024 core panel validated against the World Bank API.",
   },
   {
-    label: "API contract",
-    value: "OPENAPI",
-    status: "Spec-first",
+    label: "Storage seam",
+    value: "LOCAL // FIRESTORE",
+    status: "Current",
     tone: "success",
-    freshness: "Connexion reads the contract before handlers run",
+    freshness: "One repository contract supports local runs and Firestore-backed durable storage.",
   },
 ];
 
@@ -47,10 +47,10 @@ const ARCHITECTURE_NODES = [
 ];
 
 const TECH_STRIP = [
-  ["Execution", "Local by default // Cloud Run job via explicit envs"],
-  ["Storage", "REPOSITORY_MODE=local by default // Cloud Run sets Firestore + GCS"],
+  ["Execution", "Local-first runtime // Cloud Run job stays the deploy target"],
+  ["Storage", "Local repository by default // durable backends switch on through explicit envs"],
   ["Frontend", "React 18 + Vite + vanilla CSS tokens"],
-  ["Proxy", "nginx serves the SPA and injects X-API-Key on same-origin /api/v1/ calls"],
+  ["Proxy", "nginx template defines the same-origin /api/v1/ proxy for cloud deployment"],
   ["Contract", "OpenAPI-first via Connexion"],
 ];
 
@@ -68,7 +68,7 @@ export function HowItWorks() {
             </Link>
           </div>
         }
-        description="How World Analyst turns World Bank indicators into analyst-ready country briefings. Local defaults and cloud deployment settings are labeled separately."
+        description="How World Analyst turns World Bank indicators into analyst-ready country briefings. Repo-current behavior and deploy-only runtime switches stay labeled separately."
         eyebrow="SYSTEM FLOW"
         meta="World Bank source · Two-step synthesis contract · Spec-first delivery"
         title="How It Works"
@@ -82,10 +82,13 @@ export function HowItWorks() {
               Trigger the same World Bank Analyst flow the dashboard reads
             </h2>
             <p className="text-body text-secondary mt-4">
-              The trigger page runs the current pipeline flow end to end. This page explains which parts are already live, which settings stay local by default, and which cloud choices are activated explicitly at deploy time.
+              The trigger page runs the current local-first pipeline flow end to end.
+              This page keeps repo-current behavior separate from deploy-only runtime
+              switches so the architecture story stays honest while the Cloud Run
+              rollout lands.
             </p>
           </div>
-          <StatusPill tone="warning">Current + target</StatusPill>
+          <StatusPill tone="neutral">Current + deploy target</StatusPill>
         </div>
       </section>
 
@@ -118,7 +121,7 @@ export function HowItWorks() {
               <div
                 className={`architecture-flow__chip architecture-flow__chip--${node.state}`}
               >
-                {node.state === "current" ? "Current" : "Target"}
+                {node.state === "current" ? "Current" : "Deploy target"}
               </div>
               <h3 className="text-title mt-3">{node.label}</h3>
             </div>

@@ -20,7 +20,7 @@ export function AIInsightPanel({
               aria-hidden="true"
               className="ai-insight__icon material-symbols-outlined ui-inline-icon"
             >
-              auto_awesome
+              insights
             </span>
             <span>{title}</span>
           </h2>

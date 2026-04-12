@@ -473,7 +473,9 @@ Single-pass prompting on multi-indicator data causes context collapse — the mo
 
 Live AI now starts from an economy-first baseline: Google GenAI with `gemma-4-31b-it`.
 
-This is not a blind commitment to the cheapest model. It is the default candidate defined by ADR-026 and the Live AI integration PRD. The model keeps the system inside the Google ecosystem, fits the current cost posture, and is easy to explain in review.
+This is not a blind commitment to the cheapest model. It is the default baseline defined by ADR-026 and the Live AI integration PRD. The model keeps the system inside the Google ecosystem, fits the current cost posture, and is easy to explain in review.
+
+That baseline has now passed the repo-owned live-AI gate on the full approved 17-country by 6-indicator scope. The current local validation record is explicit: 100% schema-valid outputs in both AI steps, 0 degraded fallbacks, 0 refusals, indicator groundedness `0.936`, synthesis coherence `1.0`, and estimated full-run cost `$0.011646`.
 
 ### Promotion policy
 
@@ -850,9 +852,9 @@ _"The brief asked for a pipeline that extracts data, processes it with AI, and d
 
 The following are intentionally left open pending testing or further input:
 
-### Model Promotion Threshold
+### Future Model Promotion Path
 
-The live baseline is now fixed to `gemma-4-31b-it`, but one open question remains: is that model good enough for both AI steps, or only for per-indicator analysis? The answer depends on the evaluation gate defined by the Live AI integration PRD.
+The immediate promotion question is closed: `gemma-4-31b-it` is good enough for the current two-step baseline and has already passed the local approval gate for both AI steps. The remaining open question is future-facing: if later live evidence shows one step weakening before the other, should promotion stay step-specific rather than lifting the whole chain? That decision should still come from the evaluation gate, not preference.
 
 ### Geographic Expansion Beyond the Exact-Complete Core Panel
 

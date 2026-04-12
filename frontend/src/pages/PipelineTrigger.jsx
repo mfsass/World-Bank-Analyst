@@ -90,7 +90,7 @@ function StepSimulation({ stepName, isRunning }) {
   if (!isRunning) return null;
 
   return (
-    <span className="text-secondary text-metric fade-in" style={{ display: 'block', marginTop: '12px' }}>
+    <span className="execution-step-card__simulation text-secondary text-body fade-in">
       &gt; {phrases[index]}
     </span>
   );
@@ -393,8 +393,8 @@ export function PipelineTrigger() {
                     </div>
                     <StatusPill tone={getStatusTone(step.status)}>
                       {isRunning ? (
-                        <span style={{ display: 'flex', alignItems: 'center' }}>
-                          RUNNING <span className="terminal-cursor" style={{ height: '10px' }} />
+                        <span className="status-pill__running-label">
+                          RUNNING <span className="terminal-cursor" />
                         </span>
                       ) : (
                         step.status.toUpperCase()

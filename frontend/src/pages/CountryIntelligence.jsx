@@ -298,7 +298,9 @@ function CountryIntelligence() {
                 indicator.percent_change >= 0 ? "up" : "down"
               }`}
             >
-              {indicator.percent_change >= 0 ? "▲" : "▼"}{" "}
+              <span aria-hidden="true" className="material-symbols-outlined kpi-trend-icon">
+                {indicator.percent_change >= 0 ? "trending_up" : "trending_down"}
+              </span>{" "}
               {formatChange(indicator.percent_change)}
             </span>
           </article>

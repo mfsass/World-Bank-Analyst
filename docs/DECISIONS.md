@@ -623,6 +623,23 @@
 
 **Date:** 2026-04-12
 
+## ADR-044: Per-Indicator Z-Score Anomaly Detection Over a Fixed Percentage Threshold
+
+**Context:** The original analyser flagged any year-over-year percent change above a fixed 3% constant as anomalous. That constant was applied uniformly across all six indicators: GDP growth, CPI, unemployment, debt-to-GDP, current account balance, and broad money. The problem is that each indicator has a completely different natural volatility range. GDP growth crossing 3% is routine for emerging markets. CPI crossing 3% in a developed economy may signal overheating. A 3-point shift in debt-to-GDP is almost invisible in most cycles. A uniform threshold produces both under-flagging (misses real shocks in low-volatility indicators) and over-flagging (treats routine growth as a risk event).
+
+**Decision:** Replace the fixed constant with a cross-panel z-score per indicator. Compute the mean and standard deviation of the year-over-year percent change across all 17 countries for each indicator, then flag any observation where `|z| >= 2.0`. Pass the raw `z_score` value into the LLM context so the AI can reason about magnitude — a 2.1σ move is notable, a 4.0σ shock warrants a strong statement.
+
+**Why:**
+
+1. **Indicator-relative baseline.** GDP growth of +8% is routine for an emerging market; it is not anomalous relative to the GDP growth distribution. The same absolute move in unemployment would be catastrophic. Z-score puts each indicator against its own historical panel distribution.
+2. **Cross-panel pooling.** Per-country std would require roughly 30+ years of data per country to be stable. The 17-country cross-panel pool gives ~119 observations per indicator — enough for a meaningful baseline while also anchoring each country against its global peers, which is the correct frame for sovereign risk analysis.
+3. **Conventional significance threshold.** 2.0σ corresponds to roughly the outer 5% of a normal distribution. This is a standard and defensible choice in quantitative finance, and it gives the project a clear, explainable methodology during review.
+4. **Brief alignment.** The challenge brief requires "identifying trends, anomalies, or specific financial risks." Pandas does the statistical detection; the LLM receives `z_score` and `is_anomaly` and writes the narrative. This keeps the responsibilities clean.
+
+**Trade-off:** Cross-panel pooling works when the 17-country panel is complete. If panel coverage shrinks to fewer than 4–5 countries per indicator, the std becomes unreliable. A zero-std guard is implemented: when std is 0 or undefined, every point in that indicator group is treated as non-anomalous rather than crashing or producing infinite z-scores. This is conservative and appropriate for the current state of the pipeline.
+
+**Date:** 2026-04-12
+
 ---
 
 ## ADR-045: Exact-Match AI Reuse Reuses Only Healthy Outputs and Fails Runs Honestly on Degradation
@@ -648,25 +665,6 @@
 **Why:** This makes model approval something a reviewer can reproduce from the repo instead of a chat-only judgment call. It also keeps the cost, latency, and quality trade-offs explicit at the same boundary where provider selection already lives.
 
 **Trade-off:** Gate runs are slower and more expensive than a normal validation pass because they add live inference and judge-scoring overhead. Pricing tables will also need occasional refreshes when provider rates change. We accept that because sign-off is infrequent and reviewability matters more than minimizing one-off evaluation overhead.
-
-**Date:** 2026-04-12
-
----
-
-## ADR-044: Per-Indicator Z-Score Anomaly Detection Over a Fixed Percentage Threshold
-
-**Context:** The original analyser flagged any year-over-year percent change above a fixed 3% constant as anomalous. That constant was applied uniformly across all six indicators: GDP growth, CPI, unemployment, debt-to-GDP, current account balance, and broad money. The problem is that each indicator has a completely different natural volatility range. GDP growth crossing 3% is routine for emerging markets. CPI crossing 3% in a developed economy may signal overheating. A 3-point shift in debt-to-GDP is almost invisible in most cycles. A uniform threshold produces both under-flagging (misses real shocks in low-volatility indicators) and over-flagging (treats routine growth as a risk event).
-
-**Decision:** Replace the fixed constant with a cross-panel z-score per indicator. Compute the mean and standard deviation of the year-over-year percent change across all 17 countries for each indicator, then flag any observation where `|z| >= 2.0`. Pass the raw `z_score` value into the LLM context so the AI can reason about magnitude — a 2.1σ move is notable, a 4.0σ shock warrants a strong statement.
-
-**Why:**
-
-1. **Indicator-relative baseline.** GDP growth of +8% is routine for an emerging market; it is not anomalous relative to the GDP growth distribution. The same absolute move in unemployment would be catastrophic. Z-score puts each indicator against its own historical panel distribution.
-2. **Cross-panel pooling.** Per-country std would require roughly 30+ years of data per country to be stable. The 17-country cross-panel pool gives ~119 observations per indicator — enough for a meaningful baseline while also anchoring each country against its global peers, which is the correct frame for sovereign risk analysis.
-3. **Conventional significance threshold.** 2.0σ corresponds to roughly the outer 5% of a normal distribution. This is a standard and defensible choice in quantitative finance, and it gives the project a clear, explainable methodology during review.
-4. **Brief alignment.** The challenge brief requires "identifying trends, anomalies, or specific financial risks." Pandas does the statistical detection; the LLM receives `z_score` and `is_anomaly` and writes the narrative. This keeps the responsibilities clean.
-
-**Trade-off:** Cross-panel pooling works when the 17-country panel is complete. If panel coverage shrinks to fewer than 4–5 countries per indicator, the std becomes unreliable. A zero-std guard is implemented: when std is 0 or undefined, every point in that indicator group is treated as non-anomalous rather than crashing or producing infinite z-scores. This is conservative and appropriate for the current state of the pipeline.
 
 **Date:** 2026-04-12
 

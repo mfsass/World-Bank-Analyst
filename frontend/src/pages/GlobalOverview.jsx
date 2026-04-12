@@ -597,8 +597,8 @@ export function GlobalOverview() {
               </span>
               <p className="overview-hero-stat__desc text-body text-secondary">
                 {highlightedMarket
-                  ? `${highlightedMarket.name} is the current focal market on this surface.`
-                  : "A lead market will appear once a briefing is materialised."}
+                  ? `${highlightedMarket.name} is the current focal market.`
+                  : "No focal market detected."}
               </p>
             </article>
           </div>

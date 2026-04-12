@@ -21,14 +21,22 @@ afterEach(() => {
 });
 
 describe("HowItWorks", () => {
-  it("shows the approved 17-country scope and avoids stale 15-country copy", () => {
+  it("keeps the approved 17-country scope and current runtime labels free of stale copy", () => {
     renderPage();
 
     expect(
       screen.getByRole("heading", { name: "How It Works" }),
     ).toBeInTheDocument();
     expect(screen.getByText("17 x 6")).toBeInTheDocument();
+    expect(screen.getByText("LOCAL-FIRST")).toBeInTheDocument();
+    expect(screen.getByText("LIVE 2-STEP")).toBeInTheDocument();
+    expect(screen.getByText("LOCAL // FIRESTORE")).toBeInTheDocument();
     expect(screen.queryByText("15 x 6")).not.toBeInTheDocument();
+    expect(screen.queryByText("LOCAL DEFAULTS")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/provider wiring remains a later phase/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Current + target")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Fifteen countries and six approved indicators/i),
     ).not.toBeInTheDocument();

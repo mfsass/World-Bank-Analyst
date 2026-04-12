@@ -357,6 +357,11 @@ a {
 .kpi-card__trend--down {
   color: var(--color-critical);
 }
+/* Size the Material Symbol trend icon to align with the surrounding mono text */
+.kpi-trend-icon {
+  font-size: 1rem;
+  vertical-align: text-bottom;
+}
 .kpi-card__freshness {
   font-family: var(--font-mono);
   font-size: 0.5625rem;
@@ -939,7 +944,22 @@ a {
   background-color: var(--color-text-secondary);
   animation: fast-blink 1s step-start infinite;
   vertical-align: bottom;
-  margin-left: 4px;
+  margin-left: var(--space-1);
+}
+
+.status-pill__running-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.status-pill__running-label .terminal-cursor {
+  margin-left: 0;
+}
+
+.execution-step-card__simulation {
+  display: block;
+  margin-top: var(--space-3);
 }
 
 /* --------------------------------------------------------------------------
@@ -1230,8 +1250,8 @@ a {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border: var(--border-structural);
   border-radius: var(--radius);
   background: var(--surface-popover);
@@ -1255,13 +1275,13 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .overview-map-popover__body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .overview-map-popover__status {
@@ -1269,7 +1289,7 @@ a {
   align-items: center;
   justify-content: center;
   min-height: 22px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: var(--border-structural);
   border-radius: var(--radius);
   font-family: var(--font-mono);
@@ -1287,7 +1307,7 @@ a {
 .overview-map-popover__title {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-1);
   min-width: 0;
 }
 

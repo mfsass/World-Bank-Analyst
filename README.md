@@ -62,7 +62,7 @@ World Bank API → Cloud Run Job (Python + Pandas)
 | Storage      | **Local in-memory for development; Firestore + GCS for deployment** | Local runs stay dependency-light, while the deployed target remains document-shaped and read-heavy. |
 | Backend      | **Connexion**                                                       | OpenAPI-first, contract-enforced routing. Spec is source of truth.                                  |
 | Frontend CSS | **Vanilla CSS**                                                     | Design system uses explicit tokens. No Tailwind, no frameworks.                                     |
-| AI Chain     | **Two-step contract**                                               | Per-indicator analysis → macro synthesis. Real provider wiring is deferred; the repo still ships a deterministic development adapter. |
+| AI Chain     | **Two-step contract**                                               | Per-indicator analysis → macro synthesis. Live runs now use provider-backed AI, while local runs stay deterministic for tests and lightweight development. |
 | Deployment   | **Cloud Run**                                                       | Scale-to-zero, europe-west1 region.                                                                 |
 
 ### Why Not BigQuery?
