@@ -1,9 +1,9 @@
 {
   "private": true,
   "scripts": {
-    "app": "node scripts/dev.js",
-    "app:prod": "node scripts/dev.js --prod",
-    "frontend": "cd frontend && npm run dev",
+    "app": "cd frontend && npm run dev -- --mode prod",
+    "app:prod": "cd frontend && npm run dev -- --mode prod",
+    "frontend": "cd frontend && npm run dev -- --mode prod",
     "backend": "cd api && python app.py",
     "deploy": "node scripts/deploy.js",
     "deploy:skip-build": "node scripts/deploy.js --skip-build",
