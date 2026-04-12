@@ -55,6 +55,7 @@ describe("GlobalOverview", () => {
             indicator_code: "NY.GDP.MKTP.KD.ZG",
             latest_value: 0.6,
             percent_change: -1.3,
+            data_year: 2023,
             updated_at: "2026-04-11T10:00:00Z",
             is_anomaly: false,
           },
@@ -63,10 +64,26 @@ describe("GlobalOverview", () => {
             indicator_code: "NY.GDP.MKTP.KD.ZG",
             latest_value: 3.1,
             percent_change: 0.8,
+            data_year: 2024,
             updated_at: "2026-04-11T10:00:00Z",
             is_anomaly: false,
           },
         ]);
+      }
+
+      if (path === "/overview") {
+        return Promise.resolve({
+          summary:
+            "Cross-market inflation pressure remains concentrated even as the monitored set no longer reads like a single-country story.",
+          outlook: "cautious",
+          risk_flags: [
+            "Brazil and the United States are both carrying elevated inflation pressure in the current monitored set.",
+            "Growth dispersion remains wide enough that the drilldown matters by market.",
+          ],
+          country_count: 2,
+          country_codes: ["BR", "US"],
+          source_date_range: "2010:2024",
+        });
       }
 
       if (path === "/countries/BR") {
@@ -75,7 +92,8 @@ describe("GlobalOverview", () => {
           name: "Brazil",
           region: "Latin America & Caribbean",
           outlook: "cautious",
-          macro_synthesis: "Growth remains weak while inflation pressure persists.",
+          macro_synthesis:
+            "Growth remains weak while inflation pressure persists.",
           indicators: [
             {
               indicator_code: "NY.GDP.MKTP.KD.ZG",
@@ -105,7 +123,8 @@ describe("GlobalOverview", () => {
           name: "United States",
           region: "North America",
           outlook: "bullish",
-          macro_synthesis: "Growth is recovering with firmer domestic momentum.",
+          macro_synthesis:
+            "Growth is recovering with firmer domestic momentum.",
           indicators: [
             {
               indicator_code: "NY.GDP.MKTP.KD.ZG",
@@ -135,12 +154,26 @@ describe("GlobalOverview", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", { name: "Market detail" }),
+      await screen.findByRole("heading", { name: "Country drilldown" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open pipeline" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Cross-market inflation pressure remains concentrated even as the monitored set no longer reads like a single-country story.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Source window \/\/ 2010-2024/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("link", { name: "Open pipeline" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open country drilldown" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Open pipeline" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("Lead market")).not.toBeInTheDocument();
 
     expect(
       screen.getByRole("group", { name: "World coverage map" }),

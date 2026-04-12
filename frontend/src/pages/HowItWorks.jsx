@@ -15,10 +15,10 @@ const TELEMETRY_CARDS = [
   },
   {
     label: "Narrative chain",
-    value: "LIVE 2-STEP",
+    value: "2-STEP + PANEL",
     status: "Validated",
     tone: "success",
-    freshness: "Provider-backed AI runs in live mode; local mode stays deterministic for tests.",
+    freshness: "Provider-backed AI runs the country chain and the monitored-set overview pass in live mode; local mode stays deterministic for tests.",
   },
   {
     label: "Core panel",
@@ -39,8 +39,9 @@ const TELEMETRY_CARDS = [
 const ARCHITECTURE_NODES = [
   { label: "World Bank API", state: "current" },
   { label: "Pipeline Orchestrator", state: "current" },
+  { label: "Fetch + Normalize", state: "current" },
   { label: "Pandas Analysis", state: "current" },
-  { label: "Two-step synthesis", state: "current" },
+  { label: "Country + Panel synthesis", state: "current" },
   { label: "Firestore + GCS", state: "target" },
   { label: "Connexion API", state: "current" },
   { label: "React Dashboard", state: "current" },
@@ -68,9 +69,9 @@ export function HowItWorks() {
             </Link>
           </div>
         }
-        description="How World Analyst turns World Bank indicators into analyst-ready country briefings. Repo-current behavior and deploy-only runtime switches stay labeled separately."
+        description="How World Analyst turns World Bank indicators into analyst-ready country briefings and one monitored-set overview. Repo-current behavior and deploy-only runtime switches stay labeled separately."
         eyebrow="SYSTEM FLOW"
-        meta="World Bank source · Two-step synthesis contract · Spec-first delivery"
+        meta="World Bank source · Country + panel synthesis contract · Spec-first delivery"
         title="How It Works"
       />
 
@@ -82,10 +83,10 @@ export function HowItWorks() {
               Trigger the same World Bank Analyst flow the dashboard reads
             </h2>
             <p className="text-body text-secondary mt-4">
-              The trigger page runs the current local-first pipeline flow end to end.
-              This page keeps repo-current behavior separate from deploy-only runtime
-              switches so the architecture story stays honest while the Cloud Run
-              rollout lands.
+              The trigger page runs the current pipeline flow end to end. It now
+              shows how World Bank records become indicator signals, country
+              briefings, and one monitored-set overview so the global page stays
+              distinct from the country drilldown page.
             </p>
           </div>
           <StatusPill tone="neutral">Current + deploy target</StatusPill>
@@ -173,16 +174,30 @@ export function HowItWorks() {
       <section className="architecture-prompt-grid section-gap">
         <div className="card architecture-step-card">
           <p className="text-label">Step 1</p>
-          <h2 className="text-headline mt-3">Per-indicator analysis</h2>
+          <h2 className="text-headline mt-3">Fetch and normalize</h2>
           <p className="text-body text-secondary mt-4">
-            Pandas calculates deltas, trend shifts, and anomaly flags first. The first synthesis stage then writes a short analyst note for one indicator at a time, which keeps the contract narrow and the result auditable.
+            The pipeline requests the approved World Bank indicator panel, drops unusable rows, and reshapes the response into one normalized record per country-indicator-year before any AI stage runs.
           </p>
         </div>
         <div className="card architecture-step-card">
           <p className="text-label">Step 2</p>
-          <h2 className="text-headline mt-3">Macro synthesis</h2>
+          <h2 className="text-headline mt-3">Statistical signal layer</h2>
           <p className="text-body text-secondary mt-4">
-            The second synthesis stage receives only the structured indicator notes. It builds the country story, sets the outlook, and returns risk flags the frontend can render directly.
+            Pandas calculates deltas, trend shifts, and anomaly flags first. That keeps the model prompts narrow and the result auditable because the math is already settled before narrative generation starts.
+          </p>
+        </div>
+        <div className="card architecture-step-card">
+          <p className="text-label">Step 3</p>
+          <h2 className="text-headline mt-3">Country synthesis</h2>
+          <p className="text-body text-secondary mt-4">
+            The first live synthesis stage writes one note per indicator, then rolls those structured notes into a country briefing with outlook and risk flags the drilldown page can render directly.
+          </p>
+        </div>
+        <div className="card architecture-step-card">
+          <p className="text-label">Step 4</p>
+          <h2 className="text-headline mt-3">Panel overview + storage</h2>
+          <p className="text-body text-secondary mt-4">
+            A final monitored-set pass synthesises across all stored country briefings, writes one cross-country overview record, and persists both the overview and country outputs to the shared repository.
           </p>
         </div>
       </section>

@@ -29,8 +29,11 @@ describe("HowItWorks", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("17 x 6")).toBeInTheDocument();
     expect(screen.getByText("LOCAL-FIRST")).toBeInTheDocument();
-    expect(screen.getByText("LIVE 2-STEP")).toBeInTheDocument();
+    expect(screen.getByText("2-STEP + PANEL")).toBeInTheDocument();
     expect(screen.getByText("LOCAL // FIRESTORE")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Panel overview + storage" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("15 x 6")).not.toBeInTheDocument();
     expect(screen.queryByText("LOCAL DEFAULTS")).not.toBeInTheDocument();
     expect(

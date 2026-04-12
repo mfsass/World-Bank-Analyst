@@ -17,6 +17,12 @@ const DEFAULT_STEPS = [
 ];
 
 const STEP_COPY = {
+  dispatch: {
+    pending: "Waiting for a Cloud Run Job dispatch request.",
+    running: "Dispatching the bounded monitored-set job to Cloud Run.",
+    complete: "Cloud Run accepted the job dispatch request.",
+    failed: "The run stopped before pipeline execution because Cloud Run dispatch failed.",
+  },
   fetch: {
     pending: "Waiting to request the approved World Bank indicator set.",
     running: "Pulling World Bank source data for the active market slice.",
@@ -31,19 +37,24 @@ const STEP_COPY = {
   },
   synthesise: {
     pending: "Waiting for the AI synthesis stage.",
-    running: "Turning structured signals into analyst-ready notes and a country briefing.",
-    complete: "The AI layer produced the analyst narratives for this run.",
+    running: "Turning structured signals into analyst-ready notes, country briefings, and one monitored-set overview.",
+    complete: "The AI layer produced the country narratives and the monitored-set overview for this run.",
     failed: "The run stopped while generating the analyst narratives.",
   },
   store: {
     pending: "Waiting to persist the finished briefing.",
-    running: "Writing processed insights and runtime status to the configured store.",
-    complete: "Processed insights and status were saved for this run.",
+    running: "Writing processed insights, the monitored-set overview, and runtime status to the configured store.",
+    complete: "Processed insights, the monitored-set overview, and status were saved for this run.",
     failed: "The run stopped while persisting the finished outputs.",
   },
 };
 
 const STAGE_SIMULATIONS = {
+  dispatch: [
+    "Validating Cloud Run Job configuration...",
+    "Claiming the pipeline run slot...",
+    "Dispatching the Cloud Run Job...",
+  ],
   fetch: [
     "Connecting to World Bank Indicators API...",
     "Fetching GDP growth series...",
@@ -61,12 +72,14 @@ const STAGE_SIMULATIONS = {
   synthesise: [
     "Preparing structured prompt context...",
     "Writing indicator notes...",
-    "Drafting country synthesis...",
-    "Scoring risk language..."
+    "Drafting country syntheses...",
+    "Combining country briefings into the monitored-set overview...",
+    "Scoring cross-market risk language..."
   ],
   store: [
     "Validating response payload...",
-    "Writing processed insight record...",
+    "Writing processed insight records...",
+    "Writing global overview record...",
     "Writing raw archive manifest...",
     "Finalizing pipeline status..."
   ]

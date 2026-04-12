@@ -64,6 +64,23 @@ export function formatTimestamp(value) {
   });
 }
 
+export function formatSourceDateRange(value) {
+  if (!value) {
+    return "Pending";
+  }
+
+  const [startYear, endYear] = String(value).split(":");
+  if (!startYear && !endYear) {
+    return "Pending";
+  }
+
+  if (!endYear || startYear === endYear) {
+    return startYear || endYear;
+  }
+
+  return `${startYear}-${endYear}`;
+}
+
 export function formatMetricValue(indicatorCode, value) {
   if (value == null) {
     return "n/a";
@@ -101,6 +118,14 @@ export function getLatestRefresh(indicators, pipelineStatus) {
   return latestIndicatorUpdate || pipelineStatus?.completed_at || null;
 }
 
+export function getLatestDataYear(records = []) {
+  const materialisedYears = records
+    .map((record) => Number(record?.data_year))
+    .filter((year) => Number.isFinite(year));
+
+  return materialisedYears.length ? Math.max(...materialisedYears) : null;
+}
+
 export function getOverviewNarrative(
   status,
   monitoredCountries,
@@ -110,18 +135,18 @@ export function getOverviewNarrative(
     monitoredCountries === 1 ? "country" : "countries";
 
   if (status === "running") {
-    return "Polling the active pipeline run while the current coverage slice materialises. Counts below reflect confirmed country briefings until the run completes.";
+    return "Polling the active pipeline run while the monitored-set overview and country drilldowns materialise. Counts below reflect confirmed country briefings until the run completes.";
   }
 
   if (status === "complete") {
-    return `The landing page reflects the current materialised coverage universe. ${materialisedCountries} of ${monitoredCountries} monitored countries now have a live briefing.`;
+    return `The landing page reflects the current monitored-set overview rather than a single-country narrative. ${materialisedCountries} of ${monitoredCountries} monitored countries now have a live briefing feeding the panel view.`;
   }
 
   if (status === "failed") {
     return "The latest run failed. Any previously materialised briefing remains visible below, while the status feed preserves the failure state for follow-up.";
   }
 
-  return `The landing page is wired to the current API/repository slice. ${monitoredCountries} ${monitoredCountryLabel} ${monitoredCountries === 1 ? "is" : "are"} currently configured, with ${materialisedCountries} confirmed briefing${materialisedCountries === 1 ? "" : "s"} until the pipeline runs.`;
+  return `The landing page is wired to the current API/repository slice. ${monitoredCountries} ${monitoredCountryLabel} ${monitoredCountries === 1 ? "is" : "are"} currently configured, with ${materialisedCountries} confirmed briefing${materialisedCountries === 1 ? "" : "s"} feeding the monitored-set view until the pipeline runs.`;
 }
 
 export function getEmptyStateHeading(status) {
@@ -138,29 +163,98 @@ export function getEmptyStateHeading(status) {
 
 export function getEmptyStateBody(status) {
   if (status === "running") {
-    return "The current slice is fetching, analysing, synthesising, and storing monitored market data in the active runtime. This page will refresh once the status feed leaves the running state.";
+    return "The current slice is fetching, analysing, synthesising, and storing monitored market data in the active runtime. This page will refresh once the monitored-set overview and country drilldowns finish materialising.";
   }
 
   if (status === "failed") {
     return "The last trigger ended in failure before the market briefing could be refreshed. Review the step status, rerun the pipeline, and reopen the market view once the slice completes.";
   }
 
-  return "Run the pipeline to materialise the next market briefing and populate anomaly, outlook, and macro synthesis fields on this page.";
+  return "Run the pipeline to materialise the monitored-set overview and populate the country drilldown surfaces on this page.";
 }
 
-export function getLeadSignals(featuredCountry, indicators) {
-  const featuredCode = featuredCountry?.code || indicators[0]?.country_code;
-  const sourceIndicators =
-    featuredCountry?.indicators ||
-    indicators.filter((indicator) => indicator.country_code === featuredCode);
-
-  const byCode = new Map(
-    sourceIndicators.map((indicator) => [indicator.indicator_code, indicator]),
+function getOutlookCounts(briefings = []) {
+  return briefings.reduce(
+    (counts, briefing) => {
+      const outlookKey = briefing.outlook?.toLowerCase() || "neutral";
+      counts[outlookKey] = (counts[outlookKey] || 0) + 1;
+      return counts;
+    },
+    {
+      bearish: 0,
+      bullish: 0,
+      cautious: 0,
+      neutral: 0,
+    },
   );
+}
 
-  return SIGNAL_PRIORITY.map((indicatorCode) =>
-    byCode.get(indicatorCode),
-  ).filter(Boolean);
+function isAdverseMove(indicatorCode, percentChange) {
+  if (percentChange == null) {
+    return false;
+  }
+
+  if (HIGHER_IS_BETTER.has(indicatorCode)) {
+    return percentChange < 0;
+  }
+
+  if (LOWER_IS_BETTER.has(indicatorCode)) {
+    return percentChange > 0;
+  }
+
+  return percentChange < 0;
+}
+
+function getStressRank(indicatorCode, percentChange) {
+  if (percentChange == null) {
+    return -1;
+  }
+
+  if (HIGHER_IS_BETTER.has(indicatorCode)) {
+    return percentChange * -1;
+  }
+
+  return percentChange;
+}
+
+export function getPanelSignals(indicators = []) {
+  return SIGNAL_PRIORITY.map((indicatorCode) => {
+    const signalIndicators = indicators.filter(
+      (indicator) => indicator.indicator_code === indicatorCode,
+    );
+
+    if (!signalIndicators.length) {
+      return null;
+    }
+
+    const adverseCount = signalIndicators.filter((indicator) =>
+      isAdverseMove(indicatorCode, indicator.percent_change),
+    ).length;
+    const anomalyCount = signalIndicators.filter(
+      (indicator) => indicator.is_anomaly,
+    ).length;
+    const stressedIndicator = [...signalIndicators]
+      .filter((indicator) => indicator.percent_change != null)
+      .sort(
+        (left, right) =>
+          getStressRank(indicatorCode, right.percent_change) -
+          getStressRank(indicatorCode, left.percent_change),
+      )[0];
+
+    return {
+      indicator_code: indicatorCode,
+      indicator_name:
+        signalIndicators[0].indicator_name ||
+        signalIndicators[0].indicator_code,
+      anomalyCount,
+      adverseCount,
+      coverageCount: signalIndicators.length,
+      stressedMarketCode: stressedIndicator?.country_code || null,
+      stressedMarketChange: stressedIndicator?.percent_change ?? null,
+      tone:
+        adverseCount > 0 || anomalyCount > 0 ? "text-critical" : "text-success",
+    };
+  }).filter(Boolean);
 }
 
 export function getStepTone(status) {
@@ -235,7 +329,8 @@ export function deriveOverviewMetrics(overview) {
   ).length;
   const latestRefresh = getLatestRefresh(overview.indicators, overview.status);
   const featuredCountry = overview.briefings[0] || null;
-  const leadSignals = getLeadSignals(featuredCountry, overview.indicators);
+  const panelSignals = getPanelSignals(overview.indicators);
+  const outlookCounts = getOutlookCounts(overview.briefings);
   const pipelineSteps = overview.status?.steps?.length
     ? overview.status.steps
     : FALLBACK_STEPS;
@@ -247,8 +342,11 @@ export function deriveOverviewMetrics(overview) {
     anomalyCount,
     latestRefresh,
     featuredCountry,
-    leadSignals,
+    outlookCounts,
+    panelSignals,
+    panelOverview: overview.panelOverview || null,
     pipelineSteps,
+    riskLoadedMarkets: outlookCounts.bearish + outlookCounts.cautious,
   };
 }
 

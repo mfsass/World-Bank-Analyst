@@ -7,7 +7,12 @@ import { MarketSwitcher } from "../components/MarketSwitcher";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { apiRequest } from "../api";
-import { getOutlookTone, getSignalTone } from "./globalOverviewModel";
+import {
+  formatSourceDateRange,
+  getLatestDataYear,
+  getOutlookTone,
+  getSignalTone,
+} from "./globalOverviewModel";
 
 const FEATURED_INDICATORS = [
   "NY.GDP.MKTP.KD.ZG",
@@ -129,6 +134,11 @@ function CountryIntelligence() {
       (indicator) => indicator.indicator_code === indicatorCode,
     ),
   ).filter(Boolean);
+  const sourceWindowLabel = formatSourceDateRange(country?.source_date_range);
+  const latestDataYear = getLatestDataYear(country?.indicators ?? []);
+  const latestDataYearLabel = latestDataYear
+    ? String(latestDataYear)
+    : "Pending";
 
   const sharedActions = (
     <div className="button-row">
@@ -239,7 +249,7 @@ function CountryIntelligence() {
 
       <PageHeader
         actions={sharedActions}
-        description={`Current signals, macro synthesis, and forward-looking risk for ${country.name}.`}
+        description={`Current signals, macro synthesis, and forward-looking risk for ${country.name}. The source window below reflects the underlying World Bank data rather than the pipeline rerun timestamp.`}
         eyebrow="COUNTRY INTELLIGENCE"
         meta={`${country.code} · ${country.region} · ${country.income_level}`}
         title={buildTitle(country.code, country.name)}
@@ -250,8 +260,18 @@ function CountryIntelligence() {
           eyebrow="AI analyst synthesis"
           footer={
             <div className="country-briefing-meta">
-              <span className="text-label">Outlook // {country.outlook.toUpperCase()}</span>
-              <span className="text-label">Risk flags // {country.risk_flags.length}</span>
+              <span className="text-label">
+                Outlook // {country.outlook.toUpperCase()}
+              </span>
+              <span className="text-label">
+                Risk flags // {country.risk_flags.length}
+              </span>
+              <span className="text-label">
+                Source window // {sourceWindowLabel}
+              </span>
+              <span className="text-label">
+                Latest data year // {latestDataYearLabel}
+              </span>
             </div>
           }
           status={country.outlook.toUpperCase()}
@@ -281,7 +301,8 @@ function CountryIntelligence() {
           <p className="text-label">Briefing depth</p>
           <span className="text-metric mt-3">{country.indicators.length}</span>
           <p className="text-body text-secondary mt-3">
-            Live indicator narratives available in this country briefing.
+            World Bank source window {sourceWindowLabel}; latest materialised
+            year {latestDataYearLabel} across this briefing.
           </p>
         </div>
       </section>
@@ -298,8 +319,13 @@ function CountryIntelligence() {
                 indicator.percent_change >= 0 ? "up" : "down"
               }`}
             >
-              <span aria-hidden="true" className="material-symbols-outlined kpi-trend-icon">
-                {indicator.percent_change >= 0 ? "trending_up" : "trending_down"}
+              <span
+                aria-hidden="true"
+                className="material-symbols-outlined kpi-trend-icon"
+              >
+                {indicator.percent_change >= 0
+                  ? "trending_up"
+                  : "trending_down"}
               </span>{" "}
               {formatChange(indicator.percent_change)}
             </span>
@@ -309,66 +335,83 @@ function CountryIntelligence() {
 
       <section className="section-gap">
         <div className="country-detail-grid">
-          <div className="panel-stack">
-            <div className="card">
-              <p className="text-label">Analyst signal pack</p>
-              <h2 className="text-headline mt-3">Current risk signals</h2>
-              <div className="indicator-list mt-4">
-                {country.indicators.map((indicator) => (
-                  <article className="indicator-card" key={indicator.indicator_code}>
-                    <div className="panel-header">
-                      <h3 className="text-title">{indicator.indicator_name}</h3>
-                      {indicator.is_anomaly ? (
-                        <StatusPill tone="critical">Anomaly</StatusPill>
-                      ) : null}
-                    </div>
-                    <div className="indicator-meta mt-3">
-                      <span className="text-metric">
-                        {formatMetric(
-                          indicator.indicator_code,
-                          indicator.latest_value,
-                        )}
-                      </span>
-                      <span
-                        className={`text-label ${getSignalTone(
-                          indicator.indicator_code,
-                          indicator.percent_change,
-                        )}`}
-                      >
-                        {formatChange(indicator.percent_change)}
-                      </span>
-                      <span className="text-label">YEAR {indicator.data_year}</span>
-                    </div>
-                    <p className="text-body text-secondary mt-4">
-                      {indicator.ai_analysis}
-                    </p>
-                  </article>
-                ))}
+          <div className="card country-detail-panel">
+            <div className="panel-header">
+              <div>
+                <p className="text-label">Analyst signal pack</p>
+                <h2 className="text-headline mt-3">Current risk signals</h2>
               </div>
+            </div>
+            <p className="text-body text-secondary country-detail-panel__summary">
+              Indicator-level narratives, year stamps, and direction-of-travel
+              signals from the current country slice.
+            </p>
+            <div className="indicator-list">
+              {country.indicators.map((indicator) => (
+                <article
+                  className="indicator-card"
+                  key={indicator.indicator_code}
+                >
+                  <div className="panel-header">
+                    <h3 className="text-title">{indicator.indicator_name}</h3>
+                    {indicator.is_anomaly ? (
+                      <StatusPill tone="critical">Anomaly</StatusPill>
+                    ) : null}
+                  </div>
+                  <div className="indicator-meta mt-3">
+                    <span className="text-metric">
+                      {formatMetric(
+                        indicator.indicator_code,
+                        indicator.latest_value,
+                      )}
+                    </span>
+                    <span
+                      className={`text-label ${getSignalTone(
+                        indicator.indicator_code,
+                        indicator.percent_change,
+                      )}`}
+                    >
+                      {formatChange(indicator.percent_change)}
+                    </span>
+                    <span className="text-label">
+                      YEAR {indicator.data_year}
+                    </span>
+                  </div>
+                  <p className="text-body text-secondary mt-4">
+                    {indicator.ai_analysis}
+                  </p>
+                </article>
+              ))}
             </div>
           </div>
 
-          <div className="panel-stack">
-            <div className="card">
-              <p className="text-label">Analyst outlook</p>
-              <h2 className="text-headline mt-4">Forward view</h2>
-              <ul className="risk-list mt-4">
-                {country.risk_flags.map((riskFlag) => (
-                  <li className="text-body" key={riskFlag}>
-                    {riskFlag}
-                  </li>
-                ))}
-              </ul>
+          <div className="card country-detail-panel">
+            <div className="panel-header">
+              <div>
+                <p className="text-label">Analyst outlook</p>
+                <h2 className="text-headline mt-3">Forward view</h2>
+              </div>
+              <StatusPill tone={getOutlookTone(country.outlook)}>
+                {country.outlook.toUpperCase()}
+              </StatusPill>
             </div>
-
-
+            <p className="text-body text-secondary country-detail-panel__summary">
+              Forward-looking risk flags synthesised from the current country
+              briefing.
+            </p>
+            <ul className="risk-list">
+              {country.risk_flags.map((riskFlag) => (
+                <li className="text-body" key={riskFlag}>
+                  {riskFlag}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
     </div>
   );
 }
-
 
 export { CountryIntelligence };
 export default CountryIntelligence;

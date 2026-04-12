@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const proxyApiKey = env.WORLD_ANALYST_API_KEY || "local-dev";
+  // Keep the dev proxy key separate from the production API secret so frontend
+  // builds never consume a production secret-shaped environment variable.
+  const proxyApiKey = env.WORLD_ANALYST_DEV_PROXY_API_KEY || "local-dev";
   const apiUpstream = env.WORLD_ANALYST_API_UPSTREAM || "http://localhost:8080";
 
   return {

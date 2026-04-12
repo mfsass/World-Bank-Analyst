@@ -5,6 +5,8 @@ import {
   deriveCoverageBoard,
   deriveRegionalBreakdown,
   deriveOverviewMetrics,
+  formatSourceDateRange,
+  getLatestDataYear,
   getOutlookTone,
   getSignalTone,
 } from "../src/pages/globalOverviewModel.js";
@@ -96,4 +98,12 @@ test("coverage board retains every monitored market without fabricating map stat
   assert.equal(markets[1].statusLabel, "Pending");
   assert.equal(markets[1].tone, "neutral");
   assert.equal(markets[2].href, "/country/de");
+});
+
+test("source-window helpers keep freshness copy honest", () => {
+  assert.equal(formatSourceDateRange("2010:2024"), "2010-2024");
+  assert.equal(
+    getLatestDataYear([{ data_year: 2023 }, { data_year: 2024 }, {}]),
+    2024,
+  );
 });

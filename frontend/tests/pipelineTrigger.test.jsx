@@ -76,4 +76,32 @@ describe("PipelineTrigger", () => {
 
     expect(screen.getByText("Country page")).toBeInTheDocument();
   });
+
+  it("renders the failed execution state and keeps the lead-market action blocked", async () => {
+    apiRequest.mockResolvedValue({
+      status: "failed",
+      started_at: "2026-04-12T10:00:00Z",
+      completed_at: "2026-04-12T10:00:03Z",
+      error: "Live AI degraded coverage for one indicator.",
+      steps: [
+        { name: "fetch", status: "complete", duration_ms: 400 },
+        { name: "analyse", status: "complete", duration_ms: 600 },
+        { name: "synthesise", status: "failed", duration_ms: 1200 },
+        { name: "store", status: "pending" },
+      ],
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "The run stopped while generating the analyst narratives. Latest duration: 1200ms.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Open lead market",
+      }),
+    ).toBeDisabled();
+  });
 });

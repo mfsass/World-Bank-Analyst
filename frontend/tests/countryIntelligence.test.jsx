@@ -53,8 +53,10 @@ describe("CountryIntelligence", () => {
           name: "Brazil",
           region: "Latin America & Caribbean",
           income_level: "Upper middle income",
+          source_date_range: "2017:2023",
           outlook: "cautious",
-          macro_synthesis: "Inflation remains elevated while growth is subdued.",
+          macro_synthesis:
+            "Inflation remains elevated while growth is subdued.",
           risk_flags: ["Inflation pressure persists"],
           indicators: [
             {
@@ -111,7 +113,11 @@ describe("CountryIntelligence", () => {
     });
     const postureLabel = screen.getByText("Current posture");
 
-    expect(screen.getByText("Inflation remains elevated while growth is subdued.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Inflation remains elevated while growth is subdued."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source window // 2017-2023")).toBeInTheDocument();
+    expect(screen.getByText("Latest data year // 2023")).toBeInTheDocument();
     expect(
       briefingHeading.compareDocumentPosition(postureLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING,

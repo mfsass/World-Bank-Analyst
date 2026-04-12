@@ -10,7 +10,10 @@ server {
     # proxy lands on the Connexion base path in Cloud Run.
     proxy_pass ${WORLD_ANALYST_API_UPSTREAM};
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    # Cloud Run routes HTTPS requests by the upstream service host, not the public
+    # frontend host, so the proxy must forward the API hostname and SNI together.
+    proxy_set_header Host $proxy_host;
+    proxy_ssl_server_name on;
     proxy_set_header X-API-Key ${WORLD_ANALYST_PROXY_API_KEY};
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
