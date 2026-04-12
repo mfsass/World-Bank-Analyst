@@ -202,7 +202,6 @@ function CountryIntelligence() {
           <span className="breadcrumb-row__separator">/</span>
           <span className="text-label">{countryCode}</span>
         </nav>
-
         {marketSwitcher}
 
         <PageHeader
@@ -320,13 +319,10 @@ function CountryIntelligence() {
       <section className="country-identity section-gap">
         <div className="card country-identity__primary">
           <p className="text-label">Current posture</p>
-          <div className="panel-header mt-4">
-            <div>
-              <h2 className="text-headline">{country.name}</h2>
-              <p className="text-body text-secondary mt-3">
-                {country.region} · {country.income_level}
-              </p>
-            </div>
+          <div className="panel-header mt-3">
+            <p className="text-body text-secondary">
+              {country.region} · {country.income_level}
+            </p>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <StatusPill tone={getOutlookTone(country.outlook)}>
                 {country.outlook.toUpperCase()}

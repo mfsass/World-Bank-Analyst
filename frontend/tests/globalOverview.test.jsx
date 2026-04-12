@@ -196,6 +196,13 @@ describe("GlobalOverview", () => {
       expect(
         screen.getAllByText(/Source window \/\/ 2010-2024/).length,
       ).toBeGreaterThan(0);
+      // Risk flags from the overview response render in the risk strip
+      expect(
+        screen.getByText(/Brazil and the United States are both carrying/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Growth dispersion remains wide/),
+      ).toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: "Open pipeline" }),
       ).toBeInTheDocument();

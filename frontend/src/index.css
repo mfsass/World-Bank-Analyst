@@ -1007,7 +1007,6 @@ body.dialog-open {
 }
 
 .page-title-with-flag__flag img,
-.overview-hero__market-flag img,
 .map-tooltip__flag img,
 .country-table__flag img,
 .market-card__flag img {
@@ -1073,17 +1072,6 @@ body.dialog-open {
   margin-right: 0;
   flex: none;
   line-height: 1;
-}
-
-.overview-hero-footer {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-3);
-}
-
-.overview-hero-summary {
-  max-width: 92ch;
 }
 
 /* --------------------------------------------------------------------------
@@ -1196,7 +1184,7 @@ body.dialog-open {
   border: var(--border-structural);
   border-radius: var(--radius);
   background: var(--surface-nested);
-  border-top: 3px solid var(--color-border);
+  border-top: 4px solid var(--color-border);
 }
 
 .overview-landing__metric--success {
@@ -1241,7 +1229,7 @@ body.dialog-open {
 .overview-risk-strip__flag {
   padding: var(--space-4);
   border: var(--border-structural);
-  border-left: 3px solid var(--color-warning);
+  border-left: 4px solid var(--color-warning);
   border-radius: var(--radius);
   background: var(--surface-card);
 }
@@ -1254,136 +1242,6 @@ body.dialog-open {
 .overview-landing--loading .overview-landing__synthesis,
 .overview-landing--loading .overview-landing__meta {
   display: none;
-}
-
-/* --------------------------------------------------------------------------
-   Hero Section — Gradient Container
-   -------------------------------------------------------------------------- */
-.overview-hero {
-  background: linear-gradient(
-    180deg,
-    var(--surface-card) 0%,
-    var(--surface-canvas) 100%
-  );
-  padding: var(--space-6);
-  border-radius: var(--radius);
-  margin-bottom: var(--space-6);
-}
-
-.overview-hero__inner {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
-  gap: var(--space-6);
-  align-items: stretch;
-}
-
-.overview-hero__content {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.overview-hero__eyebrow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-accent);
-  margin-bottom: var(--space-4);
-}
-
-.overview-hero__eyebrow-icon {
-  display: block;
-  font-size: 1.125rem;
-  line-height: 1;
-  color: var(--color-accent);
-}
-
-.overview-hero__eyebrow-text {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.overview-hero__title {
-  font-family: var(--font-display);
-  font-size: 2.75rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  margin-bottom: var(--space-4);
-}
-
-.overview-hero__body {
-  max-width: 62ch;
-  color: var(--color-text-primary);
-  font-size: 0.9375rem;
-  line-height: 1.75;
-}
-
-.overview-hero__aside {
-  display: flex;
-  min-width: 0;
-}
-
-.overview-hero__aside-card {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-5);
-  border: var(--border-structural);
-  border-radius: var(--radius);
-  background: var(--surface-nested);
-}
-
-.overview-hero__market {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--space-3);
-  align-items: flex-start;
-  padding: var(--space-3);
-  border: var(--border-structural);
-  border-radius: var(--radius);
-  background: var(--surface-card);
-}
-
-.overview-hero__market-flag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 24px;
-  border: var(--border-structural);
-  border-radius: var(--radius);
-  background: var(--surface-popover);
-  overflow: hidden;
-}
-
-.overview-hero__market-name {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.overview-hero__stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.overview-hero__stat {
-  padding: var(--space-3);
-  border: var(--border-structural);
-  border-radius: var(--radius);
-  background: var(--surface-card);
-}
-
-.overview-hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
 }
 
 /* --------------------------------------------------------------------------
@@ -1658,7 +1516,6 @@ body.dialog-open {
 /* --------------------------------------------------------------------------
    Overview Grids & Panels
    -------------------------------------------------------------------------- */
-.overview-hero-grid,
 .overview-depth-grid,
 .overview-main-grid,
 .country-detail-grid,
@@ -1669,7 +1526,6 @@ body.dialog-open {
   gap: var(--space-4);
 }
 
-.overview-hero-grid,
 .architecture-spec-strip {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -2204,48 +2060,6 @@ body.dialog-open {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-}
-
-/* --------------------------------------------------------------------------
-   Overview Legacy & Compat
-   -------------------------------------------------------------------------- */
-
-/* Hero stat tile — three summary cells inside the AI Insight panel */
-.overview-hero-stat {
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  min-height: 120px;
-}
-
-/* Large display number — Commit Mono, sized to read as a headline metric */
-.overview-hero-stat__value {
-  font-family: var(--font-mono);
-  font-size: 2rem;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  color: var(--color-text-primary);
-  margin-top: var(--space-2);
-}
-
-/* Description pushed to the bottom so value has visual breathing room */
-.overview-hero-stat__desc {
-  margin-top: auto;
-  padding-top: var(--space-3);
-}
-
-/* Semantic top-border accents that signal status without overusing the accent */
-.overview-hero-stat--success {
-  border-top: 2px solid var(--color-success);
-}
-
-.overview-hero-stat--critical {
-  border-top: 2px solid var(--color-critical);
-}
-
-.overview-hero-stat--warning {
-  border-top: 2px solid var(--color-warning);
 }
 
 .overview-alert__bar,
@@ -2787,9 +2601,7 @@ body.dialog-open {
     gap: var(--space-4);
   }
 
-  .overview-hero-grid,
   .overview-depth-grid,
-  .overview-hero__stats,
   .country-chart-metrics,
   .architecture-flow,
   .architecture-spec-strip,
@@ -2846,15 +2658,6 @@ body.dialog-open {
     font-size: 2rem;
   }
 
-  .overview-hero__title {
-    font-size: 2rem;
-  }
-
-  .overview-hero__stats {
-    grid-template-columns: 1fr;
-  }
-
-  .overview-hero-grid,
   .overview-depth-grid,
   .country-chart-metrics,
   .architecture-flow,
@@ -2869,8 +2672,6 @@ body.dialog-open {
 
   .panel-header,
   .button-row,
-  .overview-hero__market,
-  .overview-hero__actions,
   .indicator-meta,
   .flex-row {
     flex-direction: column;
@@ -3275,10 +3076,6 @@ body.dialog-open {
 
 .overview-depth-grid {
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.overview-hero-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
 }
 
 .overview-context-market {
@@ -3710,7 +3507,6 @@ body.dialog-open {
     align-items: flex-start;
   }
 
-  .overview-hero-grid,
   .overview-depth-grid,
   .overview-market-metrics,
   .architecture-flow,

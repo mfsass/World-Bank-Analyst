@@ -980,3 +980,16 @@
 **Why:** A finance-facing landing surface should answer three things immediately: what the macro posture is, where the stress is, and what to open next. Selection-dependent empty states fail that test. Reusing the current indicator and coverage data keeps the redesign truthful and deterministic without waiting for warmed country briefings or expanding the backend contract. Keeping explicit selection separate from default watchlist content also preserves the current map interaction model instead of smuggling in a fake preselected market.
 
 **Trade-off:** The first screen now carries more derived ranking logic in the frontend, and the hero gives slightly less space to open-ended narrative. We accept that because the page now scans more like a premium macro dashboard: the narrative still exists, but the arrival surface no longer hides its most actionable signal behind a click.
+
+## ADR-070: Page-Specific Landing Hero Over Shared Component Composition
+
+**Date:** 2026-04-12
+**Status:** Accepted
+
+**Context:** The Global Overview above-the-fold used shared `PageHeader` + `AIInsightPanel` components stacked vertically. The result was a double-header pattern: redundant eyebrows, duplicate title-level headings, and no metric density above the fold. The shared components serve other pages well but forced the overview into a text-heavy, metric-poor layout that did not read as a premium financial terminal.
+
+**Decision:** Replace the shared component pair with a page-specific `.overview-landing` section on the overview page only. The landing uses a 60/40 grid split: narrative column (eyebrow, title, synthesis, meta strip, CTAs) on the left, 2×2 metric signal grid on the right. Risk flags sit in a separate strip below the hero. Other pages continue using the shared components unchanged.
+
+**Why:** The overview is the arrival surface and earns its own layout. A unified hero with metrics visible on first render gives the page Bloomberg-terminal density instead of a blog-post reading pattern. The 60/40 split follows the anti-center-bias rule from the design taste skill and keeps the heaviest information (macro narrative) scannable rather than sprawled. Keeping this page-specific avoids polluting the shared components with overview-only concerns.
+
+**Trade-off:** The overview now has ~150 lines of page-specific CSS and JSX that diverge from the shared component pattern. Maintenance cost is low because the overview is the only page that needs this layout density, and the shared components remain simpler for the three other pages that still use them.

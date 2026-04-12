@@ -15,7 +15,10 @@ import { apiRequest, fetchCountryDetail } from "../api";
 import {
   getCachedCountry,
   setCachedCountry,
+  getCountriesList,
   setCountriesList,
+  getOverviewCache,
+  setOverviewCache,
   startBackgroundWarm,
   updateCacheGeneration,
 } from "../lib/countryDetailCache";
@@ -564,14 +567,53 @@ export function GlobalOverview() {
 
     async function loadOverview() {
       try {
-        // Phase 1: render AI panel immediately
+        const cachedOverview = getOverviewCache();
+        const cachedCountries = getCountriesList();
+
+        if (cachedOverview && cachedCountries) {
+          // Cache hit — render hero immediately without a loading skeleton,
+          // then silently refresh phase 1 + 2 in the background so the page
+          // always converges to fresh data without the user waiting.
+          resetBriefingHydrationState();
+          setOverview((prev) => ({
+            ...prev,
+            panelOverview: cachedOverview,
+            countries: cachedCountries,
+            briefings: [],
+          }));
+          setViewState("ready");
+          setRequestError("");
+
+          // Background refresh — updates overview and countries silently.
+          const phase1 = await fetchOverviewPhase1();
+          if (!isActive) return;
+          setOverview((prev) => ({ ...prev, ...phase1 }));
+          setCountriesList(phase1.countries);
+          setOverviewCache(phase1.panelOverview);
+          startBackgroundWarm(
+            phase1.countries.map((c) => c.code),
+            fetchCountryBriefing,
+          );
+          fetchOverviewPhase2()
+            .then((phase2) => {
+              if (!isActive) return;
+              setOverview((prev) => ({ ...prev, ...phase2 }));
+              updateCacheGeneration(phase2.status?.completed_at ?? null);
+            })
+            .catch((err) => {
+              console.error("phase2 fetch failed", err);
+            });
+          return;
+        }
+
+        // Cache miss — normal two-phase load with skeleton.
         const phase1 = await fetchOverviewPhase1();
         if (!isActive) return;
         resetBriefingHydrationState();
         setOverview((prev) => ({ ...prev, ...phase1 }));
-        // Cache the country list so any subsequent country-page visit can
-        // render the market switcher instantly without a separate fetch.
+        // Cache for re-visits so next navigation skips the loading state.
         setCountriesList(phase1.countries);
+        setOverviewCache(phase1.panelOverview);
         setViewState("ready");
         setRequestError("");
 

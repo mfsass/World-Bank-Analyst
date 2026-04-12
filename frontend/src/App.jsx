@@ -6,10 +6,13 @@ import CountryIntelligenceLanding from "./pages/CountryIntelligenceLanding";
 import GlobalOverview from "./pages/GlobalOverview";
 import { HowItWorks } from "./pages/HowItWorks";
 import { PipelineTrigger } from "./pages/PipelineTrigger";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 
 export function App() {
   return (
     <div className="app">
+      <ScrollToTop />
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<GlobalOverview />} />
@@ -21,4 +24,12 @@ export function App() {
       </Routes>
     </div>
   );
+}
+
+function ScrollToTop() {
+  const location = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+  return null;
 }

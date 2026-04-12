@@ -35,6 +35,19 @@ let _generationKey = null;
 let _countriesList = null;
 
 /**
+ * Session-scoped cache for the `/overview` AI panel payload. Enables the
+ * Global Overview page to render its hero section immediately on re-visit,
+ * skipping the loading skeleton entirely.
+ *
+ * Cleared alongside all country entries whenever the cache generation advances
+ * (i.e. a new pipeline run completes) so stale AI summaries are never shown
+ * after fresh data lands.
+ *
+ * @type {object | null}
+ */
+let _overviewCache = null;
+
+/**
  * Returns the cached `/countries` list, or `null` when it has not been
  * fetched yet this session.
  *
@@ -52,6 +65,26 @@ export function getCountriesList() {
 export function setCountriesList(list) {
   if (!Array.isArray(list) || !list.length) return;
   _countriesList = list;
+}
+
+/**
+ * Returns the cached `/overview` payload, or `null` when it has not been
+ * fetcheed yet this session.
+ *
+ * @returns {object | null}
+ */
+export function getOverviewCache() {
+  return _overviewCache;
+}
+
+/**
+ * Stores the `/overview` payload in the session cache.
+ *
+ * @param {object} payload - Full `/overview` API response.
+ */
+export function setOverviewCache(payload) {
+  if (!payload) return;
+  _overviewCache = payload;
 }
 
 /**
@@ -94,6 +127,7 @@ export function setCachedCountry(code, payload, generationKey = null) {
 export function updateCacheGeneration(nextKey) {
   if (!nextKey || nextKey === _generationKey) return;
   _cache.clear();
+  _overviewCache = null;
   _generationKey = nextKey;
 }
 
