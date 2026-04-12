@@ -6,6 +6,9 @@
 
 ## Next Up
 
+- [ ] **Country Intelligence Enhancement Phase 1** — Country directory (replace landing dead-end), click-away map reset, map hover preview. Frontend only. Plan: `docs/plans/country-intelligence-enhancement.md`.
+- [ ] **Country Intelligence Enhancement Phase 2** — `prepare_time_series()`, Firestore enrichment, openapi.yaml schema extension, regime label prompt extension. Backend + API. Blocked by: nothing (independent of Phase 1).
+- [ ] **Country Intelligence Enhancement Phase 3** — Country timeline (Recharts), enriched map popover, dense signal grid, regime label display. Frontend-intensive. Blocked by: Phase 2 data availability.
 - [ ] Cloud deployment: Cloud Run Job (pipeline), Cloud Run service (API + frontend), Secret Manager wiring, Cloud Scheduler (monthly), trigger handler repointed to Jobs API dispatch.
 - [ ] Reconcile frontend mocks and presentation copy with the 17-country exact-complete core panel when the frontend fidelity pass resumes.
 

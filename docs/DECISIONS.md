@@ -826,3 +826,157 @@
 **Decision:** Remove the four pipeline KPI cards from the Global Overview. Pipeline status is available on the dedicated Pipeline Trigger page. If a pipeline error occurs, an inline notification surfaces it without occupying prime real estate on the overview. The freed space improves signal density for the actual market content.
 **Consequences:** Financial users see a cleaner overview focused on market intelligence. Pipeline operators still have full visibility via the Trigger page. The responsible-AI disclaimer and `auto_awesome` accent icon are retained — they are user-facing content, not operational jargon.
 
+---
+
+## ADR-060: Persist Full Historical Time Series in Firestore Documents (Not BigQuery)
+
+**Date:** 2026-04-17
+**Status:** Accepted
+**Context:** The Country Intelligence Enhancement PRD (`docs/prds/country-intelligence-enhancement.md`) requires exposing 10–15 years of historical indicator data per country for a timeline view. ADR-001 noted: "If analytical queries become a requirement (e.g., compare GDP trends across all countries over 10 years), we'd need to migrate [to BigQuery]." The question is whether this enhancement triggers that migration.
+
+**Decision:** Persist the full time series (2010–2024) as a nested array inside the existing Firestore country documents. Do not migrate to BigQuery.
+
+**Why:** The access pattern remains key-value: load one country document, render its full indicator history. This is a `doc.get()` call, not a cross-country analytical query. The data growth is modest: 6 indicators × ~15 years × ~60 bytes per data point ≈ 5.4KB additional per country document. Total across 17 countries: ~92KB. Firestore's 1MB document limit is not a concern. The frontend renders one country at a time — there is no cross-country time-series comparison view in scope.
+
+**Trade-off:** If a future feature requires cross-country time-series comparison (e.g., "overlay GDP growth for Brazil, Turkey, and Hungary on one chart"), Firestore would require fetching N separate documents and joining client-side. That would be the trigger for a BigQuery or secondary-index migration. The current single-country timeline view does not cross that line.
+
+**Ref:** `docs/prds/country-intelligence-enhancement.md` §8.2
+
+---
+
+## ADR-061: Rule-Based Regime Classification Over LLM-Derived Labels
+
+**Date:** 2025-01-27
+**Status:** Accepted
+
+**Context:** The V2 Consolidated PRD adds a lightweight economic regime label (recovery, expansion, overheating, contraction, stagnation) to each country briefing. Two approaches were viable: (a) derive the label from Pandas rules on GDP growth, inflation, and unemployment direction, or (b) add an LLM classification call.
+
+**Decision:** Rule-based classification in `pipeline/analyser.py`. No additional LLM call.
+
+**Why:** The label is a structural classification, not a narrative judgment. GDP growth direction, inflation level, and unemployment trend are already computed in the statistical analysis pass. A Pandas function that maps these to five labels is deterministic, testable, and auditable. The LLM synthesis already receives and contextualizes this information in prose — adding a separate classification call would be redundant and non-deterministic.
+
+**Trade-off:** Rule-based classification is less nuanced than LLM judgment. Edge cases (e.g., is 0.5% GDP growth "stagnation" or "recovery"?) may be debatable. We accept this because the label is directional context, not investment advice, and because deterministic rules are easier to defend in review than "the model said so."
+
+**Ref:** `docs/prds/v2-consolidated-product-upgrade.md` Phase 1.3
+
+---
+
+## ADR-062: Demo Walkthrough as Frontend-Only Simulation, Not Backend Mock Mode
+
+**Date:** 2025-01-27
+**Status:** Accepted
+
+**Context:** The V2 Consolidated PRD splits Pipeline Trigger into a real run mode and a demo walkthrough mode. The demo could be implemented as (a) a frontend-only animation stepping through the shared pipeline stage model, or (b) a backend mock mode that returns fake pipeline status responses.
+
+**Decision:** Frontend-only. The demo walkthrough animates through `PIPELINE_STAGES` without making any API calls. It is clearly labeled as a frontend simulation.
+
+**Why:** The backend should never return fake data. A mock mode would contaminate the `/pipeline/status` endpoint and create ambiguity about whether the dashboard is showing real or simulated state. A frontend-only walkthrough keeps the truth boundary clean: if data comes from the API, it's real. If it's animated in the browser, it's labeled as a demo.
+
+**Trade-off:** The demo walkthrough cannot show real Firestore writes or actual LLM latency patterns. We accept this because the purpose of the walkthrough is to explain the pipeline's structure and transformation flow, not to simulate its performance characteristics.
+
+**Ref:** `docs/prds/v2-consolidated-product-upgrade.md` Phase 5.1
+
+---
+
+## ADR-063: Inline Time-Series in Existing API Responses Over Separate History Endpoint
+
+**Date:** 2025-01-27
+**Status:** Accepted
+
+**Context:** The V2 PRD requires exposing per-year historical data for indicator charts. Two API approaches: (a) add `time_series` arrays inline to the existing `IndicatorInsight` schema returned by `/countries/{code}`, or (b) add a separate `/countries/{code}/indicators/{code}/history` endpoint.
+
+**Decision:** Inline first. The `time_series` array is added to `IndicatorInsight` in `openapi.yaml` and served as part of the existing country detail response.
+
+**Why:** 17 countries × 6 indicators × ~15 years = ~1,530 data points per country. At ~100 bytes per point, that's ~150KB per country detail response. This is well within acceptable payload size for a demo-scoped product. A separate endpoint would add API surface area, require additional frontend fetch orchestration, and create a second loading state on the country page — all for a payload optimization that isn't needed at this scale.
+
+**Trade-off:** If the country panel grows significantly (e.g., 50+ countries, 20+ indicators), the inline approach would need revisiting. The trigger for a separate endpoint is measured latency exceeding 500ms for the country detail response. Current scope (17 countries) does not approach this.
+
+**Ref:** `docs/prds/v2-consolidated-product-upgrade.md` Technical Implications
+
+---
+
+## ADR-064: Return Sparse Ascending Time-Series Arrays Instead of Padded Year Windows
+
+**Date:** 2026-04-12
+**Status:** Accepted
+
+**Context:** Phase 1 adds inline historical indicator series to the existing API responses. Two shaping options were viable: (a) always return a fixed `2010–2024` array with explicit `null` gaps for missing years, or (b) return only observed yearly points and keep the array ordered from oldest to newest.
+
+**Decision:** Return sparse ascending arrays. Each `time_series` list contains only observed yearly points, sorted oldest-to-newest. Missing years are omitted rather than padded with placeholder rows.
+
+**Why:** World Bank annual coverage is not perfectly uniform across indicators and countries, and the local deterministic slice still has a shorter source window than the live path. Sparse arrays keep the API honest: the response shows what the pipeline actually observed and analysed, while `source_date_range` communicates the overall window. Ascending order also matches charting defaults and makes timeline rendering straightforward in the frontend.
+
+**Trade-off:** Frontend timeline components must treat gaps as missing observations rather than assuming a fully dense yearly index. We accept that because padding with synthetic `null` rows would blur the line between absent data and observed data, while also increasing payload size for no analytical gain.
+
+---
+
+## ADR-065: One Shared Frontend Pipeline Stage Model Over Page-Local Trigger and Walkthrough Copy
+
+**Date:** 2026-04-12
+**Status:** Accepted
+
+**Context:** Phase 2 splits Pipeline Trigger into a truthful real run mode and a frontend-only demo walkthrough, while How It Works also needs to explain the same pipeline. Two implementation shapes were viable: (a) keep separate hardcoded stage copy in each page and manually keep them aligned, or (b) introduce one shared frontend stage model and let each page adapt it to live or simulated progress.
+
+**Decision:** Use one shared frontend stage model in `frontend/src/pipelineStageModel.js`, with separate adapters for real backend status and demo walkthrough playback.
+
+**Why:** The product story is one thing even though the runtime adapters differ. A shared model keeps stage names, business explanations, latency notes, and demo activity copy in one place, so How It Works and Pipeline Trigger cannot drift into telling different stories about the same system. It also keeps the truth boundary clean: the real adapter still renders backend-reported status, while the demo adapter replays the same stages in browser-only state.
+
+**Trade-off:** The shared model adds a small abstraction layer to the frontend, and the real adapter still needs one live-only operational stage for `dispatch` when Cloud Run job launch is visible. We accept that because the extra structure is cheaper than maintaining duplicate copy across pages, and because treating `dispatch` as live-only preserves backend truth without polluting the shared product-stage story.
+
+---
+
+## ADR-066: Session-Scoped Country Detail Preload Over a New Batch Endpoint or Persistent Browser Cache
+
+**Context:** ADR-055 improved Overview first paint by keeping the current API surface and deferring country-detail work until a user showed intent. That fixed the blocked landing experience, but country drill-in can still feel colder than it should: once a user has identified a market from the map or the `/country` directory, opening `/country/:id` still waits on a fresh detail request. At the same time, ADR-063 keeps historical series inline in the existing country detail response, so adding a batch endpoint would expand backend scope just to hide a route-level pause.
+
+**Decision:** Keep the current API boundary and introduce a shared session-scoped frontend cache for country detail. Warm that cache in the background after the initial view becomes interactive, prioritize hovered, selected, and visible countries first, and reuse the warmed payload across Overview, the `/country` directory, and `/country/:id` navigation.
+
+**Why:** The monitored set is fixed at 17 countries, so the frontend can treat country detail as a bounded working set instead of a cold lookup. This improves perceived route speed without adding a new endpoint, a new backend cache tier, or cross-session browser persistence that could serve stale market context. It also keeps the behavior easy to explain in review: data still comes from the same truthful country-detail endpoint, but the client fetches likely-next markets before the user clicks.
+
+**Trade-off:** The frontend takes on more orchestration state and each session may issue some background requests for countries the user never opens. We accept that because the working set is small, the UX gain is immediate, and the revisit trigger is clear: if the monitored set or per-country payload grows enough to make background warming visibly expensive, then a batch detail endpoint becomes the next step.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-067: Replay Walkthrough as a Wizard Modal Over Inline Page Playback
+
+**Date:** 2026-04-12
+**Status:** Accepted
+
+**Context:** The demo walkthrough already existed as a frontend-only replay on the Trigger page, but it played inline inside the same execution grid used for truthful live status. Two viable UI shapes remained: keep the demo inline and let the page simulate progress inside the shared stage list, or move the demo into a dedicated overlay that can explain one stage at a time without competing with the live run surface.
+
+**Decision:** Move the replay walkthrough into a modal wizard on the Trigger page. Keep the real run feed inline, but present the demo as a browser-only overlay with auto-play, manual Next and Back controls, clickable stage cards, and a synced presentation feed.
+
+**Why:** The walkthrough is presentation behavior, not operational truth. Putting it in a dedicated modal makes that boundary obvious: the page still shows the real trigger controls and static shared stage model, while the overlay can slow down, animate, and explain each step clearly without implying backend progress. Reusing the existing shared stage model and CSS-native motion keeps the story aligned with the rest of the product and avoids adding a new dialog or animation dependency just for one demo surface.
+
+**Trade-off:** The frontend now owns a bit more modal state, keyboard handling, and focus management. We accept that because the result is easier to present, easier to read, and more honest than mixing simulated playback directly into the live execution panel.
+
+---
+
+## ADR-068: Keep Statistical Anomalies Separate From Adverse Moves in the Overview Signal Pack
+
+**Context:** The Global Overview signal pack combines two different kinds of signals from [frontend/src/pages/globalOverviewModel.js](frontend/src/pages/globalOverviewModel.js): `anomalyCount` comes from the pipeline's statistical outlier flag, while `adverseCount` describes how many markets moved in the economically wrong direction for that indicator. The card copy said "No anomalies" directly above a sentence about markets moving in the wrong direction, which made the UI read as contradictory.
+
+**Decision:** Keep anomaly as the statistical term and keep adverse moves as a separate directional-risk term. Update the signal-pack label to explicit copy such as "0 statistical anomalies" instead of broadening anomaly to mean any negative move.
+
+**Why:** The pipeline already gives anomaly a precise meaning through `is_anomaly`, and the dashboard also needs to surface directional stress even when a move is not statistically extreme. Making the statistical label explicit preserves that distinction without changing the data model or hiding economically adverse moves from the panel.
+
+**Trade-off:** The card now carries slightly more technical wording. We accept that because it is more accurate than calling ordinary adverse moves anomalies, and it removes a piece of user-facing copy that undermined trust.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-069: Risk-First Overview Hero Over Selection-Dependent First-Screen Detail
+
+**Date:** 2026-04-12
+**Status:** Accepted
+
+**Context:** The Global Overview first screen had solid source material but weak arrival behavior. The hero mixed macro synthesis, risk flags, and selection-dependent detail in one surface. The most visible failure was the third summary tile: it could collapse into an empty "select a market" state even though the page is supposed to answer the global question before any interaction. At the same time, the map-side drilldown rail did very little when no country was selected.
+
+**Decision:** Keep the existing API boundary and the existing explicit map-focus interaction, but change the first-screen hierarchy to be risk-first. The hero now surfaces a persistent stress signal derived from the existing indicator layer, not from a selected market. The no-focus drilldown rail now opens with a pressure watchlist derived from the same ranking logic, so the page stays useful before any user action. We do not auto-select a default country on load.
+
+**Why:** A finance-facing landing surface should answer three things immediately: what the macro posture is, where the stress is, and what to open next. Selection-dependent empty states fail that test. Reusing the current indicator and coverage data keeps the redesign truthful and deterministic without waiting for warmed country briefings or expanding the backend contract. Keeping explicit selection separate from default watchlist content also preserves the current map interaction model instead of smuggling in a fake preselected market.
+
+**Trade-off:** The first screen now carries more derived ranking logic in the frontend, and the hero gives slightly less space to open-ended narrative. We accept that because the page now scans more like a premium macro dashboard: the narrative still exists, but the arrival surface no longer hides its most actionable signal behind a click.
