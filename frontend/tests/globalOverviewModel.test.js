@@ -6,9 +6,11 @@ import {
   deriveRegionalBreakdown,
   deriveOverviewMetrics,
   derivePressureQueue,
+  derivePressureWatchlist,
   formatSourceDateRange,
   getLatestDataYear,
   getOutlookTone,
+  getPanelSignals,
   getSignalTone,
 } from "../src/pages/globalOverviewModel.js";
 
@@ -142,4 +144,96 @@ test("source-window helpers keep freshness copy honest", () => {
     getLatestDataYear([{ data_year: 2023 }, { data_year: 2024 }, {}]),
     2024,
   );
+});
+
+test("panel signals keep adverse moves separate from statistical anomalies", () => {
+  const signals = getPanelSignals([
+    {
+      country_code: "BR",
+      indicator_code: "NY.GDP.MKTP.KD.ZG",
+      indicator_name: "GDP growth (annual %)",
+      percent_change: -1.3,
+      is_anomaly: false,
+    },
+    {
+      country_code: "US",
+      indicator_code: "NY.GDP.MKTP.KD.ZG",
+      indicator_name: "GDP growth (annual %)",
+      percent_change: 0.8,
+      is_anomaly: false,
+    },
+  ]);
+
+  assert.equal(signals.length, 1);
+  assert.equal(signals[0].adverseCount, 1);
+  assert.equal(signals[0].anomalyCount, 0);
+  assert.equal(signals[0].statisticalAnomalyLabel, "0 statistical anomalies");
+  assert.equal(signals[0].statisticalAnomalyTone, "text-secondary");
+});
+
+test("pressure watchlist exposes live markets first with lead stress indicators", () => {
+  const watchlist = derivePressureWatchlist(
+    [
+      {
+        code: "BR",
+        name: "Brazil",
+        region: "Latin America & Caribbean",
+      },
+      {
+        code: "US",
+        name: "United States",
+        region: "North America",
+      },
+      {
+        code: "NG",
+        name: "Nigeria",
+        region: "Sub-Saharan Africa",
+      },
+    ],
+    [
+      {
+        code: "BR",
+        outlook: "cautious",
+        macro_synthesis: "Growth remains weak while inflation pressure persists.",
+      },
+    ],
+    [
+      {
+        country_code: "BR",
+        indicator_code: "NY.GDP.MKTP.KD.ZG",
+        indicator_name: "GDP growth (annual %)",
+        percent_change: -1.3,
+        is_anomaly: false,
+      },
+      {
+        country_code: "US",
+        indicator_code: "NY.GDP.MKTP.KD.ZG",
+        indicator_name: "GDP growth (annual %)",
+        percent_change: 0.8,
+        is_anomaly: false,
+      },
+      {
+        country_code: "NG",
+        indicator_code: "FP.CPI.TOTL.ZG",
+        indicator_name: "Inflation, consumer prices (annual %)",
+        percent_change: 4.2,
+        is_anomaly: true,
+      },
+    ],
+    ["BR", "US"],
+    3,
+  );
+
+  assert.deepEqual(
+    watchlist.map((market) => market.code),
+    ["BR", "US", "NG"],
+  );
+  assert.equal(watchlist[0].statusLabel, "CAUTIOUS");
+  assert.equal(watchlist[0].leadIndicatorCode, "NY.GDP.MKTP.KD.ZG");
+  assert.equal(watchlist[0].leadChange, -1.3);
+  assert.equal(
+    watchlist[0].summary,
+    "Growth remains weak while inflation pressure persists.",
+  );
+  assert.equal(watchlist[2].statusLabel, "PENDING");
 });

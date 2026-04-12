@@ -3,10 +3,17 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { AIInsightPanel } from "../components/AIInsightPanel";
+import { CountryTimeline } from "../components/CountryTimeline";
 import { MarketSwitcher } from "../components/MarketSwitcher";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { apiRequest } from "../api";
+import {
+  getCachedCountry,
+  getCountriesList,
+  setCachedCountry,
+  setCountriesList,
+} from "../lib/countryDetailCache";
 import {
   formatSourceDateRange,
   getLatestDataYear,
@@ -56,16 +63,14 @@ function buildTitle(code, label, isPlaceholder = false) {
 
 function LoadingSwitcher() {
   return (
-    <section className="market-switcher market-switcher--placeholder">
+    <section className="market-switcher">
       <p className="text-label">Switch market</p>
-      <div className="market-switcher__row mt-3">
-        {Array.from({ length: 8 }, (_, index) => (
+      <div className="market-switcher__row mt-3" aria-hidden="true">
+        {Array.from({ length: 17 }, (_, index) => (
           <span
-            className="market-switcher__pill market-switcher__pill--placeholder"
+            className="skeleton market-switcher__pill--skeleton"
             key={index}
-          >
-            --
-          </span>
+          />
         ))}
       </div>
     </section>
@@ -76,7 +81,9 @@ function CountryIntelligence() {
   const { id } = useParams();
   const countryCode = (id || "br").toUpperCase();
   const [country, setCountry] = useState(null);
-  const [countries, setCountries] = useState([]);
+  // Init from session cache so the market switcher is instant on navigations
+  // after the first page that fetched /countries (Landing or Overview).
+  const [countries, setCountries] = useState(() => getCountriesList() ?? []);
   const [viewState, setViewState] = useState("loading");
   const [requestError, setRequestError] = useState("");
 
@@ -84,6 +91,25 @@ function CountryIntelligence() {
     let isActive = true;
 
     async function loadCountry() {
+      // Cache hit — render the country page immediately without a loading
+      // state. The market switcher list is still fetched in the background
+      // since it is not part of the country detail payload.
+      const cached = getCachedCountry(countryCode);
+      if (cached) {
+        if (isActive) {
+          setCountry(cached);
+          setViewState("ready");
+          setRequestError("");
+        }
+        apiRequest("/countries")
+          .then((result) => {
+            if (isActive) setCountries(result);
+            setCountriesList(result);
+          })
+          .catch(() => {});
+        return;
+      }
+
       setViewState("loading");
       try {
         const [countryResult, countriesResult] = await Promise.allSettled([
@@ -93,6 +119,7 @@ function CountryIntelligence() {
 
         if (countriesResult.status === "fulfilled" && isActive) {
           setCountries(countriesResult.value);
+          setCountriesList(countriesResult.value);
         }
 
         if (countryResult.status === "rejected") {
@@ -101,6 +128,9 @@ function CountryIntelligence() {
 
         if (isActive) {
           setCountry(countryResult.value);
+          // Populate the shared cache so navigating back to this country
+          // later in the same session is also instant.
+          setCachedCountry(countryCode, countryResult.value);
           setViewState("ready");
           setRequestError("");
         }
@@ -263,6 +293,11 @@ function CountryIntelligence() {
               <span className="text-label">
                 Outlook // {country.outlook.toUpperCase()}
               </span>
+              {country.regime_label ? (
+                <span className="text-label">
+                  Regime // {country.regime_label.toUpperCase()}
+                </span>
+              ) : null}
               <span className="text-label">
                 Risk flags // {country.risk_flags.length}
               </span>
@@ -292,9 +327,16 @@ function CountryIntelligence() {
                 {country.region} · {country.income_level}
               </p>
             </div>
-            <StatusPill tone={getOutlookTone(country.outlook)}>
-              {country.outlook.toUpperCase()}
-            </StatusPill>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <StatusPill tone={getOutlookTone(country.outlook)}>
+                {country.outlook.toUpperCase()}
+              </StatusPill>
+              {country.regime_label ? (
+                <StatusPill tone="neutral">
+                  {country.regime_label.toUpperCase()}
+                </StatusPill>
+              ) : null}
+            </div>
           </div>
         </div>
         <div className="card country-identity__secondary">
@@ -332,6 +374,10 @@ function CountryIntelligence() {
           </article>
         ))}
       </section>
+
+      {country.indicators?.some((ind) => ind.time_series?.length > 1) && (
+        <CountryTimeline indicators={country.indicators} />
+      )}
 
       <section className="section-gap">
         <div className="country-detail-grid">

@@ -14,11 +14,19 @@ import { AIInsightPanel } from "../components/AIInsightPanel";
 
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
-import { apiRequest } from "../api";
+import { apiRequest, fetchCountryDetail } from "../api";
+import {
+  getCachedCountry,
+  setCachedCountry,
+  setCountriesList,
+  startBackgroundWarm,
+  updateCacheGeneration,
+} from "../lib/countryDetailCache";
 import {
   deriveCoverageBoard,
   deriveOverviewMetrics,
   derivePressureQueue,
+  derivePressureWatchlist,
   deriveRegionalBreakdown,
   formatChange,
   formatMetricValue,
@@ -38,8 +46,8 @@ const MAP_DIMENSIONS = {
 };
 
 const MAP_POPOVER = {
-  width: 204,
-  height: 100,
+  width: 180,
+  height: 80,
   gap: 14,
   edgePadding: 12,
 };
@@ -81,17 +89,9 @@ const DETAIL_SIGNAL_CODES = [
   "SL.UEM.TOTL.ZS",
 ];
 
-async function fetchCountryBriefing(countryCode) {
-  try {
-    return await apiRequest(`/countries/${countryCode}`);
-  } catch (error) {
-    if (error.status === 404) {
-      return null;
-    }
-
-    throw error;
-  }
-}
+// fetchCountryDetail in api.js is the canonical 404-safe country fetch helper;
+// the local alias keeps the call sites within this module readable.
+const fetchCountryBriefing = fetchCountryDetail;
 
 async function fetchGlobalOverview() {
   try {
@@ -123,7 +123,6 @@ async function fetchOverviewPhase2() {
   return { status, indicators };
 }
 
-
 function getPipelineTone(status) {
   if (status === "complete") {
     return "success";
@@ -143,6 +142,21 @@ function getPipelineTone(status) {
 function getIndicatorValue(briefing, indicatorCode) {
   return briefing?.indicators?.find(
     (indicator) => indicator.indicator_code === indicatorCode,
+  );
+}
+
+/** Look up a lead KPI from the flat indicators array (loaded on page mount). */
+function getLeadIndicatorFromOverview(indicators, countryCode) {
+  if (!indicators?.length) return null;
+  const countryIndicators = indicators.filter(
+    (ind) => ind.country_code === countryCode,
+  );
+  return (
+    countryIndicators.find(
+      (ind) => ind.indicator_code === "NY.GDP.MKTP.KD.ZG",
+    ) ||
+    countryIndicators.find((ind) => ind.indicator_code === "FP.CPI.TOTL.ZG") ||
+    null
   );
 }
 
@@ -358,13 +372,14 @@ function OverviewMapLayer({
   selectedMapCountry,
   highlightedMarketCode,
   onToggleMapFocus,
+  onMarkerHoverStart,
+  onMarkerHoverEnd,
 }) {
   const { projection } = useMapContext();
   const materialisedCountryCodeSet = useMemo(
     () => new Set(materialisedCountryCodes),
     [materialisedCountryCodes],
   );
-
   return (
     <g className="overview-map-surface__interaction-layer">
       {countries.map((country) => {
@@ -398,9 +413,14 @@ function OverviewMapLayer({
                   aria-expanded={country.code === selectedMapCountry}
                   aria-label={`Focus ${country.name} market on world map`}
                   className="overview-map-marker"
-                  onClick={(e) =>
-                    onToggleMapFocus(country.code, e.currentTarget)
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleMapFocus(country.code, e.currentTarget);
+                  }}
+                  onMouseEnter={(e) =>
+                    onMarkerHoverStart(country.code, e.currentTarget)
                   }
+                  onMouseLeave={onMarkerHoverEnd}
                   type="button"
                 >
                   {country.code === selectedMapCountry ? (
@@ -449,6 +469,8 @@ OverviewMapLayer.propTypes = {
   selectedMapCountry: PropTypes.string,
   highlightedMarketCode: PropTypes.string,
   onToggleMapFocus: PropTypes.func.isRequired,
+  onMarkerHoverStart: PropTypes.func.isRequired,
+  onMarkerHoverEnd: PropTypes.func.isRequired,
 };
 
 export function GlobalOverview() {
@@ -473,6 +495,8 @@ export function GlobalOverview() {
   const [popoverPosition, setPopoverPosition] = useState(null);
   const [mapBounds, setMapBounds] = useState(MAP_DIMENSIONS);
   const [loadingBriefingCodes, setLoadingBriefingCodes] = useState([]);
+  const [hoveredMapCountry, setHoveredMapCountry] = useState(null);
+  const hoverTimeoutRef = useRef(null);
 
   const resetBriefingHydrationState = useCallback(() => {
     landingTokenRef.current += 1;
@@ -488,11 +512,23 @@ export function GlobalOverview() {
         return null;
       }
 
+      // Already hydrated into local state.
       const existingBriefing = overview.briefings.find(
         (briefing) => briefing.code === nextCountryCode,
       );
       if (existingBriefing) {
         return existingBriefing;
+      }
+
+      // Cache hit from background warm — hydrate the popover state instantly
+      // without a network request.
+      const cachedBriefing = getCachedCountry(nextCountryCode);
+      if (cachedBriefing) {
+        setOverview((currentOverview) => ({
+          ...currentOverview,
+          briefings: mergeBriefings(currentOverview.briefings, cachedBriefing),
+        }));
+        return cachedBriefing;
       }
 
       const pendingRequest =
@@ -518,6 +554,9 @@ export function GlobalOverview() {
                 nextBriefing,
               ),
             }));
+            // Also populate the shared cache so /country/:id can skip its
+            // loading state for any market that was warmed via the popover.
+            setCachedCountry(nextCountryCode, nextBriefing);
           }
 
           return nextBriefing;
@@ -548,15 +587,33 @@ export function GlobalOverview() {
         if (!isActive) return;
         resetBriefingHydrationState();
         setOverview((prev) => ({ ...prev, ...phase1 }));
+        // Cache the country list so any subsequent country-page visit can
+        // render the market switcher instantly without a separate fetch.
+        setCountriesList(phase1.countries);
         setViewState("ready");
         setRequestError("");
+
+        // Begin background warming for all monitored countries. Priority
+        // order follows the country catalog (highest-coverage countries first).
+        // Already-cached codes are skipped automatically by startBackgroundWarm
+        // so this never duplicates in-flight or completed fetches.
+        startBackgroundWarm(
+          phase1.countries.map((c) => c.code),
+          fetchCountryBriefing,
+        );
+
         // Phase 2: hydrate indicator stats and pipeline status in background
-        fetchOverviewPhase2().then((phase2) => {
-          if (!isActive) return;
-          setOverview((prev) => ({ ...prev, ...phase2 }));
-        }).catch((err) => {
-          console.error("phase2 fetch failed", err);
-        });
+        fetchOverviewPhase2()
+          .then((phase2) => {
+            if (!isActive) return;
+            setOverview((prev) => ({ ...prev, ...phase2 }));
+            // Advance the cache generation so any entries pre-dating this
+            // completed run are discarded on the next access.
+            updateCacheGeneration(phase2.status?.completed_at ?? null);
+          })
+          .catch((err) => {
+            console.error("phase2 fetch failed", err);
+          });
       } catch (error) {
         if (!isActive) {
           return;
@@ -594,17 +651,27 @@ export function GlobalOverview() {
 
         if (nextStatus.status !== "running") {
           window.clearInterval(intervalId);
-          // Two-phase reload
+          // Two-phase reload after the run completes
           const phase1 = await fetchOverviewPhase1();
           if (!isActive) return;
           resetBriefingHydrationState();
           setOverview((prev) => ({ ...prev, ...phase1 }));
-          fetchOverviewPhase2().then((phase2) => {
-            if (!isActive) return;
-            setOverview((prev) => ({ ...prev, ...phase2 }));
-          }).catch((err) => {
-            console.error("phase2 fetch failed", err);
-          });
+          setCountriesList(phase1.countries);
+          // Re-warm after a new pipeline run: phase 2 provides the new
+          // completed_at which invalidates pre-run cache entries.
+          startBackgroundWarm(
+            phase1.countries.map((c) => c.code),
+            fetchCountryBriefing,
+          );
+          fetchOverviewPhase2()
+            .then((phase2) => {
+              if (!isActive) return;
+              setOverview((prev) => ({ ...prev, ...phase2 }));
+              updateCacheGeneration(phase2.status?.completed_at ?? null);
+            })
+            .catch((err) => {
+              console.error("phase2 fetch failed", err);
+            });
         }
       } catch (error) {
         if (!isActive) {
@@ -660,13 +727,11 @@ export function GlobalOverview() {
   const {
     anomalyCount,
     latestRefresh,
-    outlookCounts,
     panelOverview,
     panelSignals,
     materialisedCountries,
     monitoredCountries,
     pipelineStatus,
-    riskLoadedMarkets,
   } = deriveOverviewMetrics(overview);
   const materialisedCountryCodes = useMemo(
     () =>
@@ -702,6 +767,13 @@ export function GlobalOverview() {
     overview.indicators,
     materialisedCountryCodes,
   );
+  const pressureWatchlist = derivePressureWatchlist(
+    overview.countries,
+    overview.briefings,
+    overview.indicators,
+    materialisedCountryCodes,
+    3,
+  );
   const queueMarkets = pressureQueue
     .map(({ code }) => coverageBoardByCode.get(code))
     .filter(Boolean)
@@ -720,7 +792,6 @@ export function GlobalOverview() {
     highlightedMarketCode &&
     loadingBriefingCodes.includes(highlightedMarketCode),
   );
-  const hasLoadedCountryPosture = overview.briefings.length > 0;
   const loadedQueueCount = queueMarkets.filter((market) =>
     briefingByCode.has(market.code),
   ).length;
@@ -746,13 +817,7 @@ export function GlobalOverview() {
   const panelStatusLabel = panelOverview?.outlook
     ? panelOverview.outlook.toUpperCase()
     : pipelineStatus.toUpperCase();
-  const globalRiskTone = !hasLoadedCountryPosture
-    ? ""
-    : outlookCounts.bearish > 0
-      ? " overview-hero-stat--critical"
-      : riskLoadedMarkets > 0
-        ? ""
-        : " overview-hero-stat--success";
+  const leadPressureMarket = pressureWatchlist[0] || null;
   const headerNarrative =
     viewState === "ready"
       ? getOverviewNarrative(
@@ -773,11 +838,41 @@ export function GlobalOverview() {
   const pipelineRefreshLabel = latestRefresh
     ? formatTimestamp(latestRefresh)
     : "Pending";
+  const liveCoverageLabel = monitoredCountries
+    ? `${materialisedCountries}/${monitoredCountries}`
+    : "Pending";
+  const watchlistStatusLabel = pressureWatchlist.length
+    ? "WATCHLIST READY"
+    : overview.indicators.length
+      ? "NO STRESS LEAD"
+      : "SIGNAL LAYER";
+  const watchlistStatusTone = pressureWatchlist.length
+    ? leadPressureMarket?.anomalyCount
+      ? "critical"
+      : leadPressureMarket?.adverseCount
+        ? "warning"
+        : "neutral"
+    : "neutral";
+  const leadPressureValue = leadPressureMarket
+    ? leadPressureMarket.leadChange != null
+      ? `${leadPressureMarket.code} ${formatChange(leadPressureMarket.leadChange)}`
+      : leadPressureMarket.code
+    : "Pending";
+  const leadPressureDescription = leadPressureMarket
+    ? `${leadPressureMarket.name} leads the current pressure queue${leadPressureMarket.leadIndicatorName ? ` on ${leadPressureMarket.leadIndicatorName}.` : "."}`
+    : "The indicator layer is still hydrating the cross-market pressure ranking.";
+  const leadPressureToneClass = leadPressureMarket?.anomalyCount
+    ? " overview-hero-stat--critical"
+    : leadPressureMarket?.adverseCount
+      ? " overview-hero-stat--warning"
+      : " overview-hero-stat--success";
   const queueLeadCopy =
     queueMarkets.length > 0
       ? "Load the live queue below or focus a market on the map when you want a country briefing."
       : "Country drilldowns will appear once the monitored-set queue is available.";
-  const riskLoadedValue = hasLoadedCountryPosture ? riskLoadedMarkets : "--";
+  const noFocusCopy = pressureWatchlist.length
+    ? "Start from the pressure watchlist or focus any market on the map to load its briefing."
+    : queueLeadCopy;
 
   const sharedActions = (
     <div className="button-row">
@@ -809,10 +904,38 @@ export function GlobalOverview() {
     const isDeselect = countryCode === selectedMapCountry;
     setSelectedMapCountry(isDeselect ? null : countryCode);
     setSelectedMarkerRef(isDeselect ? null : element || null);
+    // Dismiss hover tooltip when a marker is clicked
+    setHoveredMapCountry(null);
 
     if (!isDeselect && materialisedCountryCodeSet.has(countryCode)) {
       void loadCountryBriefing(countryCode);
     }
+  }
+
+  function clearMapFocus() {
+    setSelectedMapCountry(null);
+    setSelectedMarkerRef(null);
+  }
+
+  function handleMarkerHoverStart(countryCode, element) {
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredMapCountry({ code: countryCode, element });
+    }, 150);
+    // Eagerly load the briefing on hover so the popover is instantly populated
+    // on click and /country/:id can skip its loading state if the user commits.
+    void loadCountryBriefing(countryCode);
+  }
+
+  function handleMarkerHoverEnd() {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredMapCountry(null);
   }
 
   useEffect(() => {
@@ -830,6 +953,16 @@ export function GlobalOverview() {
       queueMarkets.map((market) => loadCountryBriefing(market.code)),
     );
   }, [loadCountryBriefing, queueMarkets, queueSectionVisible, viewState]);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && selectedMapCountry) {
+        clearMapFocus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedMapCountry]);
 
   // Derive popover position from the marker button's actual DOM bounds.
   // mapBounds is used as a resize trigger — when the canvas resizes, this effect
@@ -870,9 +1003,7 @@ export function GlobalOverview() {
         <section className="section-gap">
           <div className="card state-panel">
             <p className="text-label">Overview unavailable</p>
-            <h2 className="text-headline mt-3">
-              Overview unavailable
-            </h2>
+            <h2 className="text-headline mt-3">Overview unavailable</h2>
             <p className="text-body text-secondary mt-4">{requestError}</p>
           </div>
         </section>
@@ -899,10 +1030,10 @@ export function GlobalOverview() {
                 Data window // {sourceWindowLabel}
               </span>
               <span className="text-label">
-                Latest year // {latestDataYearLabel}
+                Live briefings // {liveCoverageLabel}
               </span>
               <span className="text-label">
-                Focus market // {selectedMapCountry || "Select a market below"}
+                Pipeline refresh // {pipelineRefreshLabel}
               </span>
             </div>
           }
@@ -910,14 +1041,14 @@ export function GlobalOverview() {
           title="Global economic outlook"
           tone={panelOutlookTone}
         >
-          <p className="text-body">
-            {panelOverview?.summary || headerNarrative}
-          </p>
+          <div className="overview-hero-summary">
+            <p className="text-body">{panelOverview?.summary || headerNarrative}</p>
+          </div>
           {panelOverview?.risk_flags?.length ? (
             <div className="overview-signal-list mt-4">
               {panelOverview.risk_flags.slice(0, 2).map((riskFlag, index) => (
                 <article
-                  className="overview-signal-card"
+                  className="overview-signal-card overview-signal-card--hero"
                   key={`${riskFlag}-${index}`}
                 >
                   <p className="text-label">Risk flag {index + 1}</p>
@@ -929,7 +1060,9 @@ export function GlobalOverview() {
           <div className="overview-hero-grid mt-4">
             <article className="card overview-hero-stat overview-hero-stat--success">
               <span className="text-label">Latest data year</span>
-              <span className="overview-hero-stat__value">{latestDataYearLabel}</span>
+              <span className="overview-hero-stat__value">
+                {latestDataYearLabel}
+              </span>
               <p className="overview-hero-stat__desc text-body text-secondary">
                 Most recent year of World Bank data in this analysis.
               </p>
@@ -943,19 +1076,13 @@ export function GlobalOverview() {
                 Indicator anomalies flagged across the current data window.
               </p>
             </article>
-            <article className={`card overview-hero-stat${globalRiskTone}`}>
-              <span className="text-label">Risk-loaded markets</span>
+            <article className={`card overview-hero-stat${leadPressureToneClass}`}>
+              <span className="text-label">Primary stress point</span>
               <span className="overview-hero-stat__value">
-                {riskLoadedValue}
+                {leadPressureValue}
               </span>
               <p className="overview-hero-stat__desc text-body text-secondary">
-                {hasLoadedCountryPosture
-                  ? outlookCounts.bearish > 0
-                    ? `${outlookCounts.bearish} bearish and ${outlookCounts.cautious} cautious markets are shaping the overall outlook.`
-                    : riskLoadedMarkets > 0
-                      ? `${outlookCounts.cautious} cautious markets are shaping the overall outlook.`
-                      : "No markets are currently flagged as bearish or cautious."
-                  : "Select a market on the map to see its outlook."}
+                {leadPressureDescription}
               </p>
             </article>
           </div>
@@ -983,7 +1110,9 @@ export function GlobalOverview() {
 
       {(pipelineStatus === "running" || pipelineStatus === "failed") && (
         <section className="section-gap">
-          <div className={`pipeline-status-notice pipeline-status-notice--${pipelineStatus}`}>
+          <div
+            className={`pipeline-status-notice pipeline-status-notice--${pipelineStatus}`}
+          >
             <span className="material-symbols-outlined pipeline-status-notice__icon">
               {pipelineStatus === "running" ? "sync" : "warning"}
             </span>
@@ -1006,7 +1135,7 @@ export function GlobalOverview() {
               <p className="text-label">Global risk overview</p>
               <h2 className="text-headline mt-3">Tracked markets</h2>
             </div>
-            <StatusPill tone="neutral">Current slice</StatusPill>
+            <StatusPill tone="neutral">{liveCoverageLabel} LIVE</StatusPill>
           </div>
           <div className="overview-map-surface mt-4">
             <div
@@ -1018,6 +1147,7 @@ export function GlobalOverview() {
               <ComposableMap
                 className="overview-map-surface__svg"
                 height={MAP_DIMENSIONS.height}
+                onClick={clearMapFocus}
                 projection="geoEqualEarth"
                 projectionConfig={MAP_PROJECTION_CONFIG}
                 width={MAP_DIMENSIONS.width}
@@ -1038,10 +1168,54 @@ export function GlobalOverview() {
                   countries={overview.countries}
                   highlightedMarketCode={highlightedMarketCode}
                   materialisedCountryCodes={materialisedCountryCodes}
+                  onMarkerHoverEnd={handleMarkerHoverEnd}
+                  onMarkerHoverStart={handleMarkerHoverStart}
                   onToggleMapFocus={toggleMapFocus}
                   selectedMapCountry={selectedMapCountry}
                 />
               </ComposableMap>
+
+              {hoveredMapCountry &&
+                !selectedMapCountry &&
+                (() => {
+                  const hoverMarket = coverageBoardByCode.get(
+                    hoveredMapCountry.code,
+                  );
+                  if (!hoverMarket) return null;
+                  const hoverBriefing = briefingByCode.get(
+                    hoveredMapCountry.code,
+                  );
+                  const canvasRect =
+                    mapCanvasRef.current?.getBoundingClientRect();
+                  const markerRect =
+                    hoveredMapCountry.element?.getBoundingClientRect();
+                  if (!canvasRect || !markerRect) return null;
+                  const cx =
+                    markerRect.left + markerRect.width / 2 - canvasRect.left;
+                  const cy =
+                    markerRect.top + markerRect.height / 2 - canvasRect.top;
+                  return (
+                    <div
+                      className="overview-map-tooltip"
+                      style={{
+                        position: "absolute",
+                        left: `${cx}px`,
+                        top: `${cy - 48}px`,
+                        transform: "translateX(-50%)",
+                      }}
+                    >
+                      <span className="text-label">{hoverMarket.code}</span>
+                      <span className="overview-map-tooltip__name">
+                        {hoverMarket.name}
+                      </span>
+                      {hoverBriefing?.outlook && (
+                        <StatusPill tone={hoverMarket.tone}>
+                          {hoverBriefing.outlook.toUpperCase()}
+                        </StatusPill>
+                      )}
+                    </div>
+                  );
+                })()}
 
               {selectedMapCountry && highlightedMarket && popoverPosition ? (
                 <div
@@ -1059,27 +1233,13 @@ export function GlobalOverview() {
                     role="region"
                   >
                     <div className="overview-map-popover__topbar">
-                      <span className="flag-frame flag-frame--sm overview-map-popover__flag">
+                      <span className="flag-frame flag-frame--xs overview-map-popover__flag">
                         <Flag code={highlightedMarket.code} height="100%" />
                       </span>
-                      <span className="overview-map-popover__status">
-                        {highlightedBriefing?.outlook
-                          ? highlightedBriefing.outlook.toUpperCase()
-                          : highlightedMarket.statusLabel}
+                      <span className="overview-map-popover__name">
+                        {highlightedMarket.name}
                       </span>
                     </div>
-
-                    <div className="overview-map-popover__body">
-                      <div className="overview-map-popover__title">
-                        <span className="overview-map-popover__name">
-                          {highlightedMarket.name}
-                        </span>
-                        <span className="text-label text-secondary">
-                          {highlightedMarket.region}
-                        </span>
-                      </div>
-                    </div>
-
                     <Link
                       className="btn-ghost overview-map-popover__link"
                       to={marketOpenHref}
@@ -1091,26 +1251,50 @@ export function GlobalOverview() {
               ) : null}
             </div>
 
-            <div className="overview-market-command-list mt-4" role="list">
-              {coverageBoard.map((market) => (
-                <button
-                  className={`overview-market-command${
-                    market.code === highlightedMarketCode
-                      ? " overview-market-command--active"
-                      : ""
-                  }`}
-                  key={market.code}
-                  onClick={() => toggleMapFocus(market.code)}
-                  type="button"
-                >
-                  <span className="overview-market-command__code">
-                    {market.code}
-                  </span>
-                  <span className="overview-market-command__status">
-                    {market.isMaterialised ? "Live" : "Pending"}
-                  </span>
-                </button>
-              ))}
+            <div className="overview-signal-grid mt-4" role="list">
+              {coverageBoard.map((market) => {
+                const briefing = briefingByCode.get(market.code);
+                const leadKpi = briefing
+                  ? getIndicatorValue(briefing, "NY.GDP.MKTP.KD.ZG") ||
+                    getIndicatorValue(briefing, "FP.CPI.TOTL.ZG")
+                  : getLeadIndicatorFromOverview(
+                      overview.indicators,
+                      market.code,
+                    );
+                return (
+                  <button
+                    className={`overview-signal-cell${
+                      market.code === highlightedMarketCode
+                        ? " overview-signal-cell--active"
+                        : ""
+                    }`}
+                    key={market.code}
+                    onClick={() => toggleMapFocus(market.code)}
+                    type="button"
+                  >
+                    <span className="flag-frame flag-frame--xs overview-signal-cell__flag">
+                      <Flag code={market.code} height="100%" />
+                    </span>
+                    <span className="overview-signal-cell__code">
+                      {market.code}
+                    </span>
+                    {leadKpi ? (
+                      <span
+                        className={`overview-signal-cell__delta text-label ${getSignalTone(
+                          leadKpi.indicator_code,
+                          leadKpi.percent_change,
+                        )}`}
+                      >
+                        {formatChange(leadKpi.percent_change)}
+                      </span>
+                    ) : (
+                      <span className="overview-signal-cell__delta text-label text-secondary">
+                        --
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1133,19 +1317,69 @@ export function GlobalOverview() {
                   aria-live="polite"
                 >
                   <div>
-                    <p className="text-label">Global view</p>
+                    <p className="text-label">Pressure watchlist</p>
                     <h3 className="text-title mt-3">No market focused</h3>
                     <p className="text-body text-secondary mt-3">
-                      Select a country on the map or browse the briefings below
-                      to focus on a specific market.
+                      {noFocusCopy}
                     </p>
                   </div>
-                  <StatusPill tone="neutral">ON DEMAND</StatusPill>
+                  <StatusPill tone={watchlistStatusTone}>
+                    {watchlistStatusLabel}
+                  </StatusPill>
                 </div>
 
-                <p className="text-body text-secondary mt-4 overview-market-summary">
-                  {queueLeadCopy}
-                </p>
+                {pressureWatchlist.length ? (
+                  <div className="overview-watchlist mt-4">
+                    {pressureWatchlist.map((market) => (
+                      <button
+                        className="overview-watchlist__item"
+                        key={market.code}
+                        onClick={() => toggleMapFocus(market.code)}
+                        type="button"
+                      >
+                        <div className="overview-watchlist__header">
+                          <div className="overview-watchlist__identity">
+                            <span className="flag-frame flag-frame--xs overview-watchlist__flag">
+                              <Flag code={market.code} height="100%" />
+                            </span>
+                            <div>
+                              <p className="overview-watchlist__code">{market.code}</p>
+                              <p className="text-body text-secondary mt-2">
+                                {market.name}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="overview-watchlist__meta">
+                            <span
+                              className={`text-label ${
+                                market.leadIndicatorCode
+                                  ? getSignalTone(
+                                      market.leadIndicatorCode,
+                                      market.leadChange,
+                                    )
+                                  : "text-secondary"
+                              }`}
+                            >
+                              {market.leadChange != null
+                                ? formatChange(market.leadChange)
+                                : "--"}
+                            </span>
+                            <StatusPill tone={market.statusTone}>
+                              {market.statusLabel}
+                            </StatusPill>
+                          </div>
+                        </div>
+                        <p className="text-body text-secondary mt-3 overview-watchlist__summary">
+                          {market.summary}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-body text-secondary mt-4 overview-market-summary">
+                    {queueLeadCopy}
+                  </p>
+                )}
 
                 <div className="button-row mt-4">
                   <button
@@ -1275,7 +1509,6 @@ export function GlobalOverview() {
                 <p className="text-label">Regional breakdown</p>
                 <h2 className="text-headline mt-3">Coverage by region</h2>
               </div>
-              <StatusPill tone="neutral">Live coverage</StatusPill>
             </div>
             <div className="overview-region-list mt-4">
               {regionalBreakdown.map((region) => (
@@ -1287,9 +1520,10 @@ export function GlobalOverview() {
                         {region.summary}
                       </p>
                     </div>
-                    <StatusPill tone={region.tone}>
-                      {region.materialisedCount > 0 ? "Live" : "Pending"}
-                    </StatusPill>
+                    <span className="text-label text-secondary">
+                      {region.materialisedCount}/{region.monitoredCount}{" "}
+                      briefings
+                    </span>
                   </div>
                 </article>
               ))}
@@ -1302,9 +1536,7 @@ export function GlobalOverview() {
         <div className="panel-header">
           <div>
             <p className="text-label">Country briefings</p>
-            <h2 className="text-headline mt-3">
-              Market intelligence
-            </h2>
+            <h2 className="text-headline mt-3">Market intelligence</h2>
           </div>
           <StatusPill tone={queueStatusTone}>{queueStatusLabel}</StatusPill>
         </div>
@@ -1346,9 +1578,7 @@ export function GlobalOverview() {
                   <div className="market-card__meta mt-4">
                     <span>{market.region}</span>
                     <span>
-                      {isLoading
-                        ? "Loading briefing"
-                        : "Awaiting briefing"}
+                      {isLoading ? "Loading briefing" : "Awaiting briefing"}
                     </span>
                   </div>
                 </article>
@@ -1410,10 +1640,10 @@ export function GlobalOverview() {
                     </div>
                     <div className="indicator-meta mt-3">
                       <span className="text-metric">{`${indicator.adverseCount}/${indicator.coverageCount}`}</span>
-                      <span className={`text-label ${indicator.tone}`}>
-                        {indicator.anomalyCount > 0
-                          ? `${indicator.anomalyCount} anomalies`
-                          : "No anomalies"}
+                      <span
+                        className={`text-label ${indicator.statisticalAnomalyTone}`}
+                      >
+                        {indicator.statisticalAnomalyLabel}
                       </span>
                     </div>
                     <p className="text-body text-secondary mt-3">
@@ -1442,4 +1672,3 @@ export function GlobalOverview() {
   );
 }
 export default GlobalOverview;
-

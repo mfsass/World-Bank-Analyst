@@ -92,11 +92,11 @@ export function formatMetricValue(indicatorCode, value) {
 
 export function formatChange(value) {
   if (value == null) {
-    return "NO PRIOR YEAR";
+    return "--";
   }
 
-  const direction = value >= 0 ? "UP" : "DOWN";
-  return `${direction} ${Math.abs(value).toFixed(2)}% YOY`;
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}${Math.abs(value).toFixed(2)}%`;
 }
 
 export function getLatestRefresh(indicators, pipelineStatus) {
@@ -222,6 +222,14 @@ function getStressRank(indicatorCode, percentChange) {
   return percentChange;
 }
 
+function getStatisticalAnomalyLabel(anomalyCount) {
+  if (anomalyCount === 1) {
+    return "1 statistical anomaly";
+  }
+
+  return `${anomalyCount} statistical anomalies`;
+}
+
 export function getPanelSignals(indicators = []) {
   return SIGNAL_PRIORITY.map((indicatorCode) => {
     const signalIndicators = indicators.filter(
@@ -252,12 +260,13 @@ export function getPanelSignals(indicators = []) {
         signalIndicators[0].indicator_name ||
         signalIndicators[0].indicator_code,
       anomalyCount,
+      statisticalAnomalyLabel: getStatisticalAnomalyLabel(anomalyCount),
+      statisticalAnomalyTone:
+        anomalyCount > 0 ? "text-critical" : "text-secondary",
       adverseCount,
       coverageCount: signalIndicators.length,
       stressedMarketCode: stressedIndicator?.country_code || null,
       stressedMarketChange: stressedIndicator?.percent_change ?? null,
-      tone:
-        adverseCount > 0 || anomalyCount > 0 ? "text-critical" : "text-success",
     };
   }).filter(Boolean);
 }
@@ -528,4 +537,85 @@ export function derivePressureQueue(
 
       return left.code.localeCompare(right.code);
     });
+}
+
+function getLeadIndicatorForCountry(countryIndicators = []) {
+  return (
+    SIGNAL_PRIORITY.map((indicatorCode) =>
+      countryIndicators.find(
+        (indicator) => indicator.indicator_code === indicatorCode,
+      ),
+    ).find(Boolean) || countryIndicators[0] || null
+  );
+}
+
+function getWatchlistStatusLabel(market, briefing) {
+  if (briefing?.outlook) {
+    return briefing.outlook.toUpperCase();
+  }
+
+  return market.isMaterialised ? "LIVE" : "PENDING";
+}
+
+export function derivePressureWatchlist(
+  countries = [],
+  briefings = [],
+  indicators = [],
+  materialisedCountryCodes = [],
+  limit = 3,
+) {
+  const coverageBoard = deriveCoverageBoard(countries, briefings, {
+    materialisedCountryCodes,
+  });
+  const coverageBoardByCode = new Map(
+    coverageBoard.map((market) => [market.code, market]),
+  );
+  const briefingByCode = new Map(
+    briefings.map((briefing) => [briefing.code, briefing]),
+  );
+  const indicatorsByCountry = new Map();
+
+  indicators.forEach((indicator) => {
+    const countryCode = indicator.country_code;
+    if (!countryCode) {
+      return;
+    }
+
+    const currentIndicators = indicatorsByCountry.get(countryCode) || [];
+    currentIndicators.push(indicator);
+    indicatorsByCountry.set(countryCode, currentIndicators);
+  });
+
+  return derivePressureQueue(countries, indicators, materialisedCountryCodes)
+    .map((queueMarket) => {
+      const market = coverageBoardByCode.get(queueMarket.code);
+      if (!market) {
+        return null;
+      }
+
+      const briefing = briefingByCode.get(queueMarket.code) || null;
+      const countryIndicators = indicatorsByCountry.get(queueMarket.code) || [];
+      const leadIndicator = getLeadIndicatorForCountry(countryIndicators);
+
+      return {
+        code: market.code,
+        href: market.href,
+        isMaterialised: market.isMaterialised,
+        name: market.name,
+        region: market.region,
+        statusLabel: getWatchlistStatusLabel(market, briefing),
+        statusTone: briefing?.outlook
+          ? getOutlookTone(briefing.outlook)
+          : market.tone,
+        summary: briefing?.macro_synthesis || market.summary,
+        anomalyCount: queueMarket.anomalyCount,
+        adverseCount: queueMarket.adverseCount,
+        pressureScore: queueMarket.pressureScore,
+        leadIndicatorCode: leadIndicator?.indicator_code || null,
+        leadIndicatorName: leadIndicator?.indicator_name || null,
+        leadChange: leadIndicator?.percent_change ?? null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, limit);
 }

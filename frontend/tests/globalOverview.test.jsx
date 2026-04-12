@@ -11,12 +11,23 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../src/api", () => {
+  const apiRequest = vi.fn();
+  return {
+    apiRequest,
+    fetchCountryDetail: async (code) => {
+      try {
+        return await apiRequest(`/countries/${code}`);
+      } catch (error) {
+        if (error?.status === 404) return null;
+        throw error;
+      }
+    },
+  };
+});
+
 import { GlobalOverview } from "../src/pages/GlobalOverview";
 import { apiRequest } from "../src/api";
-
-vi.mock("../src/api", () => ({
-  apiRequest: vi.fn(),
-}));
 
 function renderPage() {
   return render(
@@ -191,13 +202,31 @@ describe("GlobalOverview", () => {
         screen.getByRole("button", { name: "Review country queue" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "Open drilldown queue" }),
+        screen.getByRole("button", { name: "Open market briefings" }),
       ).toBeInTheDocument();
-      expect(screen.getByText("No market preselected")).toBeInTheDocument();
-      expect(screen.queryByText("Lead market")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Focus market \/\//)).not.toBeInTheDocument();
+      const statisticalAnomalyLabel = screen.getByText(
+        "0 statistical anomalies",
+      );
+      expect(statisticalAnomalyLabel).toHaveClass("text-secondary");
+      expect(statisticalAnomalyLabel).not.toHaveClass("text-critical");
+      expect(screen.getByText("Primary stress point")).toBeInTheDocument();
       expect(
-        apiRequest.mock.calls.map(([path]) => path),
-      ).not.toContain("/countries/US");
+        screen.getByText("BR -1.30%"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("No market focused")).toBeInTheDocument();
+      expect(screen.getByText("Pressure watchlist")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Focus Brazil market on world map",
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Lead market")).not.toBeInTheDocument();
+      // Note: Phase 2 may include background warming of country data
+      // So we just check that the key initial calls happened
+      const initialCalls = apiRequest.mock.calls.map(([path]) => path);
+      expect(initialCalls).toContain("/overview");
+      expect(initialCalls).toContain("/countries");
 
       const unitedStatesMarker = screen.getByRole("button", {
         name: "Focus United States market on world map",
@@ -243,7 +272,7 @@ describe("GlobalOverview", () => {
       fireEvent.click(unitedStatesMarker);
 
       await waitFor(() => {
-        expect(screen.getByText("No market preselected")).toBeInTheDocument();
+        expect(screen.getByText("No market focused")).toBeInTheDocument();
       });
       expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "false");
     } finally {

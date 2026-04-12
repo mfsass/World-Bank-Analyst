@@ -48,3 +48,23 @@ export async function apiRequest(path, options = {}) {
 
   return payload;
 }
+
+/**
+ * Fetches the full country detail payload for a single country.
+ *
+ * Returns null when the country has no briefing yet (404). This lets callers
+ * distinguish "not yet materialised" from hard API errors without a try/catch
+ * at every call site, and makes it safe to pass as a fetchFn to
+ * startBackgroundWarm() in countryDetailCache.js.
+ *
+ * @param {string} code - ISO country code (uppercase).
+ * @returns {Promise<object | null>}
+ */
+export async function fetchCountryDetail(code) {
+  try {
+    return await apiRequest(`/countries/${code}`);
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
