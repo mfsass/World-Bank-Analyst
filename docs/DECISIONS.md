@@ -799,3 +799,20 @@
 **Context:** Step 3 was sorting country briefings alphabetically (BR first), causing the LLM to anchor narratives on Brazil. The system prompt lacked hard rules about geographic coverage and data year citation.
 **Decision:** Sort Step 3 briefings by geographic region (Europe first) and add explicit continental coverage requirements and data year context to the prompt. Bump version to step3.v2.0.0 to invalidate cache.
 **Consequences:** The next pipeline run will re-generate the global overview synthesis. Lineage/reuse records using step3.v1.0.0 will not match and will be regenerated.
+
+## ADR-057: Temperature=0 for Gemma 4 — empirical variance reduction
+
+**Date:** 2026-04-17
+**Status:** Accepted
+**Context:** Default temperature for Gemma 4 (`gemma-4-31b-it`) was tested at 0 and at 1.0. At temperature=0, schema validity across all structured output calls was 100% with 0% degraded responses. At higher temperatures, occasional markdown fence wrapping around JSON caused schema validation failures requiring the `repair_markdown_fences()` fallback more frequently. The Gemini skill guidance recommends 1.0 for Gemini 3, but Gemma 4 behaves differently as a separately fine-tuned model family.
+**Decision:** Keep temperature=0 for all Gemma 4 calls in `ai_client.py`. The `repair_markdown_fences()` workaround remains as a safety net. Document the empirical basis here so any future reviewer understands this is intentional, not accidental.
+**Consequences:** Slightly less output variance. Narratives may be more uniform across runs. Monitor for truncation if context window pressure increases.
+
+## ADR-058: Remove pipeline KPI cards from Global Overview page
+
+**Date:** 2026-04-17
+**Status:** Accepted
+**Context:** The Global Overview page displayed four operational KPI cards: Pipeline Status, Countries Materialised, Indicators Analysed, and Country Queue. These expose pipeline-internal metrics (data processing counts, queue state) to a financial end-user whose primary concern is market signals, not infrastructure health.
+**Decision:** Remove the four pipeline KPI cards from the Global Overview. Pipeline status is available on the dedicated Pipeline Trigger page. If a pipeline error occurs, an inline notification surfaces it without occupying prime real estate on the overview. The freed space improves signal density for the actual market content.
+**Consequences:** Financial users see a cleaner overview focused on market intelligence. Pipeline operators still have full visibility via the Trigger page. The responsible-AI disclaimer and `auto_awesome` accent icon are retained — they are user-facing content, not operational jargon.
+

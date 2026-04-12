@@ -61,7 +61,7 @@ export function CountryIntelligenceLanding() {
             <span className="text-primary"> /country/us </span>
             or
             <span className="text-primary"> /country/br </span>
-            once the current slice has materialised the briefing you want.
+            once the current run has generated the briefing you want.
           </p>
         </article>
       </section>

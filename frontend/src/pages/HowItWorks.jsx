@@ -183,7 +183,7 @@ export function HowItWorks() {
           <p className="text-label">Step 2</p>
           <h2 className="text-headline mt-3">Statistical signal layer</h2>
           <p className="text-body text-secondary mt-4">
-            Pandas calculates deltas, trend shifts, and anomaly flags first. That keeps the model prompts narrow and the result auditable because the math is already settled before narrative generation starts.
+            Pandas calculates deltas, trend shifts, and anomaly flags first. That keeps the analysis prompts narrow and the result auditable because the math is already settled before narrative generation starts.
           </p>
         </div>
         <div className="card architecture-step-card">
@@ -197,7 +197,7 @@ export function HowItWorks() {
           <p className="text-label">Step 4</p>
           <h2 className="text-headline mt-3">Panel overview + storage</h2>
           <p className="text-body text-secondary mt-4">
-            A final monitored-set pass synthesises across all stored country briefings, writes one cross-country overview record, and persists both the overview and country outputs to the shared repository.
+            A final pass synthesizes all stored country briefings into one cross-country overview, then persists both the overview and country outputs to the shared repository.
           </p>
         </div>
       </section>

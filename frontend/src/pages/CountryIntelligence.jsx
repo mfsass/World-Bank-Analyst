@@ -112,7 +112,7 @@ function CountryIntelligence() {
         if (error.status === 404) {
           setViewState("not-found");
           setRequestError(
-            "This market is monitored, but its briefing is not yet materialised in the current run.",
+            "This market is tracked, but its briefing is not yet available.",
           );
           return;
         }
@@ -257,7 +257,7 @@ function CountryIntelligence() {
 
       <section className="section-gap">
         <AIInsightPanel
-          eyebrow="AI analyst synthesis"
+          eyebrow="Country synthesis"
           footer={
             <div className="country-briefing-meta">
               <span className="text-label">
@@ -301,8 +301,8 @@ function CountryIntelligence() {
           <p className="text-label">Briefing depth</p>
           <span className="text-metric mt-3">{country.indicators.length}</span>
           <p className="text-body text-secondary mt-3">
-            World Bank source window {sourceWindowLabel}; latest materialised
-            year {latestDataYearLabel} across this briefing.
+            World Bank data window {sourceWindowLabel}; latest year
+            {latestDataYearLabel} across this briefing.
           </p>
         </div>
       </section>
@@ -396,7 +396,7 @@ function CountryIntelligence() {
               </StatusPill>
             </div>
             <p className="text-body text-secondary country-detail-panel__summary">
-              Forward-looking risk flags synthesised from the current country
+              Forward-looking risk flags derived from the current country
               briefing.
             </p>
             <ul className="risk-list">

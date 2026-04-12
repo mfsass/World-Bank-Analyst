@@ -268,7 +268,7 @@ function OverviewLoadingShell({ headerNarrative }) {
     <div className="page page--overview container">
       <PageHeader
         description={headerNarrative}
-        eyebrow="AI-GENERATED OVERVIEW"
+        eyebrow="GLOBAL OVERVIEW"
         meta="Overview // current data window"
         title="Global Overview"
       />
@@ -277,7 +277,7 @@ function OverviewLoadingShell({ headerNarrative }) {
         <div className="ai-insight ai-insight-panel overview-loading-shell">
           <div className="panel-header">
             <div className="overview-loading-shell__hero-copy">
-              <p className="text-label">AI monitored-set brief</p>
+              <p className="text-label">Global overview</p>
               <div className="skeleton skeleton-title mt-3 overview-skeleton-title" />
             </div>
             <div className="skeleton skeleton-pill" />
@@ -865,7 +865,7 @@ export function GlobalOverview() {
         <PageHeader
           actions={sharedActions}
           description={headerNarrative}
-          eyebrow="AI-GENERATED OVERVIEW"
+          eyebrow="GLOBAL OVERVIEW"
           meta="Overview // current data window"
           title="Global Overview"
         />
@@ -888,14 +888,14 @@ export function GlobalOverview() {
       <PageHeader
         actions={sharedActions}
         description={headerNarrative}
-        eyebrow="AI-GENERATED OVERVIEW"
+        eyebrow="GLOBAL OVERVIEW"
         meta={`Source window // ${sourceWindowLabel} · Latest data year // ${latestDataYearLabel} · Pipeline refresh // ${pipelineRefreshLabel}`}
         title="Global Overview"
       />
 
       <section className="section-gap">
         <AIInsightPanel
-          eyebrow="AI GLOBAL SYNTHESIS"
+          eyebrow="GLOBAL SYNTHESIS"
           footer={
             <div className="overview-hero-footer">
               <span className="text-label">
@@ -1246,8 +1246,8 @@ export function GlobalOverview() {
                     ) : (
                       <p className="text-body text-secondary mt-4">
                         {highlightedMarket.isMaterialised
-                          ? "The country briefing is still hydrating for this market."
-                          : "No live signal pack is materialised for this market yet."}
+                          ? "The country briefing is loading."
+                          : "No briefing available for this market yet."}
                       </p>
                     )}
                   </>

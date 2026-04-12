@@ -144,7 +144,7 @@ export function getOverviewNarrative(
   }
 
   if (status === "complete") {
-    return `Showing the current global economic outlook across ${materialisedCountries} of ${monitoredCountries} tracked markets. Select a country below to drill into its indicator trends and AI-generated briefing.`;
+    return `Showing the current global economic outlook across ${materialisedCountries} of ${monitoredCountries} tracked markets. Select a country below to drill into its indicator trends and briefing.`;
   }
 
   if (status === "failed") {
@@ -175,7 +175,7 @@ export function getEmptyStateBody(status) {
     return "The last pipeline run ended in failure. Review the error details on the trigger page and run again to refresh the market briefings.";
   }
 
-  return "No market briefings are available yet. Run the pipeline from the trigger page to fetch and analyse the latest World Bank economic data.";
+  return "No market briefings are available yet. Run the pipeline from the trigger page to fetch and analyze the latest World Bank economic data.";
 }
 
 function getOutlookCounts(briefings = []) {
@@ -292,7 +292,7 @@ export function getStepSummary(step) {
   }
 
   if (step.status === "complete") {
-    return "Step completed for the latest materialised slice.";
+    return "Step completed for the latest available data.";
   }
 
   return "Awaiting pipeline execution.";
@@ -440,7 +440,7 @@ export function deriveCoverageBoard(
       statusLabel: isMaterialised ? "Live" : "Pending",
       summary: isMaterialised
         ? `${country.name} briefing is available in the current slice.`
-        : `${country.name} is monitored but not yet materialised.`,
+        : `${country.name} is tracked but its briefing is not yet available.`,
       tone: isMaterialised ? getOutlookTone(briefing?.outlook) : "neutral",
     };
   });

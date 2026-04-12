@@ -18,7 +18,7 @@ const DEFAULT_STEPS = [
 const STEP_COPY = {
   dispatch: {
     pending: "Waiting for a Cloud Run Job dispatch request.",
-    running: "Dispatching the bounded monitored-set job to Cloud Run.",
+    running: "Sending the job to Cloud Run.",
     complete: "Cloud Run accepted the job dispatch request.",
     failed:
       "The run stopped before pipeline execution because Cloud Run dispatch failed.",
@@ -41,9 +41,9 @@ const STEP_COPY = {
   synthesise: {
     pending: "Waiting for the AI synthesis stage.",
     running:
-      "Turning structured signals into analyst-ready notes, country briefings, and one monitored-set overview. This is the longest stage because the model works through the full 17-country panel.",
+      "Turning structured signals into country briefings and a global overview. This is the longest stage — narratives are generated for all 17 markets.",
     complete:
-      "The AI layer produced the country narratives and the monitored-set overview for this run.",
+      "Country narratives and the global overview were generated for this run.",
     failed: "The run stopped while generating the analyst narratives.",
   },
   store: {
@@ -506,8 +506,8 @@ export function PipelineTrigger() {
                 Run the active World Bank Analyst pipeline
               </h2>
               <p className="text-body text-secondary mt-4">
-                This flow fetches World Bank data, analyses the signal, writes
-                the AI briefing, and stores the result for the dashboard.
+                This flow fetches World Bank data, analyzes the signal, generates
+                country briefings, and stores them for the dashboard.
               </p>
             </div>
             <StatusPill tone={getStatusTone(status?.status)}>
