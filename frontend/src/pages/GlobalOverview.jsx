@@ -1035,9 +1035,7 @@ export function GlobalOverview() {
               <p className="overview-landing__synthesis text-body">
                 {headerNarrative}
               </p>
-              <div className="overview-landing__actions">
-                {sharedActions}
-              </div>
+              <div className="overview-landing__actions">{sharedActions}</div>
             </div>
           </div>
         </section>
@@ -1084,19 +1082,13 @@ export function GlobalOverview() {
               <span className="text-label">
                 Source window // {sourceWindowLabel}
               </span>
-              <span
-                className="overview-landing__meta-sep"
-                aria-hidden="true"
-              >
+              <span className="overview-landing__meta-sep" aria-hidden="true">
                 ·
               </span>
               <span className="text-label">
                 Latest data // {latestDataYearLabel}
               </span>
-              <span
-                className="overview-landing__meta-sep"
-                aria-hidden="true"
-              >
+              <span className="overview-landing__meta-sep" aria-hidden="true">
                 ·
               </span>
               <span className="text-label">
@@ -1134,7 +1126,8 @@ export function GlobalOverview() {
           <div className="overview-landing__signals">
             <article
               className={`overview-landing__metric${
-                monitoredCountries && materialisedCountries === monitoredCountries
+                monitoredCountries &&
+                materialisedCountries === monitoredCountries
                   ? " overview-landing__metric--success"
                   : " overview-landing__metric--warning"
               }`}
@@ -1171,7 +1164,9 @@ export function GlobalOverview() {
                 Indicator anomalies across the current data window.
               </p>
             </article>
-            <article className={`overview-landing__metric ${leadPressureToneClass}`}>
+            <article
+              className={`overview-landing__metric ${leadPressureToneClass}`}
+            >
               <span className="text-label">Primary stress point</span>
               <span className="overview-landing__metric-value">
                 {leadPressureValue}
@@ -1453,7 +1448,9 @@ export function GlobalOverview() {
                               <Flag code={market.code} height="100%" />
                             </span>
                             <div>
-                              <p className="overview-watchlist__code">{market.code}</p>
+                              <p className="overview-watchlist__code">
+                                {market.code}
+                              </p>
                               <p className="text-body text-secondary mt-2">
                                 {market.name}
                               </p>

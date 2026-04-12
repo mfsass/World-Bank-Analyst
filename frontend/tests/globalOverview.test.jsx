@@ -219,9 +219,7 @@ describe("GlobalOverview", () => {
       expect(statisticalAnomalyLabel).toHaveClass("text-secondary");
       expect(statisticalAnomalyLabel).not.toHaveClass("text-critical");
       expect(screen.getByText("Primary stress point")).toBeInTheDocument();
-      expect(
-        screen.getByText("BR -1.30%"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("BR -1.30%")).toBeInTheDocument();
       expect(screen.getByText("No market focused")).toBeInTheDocument();
       expect(screen.getByText("Pressure watchlist")).toBeInTheDocument();
       expect(
@@ -258,9 +256,9 @@ describe("GlobalOverview", () => {
         .closest(".overview-panel");
       expect(drilldownPanel).not.toBeNull();
       expect(within(drilldownPanel).getByText("LOADING")).toBeInTheDocument();
-      expect(
-        apiRequest.mock.calls.map(([path]) => path),
-      ).toContain("/countries/US");
+      expect(apiRequest.mock.calls.map(([path]) => path)).toContain(
+        "/countries/US",
+      );
 
       resolveUnitedStatesBriefing();
 
