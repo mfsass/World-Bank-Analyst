@@ -55,13 +55,20 @@ if (isProd) {
 
 /**
  * Open a new cmd window that stays open after the command exits.
+ *
+ * Passes a single shell string to `cmd /c` so that `start` correctly
+ * treats the first double-quoted token as the window title rather than
+ * trying to resolve it as an executable (Windows quoting edge case).
+ *
  * @param {string} title - Window title bar text.
  * @param {string} command - Shell command to run inside the new window.
  */
 function openWindow(title, command) {
+  // Build one shell string: start "<title>" cmd /k <command>
+  // cmd.exe /c then parses it, treating the quoted token as the title.
   const proc = spawn(
     "cmd.exe",
-    ["/c", "start", `"${title}"`, "cmd", "/k", command],
+    ["/c", `start "${title}" cmd /k ${command}`],
     { cwd: ROOT, detached: true, stdio: "ignore" }
   );
   proc.unref();
@@ -82,26 +89,26 @@ const backendCmd = `cd /d "${API_DIR}" && python app.py`;
 
 // ─── Output ──────────────────────────────────────────────────────────────────
 
-const modeLabel = isProd ? "app:prod  →  production API" : "app  →  local stack";
+const modeLabel = isProd ? "app:prod  ->  production API" : "app  ->  local stack";
 
 console.log("");
 console.log("╔══════════════════════════════════════════════════════════════╗");
 console.log(
-  `║  World Analyst — ${modeLabel}`.padEnd(63) + "║"
+  `║  World Analyst - ${modeLabel}`.padEnd(63) + "║"
 );
 console.log("╚══════════════════════════════════════════════════════════════╝");
 
 if (!backOnly) {
   const label = isProd
-    ? "World Analyst — Frontend (prod API)"
-    : "World Analyst — Frontend";
+    ? "World Analyst - Frontend (prod API)"
+    : "World Analyst - Frontend";
   console.log(`\n  ▶  ${label}`);
   console.log(`     ${frontendCmd}`);
   openWindow(label, frontendCmd);
 }
 
 if (!frontOnly) {
-  const label = "World Analyst — Backend (API :8080)";
+  const label = "World Analyst - Backend (API :8080)";
   console.log(`\n  ▶  ${label}`);
   console.log(`     ${backendCmd}`);
   openWindow(label, backendCmd);
