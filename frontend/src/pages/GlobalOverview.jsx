@@ -30,8 +30,6 @@ import {
   getOutlookTone,
   getOverviewNarrative,
   getSignalTone,
-  getStepSummary,
-  getStepTone,
 } from "./globalOverviewModel";
 
 const MAP_DIMENSIONS = {
@@ -668,7 +666,6 @@ export function GlobalOverview() {
     materialisedCountries,
     monitoredCountries,
     pipelineStatus,
-    pipelineSteps,
     riskLoadedMarkets,
   } = deriveOverviewMetrics(overview);
   const materialisedCountryCodes = useMemo(
@@ -1136,11 +1133,11 @@ export function GlobalOverview() {
                   aria-live="polite"
                 >
                   <div>
-                    <p className="text-label">Panel-first landing</p>
-                    <h3 className="text-title mt-3">No market preselected</h3>
+                    <p className="text-label">Global view</p>
+                    <h3 className="text-title mt-3">No market focused</h3>
                     <p className="text-body text-secondary mt-3">
-                      The landing page stays global until you focus a market on
-                      the map or open the drilldown queue below.
+                      Select a country on the map or browse the briefings below
+                      to focus on a specific market.
                     </p>
                   </div>
                   <StatusPill tone="neutral">ON DEMAND</StatusPill>
@@ -1161,7 +1158,7 @@ export function GlobalOverview() {
                     }
                     type="button"
                   >
-                    Open drilldown queue
+                    Open market briefings
                   </button>
                 </div>
               </>
@@ -1275,33 +1272,6 @@ export function GlobalOverview() {
           <div className="card overview-panel">
             <div className="panel-header">
               <div>
-                <p className="text-label">Current slice</p>
-                <h2 className="text-headline mt-3">Pipeline state</h2>
-              </div>
-              <StatusPill tone={getPipelineTone(pipelineStatus)}>
-                {pipelineStatus.toUpperCase()}
-              </StatusPill>
-            </div>
-            <div className="overview-step-list mt-4">
-              {pipelineSteps.map((step) => (
-                <article className="overview-step-card" key={step.name}>
-                  <div className="panel-header">
-                    <span className="text-label">{step.name}</span>
-                    <StatusPill tone={getStepTone(step.status)}>
-                      {step.status.toUpperCase()}
-                    </StatusPill>
-                  </div>
-                  <p className="text-body text-secondary mt-3">
-                    {getStepSummary(step)}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="card overview-panel">
-            <div className="panel-header">
-              <div>
                 <p className="text-label">Regional breakdown</p>
                 <h2 className="text-headline mt-3">Coverage by region</h2>
               </div>
@@ -1331,9 +1301,9 @@ export function GlobalOverview() {
       <section className="section-gap" ref={queueSectionRef}>
         <div className="panel-header">
           <div>
-            <p className="text-label">Country intelligence feed</p>
+            <p className="text-label">Country briefings</p>
             <h2 className="text-headline mt-3">
-              Panel pressure and drilldown queue
+              Market intelligence
             </h2>
           </div>
           <StatusPill tone={queueStatusTone}>{queueStatusLabel}</StatusPill>
