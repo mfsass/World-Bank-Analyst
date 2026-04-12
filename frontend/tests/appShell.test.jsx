@@ -19,6 +19,7 @@ function renderShell(initialEntries = ["/"]) {
       <Routes>
         <Route element={<AppShell />}>
           <Route element={<div>Overview page</div>} path="/" />
+          <Route element={<div>Country landing</div>} path="/country" />
           <Route element={<div>Country page</div>} path="/country/:id" />
           <Route element={<div>Pipeline page</div>} path="/pipeline" />
           <Route element={<div>Trigger page</div>} path="/trigger" />
@@ -42,6 +43,7 @@ describe("AppShell", () => {
     });
 
     expect(countryLink).toHaveClass("shell-nav__link--active");
+    expect(countryLink).toHaveAttribute("href", "/country");
   });
 
   it("uses product chrome instead of implementation scaffolding labels", () => {

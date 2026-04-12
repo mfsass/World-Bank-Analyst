@@ -777,3 +777,17 @@
 **Trade-off:** The pipeline and repository contract gain one more stored document type and one extra synthesis pass. We accept that because it sharply separates the truly global narrative from country drilldown content without inflating model usage for panel facts the frontend can already calculate itself.
 
 **Date:** 2026-04-12
+
+---
+
+## ADR-055: Prefer Frontend-Only Progressive Overview Hydration Over a New Loader Stack or Batch Endpoint
+
+**Context:** The final overview polish still had two viable implementation paths: expand the backend with a batch briefing endpoint and/or add a new skeleton dependency, or keep the current API surface and make the landing page truly panel-first in the existing frontend. The closeout goal was better first paint and no hidden Brazil-first posture without reopening backend scope at the finish line.
+
+**Decision:** Keep the current API surface and existing CSS skeleton system. Implement panel-first overview hydration in `frontend/src/pages/GlobalOverview.jsx`, defer country briefings until focus or queue visibility, and route generic country entry through `frontend/src/pages/CountryIntelligenceLanding.jsx` instead of a hard-coded market.
+
+**Why:** This solves the user-visible problems with the data and primitives the repo already has: `/overview`, `/countries`, `/indicators`, `/pipeline/status`, and the design-system CSS in `frontend/src/index.css`. It removes the lead-market feel, improves first paint, and avoids adding a late dependency or a spec change that would need more backend review.
+
+**Trade-off:** The frontend now carries more orchestration state, and per-country briefings can still incur individual latency after the landing view renders because we did not add a batch endpoint. We accept that because the critical review issue was the blocked landing experience, and the client-side change fixed it with lower delivery risk.
+
+**Date:** 2026-04-12

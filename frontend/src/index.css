@@ -1034,6 +1034,58 @@ a {
   margin-top: var(--space-3);
 }
 
+.execution-step-card__activity {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.execution-step-card__activity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.execution-step-card__verb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.execution-step-card__track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.execution-step-card__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--surface-nested);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.execution-step-card__chip--active {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
 /* --------------------------------------------------------------------------
    Anomaly Banner — Full-width accent bar
    -------------------------------------------------------------------------- */
@@ -1194,6 +1246,10 @@ a {
   position: relative;
   width: 100%;
   cursor: default;
+}
+
+.overview-skeleton-map {
+  height: 420px;
 }
 
 .overview-map-surface__canvas {
@@ -1892,6 +1948,29 @@ a {
   width: 100%;
 }
 
+.skeleton-pill {
+  width: 84px;
+  height: 32px;
+}
+
+.skeleton-kpi-value {
+  width: 96px;
+  height: 36px;
+}
+
+.overview-skeleton-title {
+  width: min(560px, 72%);
+}
+
+.overview-skeleton-panel-title {
+  width: min(240px, 60%);
+}
+
+.overview-skeleton-label {
+  width: 72px;
+  height: 12px;
+}
+
 /* --------------------------------------------------------------------------
    Responsive Breakpoints
    -------------------------------------------------------------------------- */
@@ -2367,8 +2446,18 @@ a {
   background: var(--surface-nested);
 }
 
+.overview-context-market--empty {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .overview-market-summary {
   max-width: 60ch;
+}
+
+.overview-drilldown-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .overview-market-metrics {
@@ -2384,6 +2473,10 @@ a {
   border: var(--border-structural);
   border-radius: var(--radius);
   background: var(--surface-nested);
+}
+
+.overview-market-metric--loading {
+  gap: var(--space-2);
 }
 
 .overview-market-command-list {
@@ -2412,9 +2505,13 @@ a {
     border-color var(--transition-fast);
 }
 
+.overview-market-command--active {
+  color: var(--color-text-primary);
+  border-color: var(--color-text-primary);
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .overview-market-command:hover,
-  .overview-market-command--active {
+  .overview-market-command:hover {
     color: var(--color-text-primary);
     border-color: var(--color-text-primary);
   }
@@ -2484,6 +2581,10 @@ a {
 
 .market-card__meta {
   align-items: start;
+}
+
+.market-card--loading {
+  min-height: 232px;
 }
 
 .terminal-cursor {

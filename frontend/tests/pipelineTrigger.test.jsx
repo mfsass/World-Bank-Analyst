@@ -16,6 +16,7 @@ function renderPage() {
     <MemoryRouter initialEntries={["/trigger"]}>
       <Routes>
         <Route element={<PipelineTrigger />} path="/trigger" />
+        <Route element={<div>Country landing</div>} path="/country" />
         <Route element={<div>Country page</div>} path="/country/:id" />
       </Routes>
     </MemoryRouter>,
@@ -28,7 +29,7 @@ afterEach(() => {
 });
 
 describe("PipelineTrigger", () => {
-  it("keeps header actions as buttons and only enables the lead-market action after completion", async () => {
+  it("keeps header actions as buttons and only enables the country intelligence action after completion", async () => {
     apiRequest.mockImplementation((path, options = {}) => {
       if (path === "/pipeline/status") {
         return Promise.resolve({
@@ -59,25 +60,50 @@ describe("PipelineTrigger", () => {
     renderPage();
 
     const runButton = await screen.findByRole("button", { name: "Run pipeline" });
-    const openLeadMarketButton = screen.getByRole("button", {
-      name: "Open lead market",
+    const openCountryPageButton = screen.getByRole("button", {
+      name: "Open country intelligence",
     });
 
     expect(screen.queryByRole("link", { name: "Run pipeline" })).not.toBeInTheDocument();
-    expect(openLeadMarketButton).toBeDisabled();
+    expect(openCountryPageButton).toBeDisabled();
 
     fireEvent.click(runButton);
 
     await waitFor(() => {
-      expect(openLeadMarketButton).toBeEnabled();
+      expect(openCountryPageButton).toBeEnabled();
     });
 
-    fireEvent.click(openLeadMarketButton);
+    fireEvent.click(openCountryPageButton);
 
-    expect(screen.getByText("Country page")).toBeInTheDocument();
+    expect(screen.getByText("Country landing")).toBeInTheDocument();
   });
 
-  it("renders the failed execution state and keeps the lead-market action blocked", async () => {
+  it("renders live stage narration while synthesis is running", async () => {
+    apiRequest.mockResolvedValue({
+      status: "running",
+      started_at: "2026-04-12T10:00:00Z",
+      steps: [
+        { name: "fetch", status: "complete", duration_ms: 400 },
+        { name: "analyse", status: "complete", duration_ms: 600 },
+        { name: "synthesise", status: "running" },
+        { name: "store", status: "pending" },
+      ],
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("Live operation")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "> Gathering structured indicator evidence for the model.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/This is the longest stage because the model works through the full 17-country panel\./),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the failed execution state and keeps the country intelligence action blocked", async () => {
     apiRequest.mockResolvedValue({
       status: "failed",
       started_at: "2026-04-12T10:00:00Z",
@@ -100,7 +126,7 @@ describe("PipelineTrigger", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Open lead market",
+        name: "Open country intelligence",
       }),
     ).toBeDisabled();
   });

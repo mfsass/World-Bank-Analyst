@@ -7,8 +7,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { apiRequest } from "../api";
 
-// Default deep-link target after a successful run — first country in the monitored panel.
-const TARGET_COUNTRY = "BR";
+const PIPELINE_ACTIVITY_INTERVAL_MS = 900;
 const DEFAULT_STEPS = [
   { name: "fetch", status: "pending" },
   { name: "analyse", status: "pending" },
@@ -25,19 +24,20 @@ const STEP_COPY = {
   },
   fetch: {
     pending: "Waiting to request the approved World Bank indicator set.",
-    running: "Pulling World Bank source data for the active market slice.",
+    running: "Pulling the approved World Bank indicator set for the active monitored panel.",
     complete: "World Bank source data was fetched and normalized for this run.",
     failed: "The run stopped while requesting or normalizing World Bank source data.",
   },
   analyse: {
     pending: "Waiting for the statistical analysis stage.",
-    running: "Calculating deltas, trend shifts, and anomaly flags with Pandas.",
+    running: "Calculating deltas, stress direction, and anomaly flags with Pandas.",
     complete: "Pandas finished the statistical pass for this run.",
     failed: "The run stopped while computing the statistical signal layer.",
   },
   synthesise: {
     pending: "Waiting for the AI synthesis stage.",
-    running: "Turning structured signals into analyst-ready notes, country briefings, and one monitored-set overview.",
+    running:
+      "Turning structured signals into analyst-ready notes, country briefings, and one monitored-set overview. This is the longest stage because the model works through the full 17-country panel.",
     complete: "The AI layer produced the country narratives and the monitored-set overview for this run.",
     failed: "The run stopped while generating the analyst narratives.",
   },
@@ -49,69 +49,99 @@ const STEP_COPY = {
   },
 };
 
-const STAGE_SIMULATIONS = {
+const STAGE_ACTIVITY_LOG = {
   dispatch: [
-    "Validating Cloud Run Job configuration...",
-    "Claiming the pipeline run slot...",
-    "Dispatching the Cloud Run Job...",
+    { label: "Validate config", verb: "checking", detail: "Verifying Cloud Run job configuration and runtime credentials." },
+    { label: "Reserve slot", verb: "claiming", detail: "Holding the monitored-set run slot so only one execution stays active." },
+    { label: "Dispatch job", verb: "launching", detail: "Handing the bounded panel run to Cloud Run Jobs." },
   ],
   fetch: [
-    "Connecting to World Bank Indicators API...",
-    "Fetching GDP growth series...",
-    "Fetching inflation series...",
-    "Fetching unemployment series...",
-    "Normalizing source payloads...",
-    "Completing source ingest..."
+    { label: "Open source", verb: "opening", detail: "Connecting to the World Bank Indicators API for the approved panel." },
+    { label: "Collect series", verb: "pulling", detail: "Fetching GDP, inflation, labour, fiscal, and external series." },
+    { label: "Normalize rows", verb: "shaping", detail: "Normalizing raw indicator payloads into one comparable frame." },
+    { label: "Seal ingest", verb: "indexing", detail: "Finalizing the source ingest before the signal pass starts." },
   ],
   analyse: [
-    "Building analysis frame...",
-    "Calculating deltas and trend shifts...",
-    "Scoring anomaly thresholds...",
-    "Packaging the signal layer..."
+    { label: "Frame data", verb: "assembling", detail: "Lining up yearly observations across the monitored indicators." },
+    { label: "Score change", verb: "measuring", detail: "Calculating deltas, direction of travel, and stress movement." },
+    { label: "Flag anomalies", verb: "screening", detail: "Testing each indicator against anomaly thresholds." },
+    { label: "Package signals", verb: "staging", detail: "Preparing the structured signal layer for model input." },
   ],
   synthesise: [
-    "Preparing structured prompt context...",
-    "Writing indicator notes...",
-    "Drafting country syntheses...",
-    "Combining country briefings into the monitored-set overview...",
-    "Scoring cross-market risk language..."
+    { label: "Prepare context", verb: "aligning", detail: "Gathering structured indicator evidence for the model." },
+    { label: "Write notes", verb: "drafting", detail: "Turning each indicator into analyst-ready signal notes." },
+    { label: "Blend signals", verb: "weaving", detail: "Combining risk signals into country-level narratives." },
+    { label: "Work queue", verb: "orchestrating", detail: "Moving through the monitored-set country briefing queue." },
+    { label: "Compare markets", verb: "reconciling", detail: "Comparing cross-market pressure before the overview pass." },
+    { label: "Finish overview", verb: "composing", detail: "Writing the monitored-set overview and risk language." },
+    { label: "Check schema", verb: "validating", detail: "Verifying structured output before persistence." },
   ],
   store: [
-    "Validating response payload...",
-    "Writing processed insight records...",
-    "Writing global overview record...",
-    "Writing raw archive manifest...",
-    "Finalizing pipeline status..."
-  ]
+    { label: "Prepare records", verb: "packaging", detail: "Preparing processed insight, overview, and status payloads." },
+    { label: "Write insights", verb: "committing", detail: "Writing country and panel records to the repository." },
+    { label: "Archive raw", verb: "archiving", detail: "Recording raw payload provenance for follow-up." },
+    { label: "Seal run", verb: "closing", detail: "Finalizing the durable pipeline status contract." },
+  ],
 };
 
-function StepSimulation({ stepName, isRunning }) {
-  const [index, setIndex] = useState(0);
-  const phrases = STAGE_SIMULATIONS[stepName] || ["Processing..."];
+function getStageActivities(stepName) {
+  return (
+    STAGE_ACTIVITY_LOG[stepName] || [
+      { label: "Processing", verb: "processing", detail: "Working through the current pipeline stage." },
+    ]
+  );
+}
 
-  useEffect(() => {
-    if (!isRunning) return undefined;
-    
-    // Cycle through phrases roughly synchronized to the polling interval
-    const intervalId = window.setInterval(() => {
-      setIndex((prev) => (prev + 1) % phrases.length);
-    }, 750);
-    
-    return () => clearInterval(intervalId);
-  }, [isRunning, phrases.length]);
+function getActiveStageActivity(stepName, tick) {
+  const activities = getStageActivities(stepName);
+  return activities[tick % activities.length];
+}
+
+function StepSimulation({ stepName, isRunning, tick }) {
+  const activities = getStageActivities(stepName);
+  const activeActivity = getActiveStageActivity(stepName, tick);
 
   if (!isRunning) return null;
 
   return (
-    <span className="execution-step-card__simulation text-secondary text-body fade-in">
-      &gt; {phrases[index]}
-    </span>
+    <div className="execution-step-card__activity fade-in">
+      <div className="execution-step-card__activity-row">
+        <span className="text-label">Live operation</span>
+        <span className="execution-step-card__verb">
+          {activeActivity.verb}
+          <span className="terminal-cursor" />
+        </span>
+      </div>
+      <p className="execution-step-card__simulation text-secondary text-body mt-3">
+        &gt; {activeActivity.detail}
+      </p>
+      <div
+        aria-label={`${stepName} sub-steps`}
+        className="execution-step-card__track mt-3"
+        role="list"
+      >
+        {activities.map((activity, index) => (
+          <span
+            className={`execution-step-card__chip${
+              activity.label === activeActivity.label
+                ? " execution-step-card__chip--active"
+                : ""
+            }`}
+            key={`${stepName}-${activity.label}`}
+            role="listitem"
+          >
+            {String(index + 1).padStart(2, "0")} {activity.label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
 StepSimulation.propTypes = {
   isRunning: PropTypes.bool.isRequired,
   stepName: PropTypes.string.isRequired,
+  tick: PropTypes.number.isRequired,
 };
 
 function getStatusTone(status) {
@@ -154,14 +184,14 @@ function getExecutionCopy(step) {
   return "Waiting for the next execution request.";
 }
 
-function buildTerminalLines(status) {
+function buildTerminalLines(status, activeStageActivity) {
   if (!status) {
     return ["> Connecting to pipeline status..."];
   }
 
   const lines = [
     "> TARGET SCOPE: 17-COUNTRY PANEL",
-    `> DEFAULT OPEN MARKET: ${TARGET_COUNTRY}`,
+    "> COUNTRY PAGE UNLOCKS AFTER COMPLETION",
     `> STATUS: ${status.status.toUpperCase()}`,
   ];
 
@@ -176,6 +206,12 @@ function buildTerminalLines(status) {
         `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`,
       );
     });
+  }
+
+  if (status.status === "running" && activeStageActivity) {
+    lines.push(
+      `> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`,
+    );
   }
 
   if (status.completed_at) {
@@ -202,6 +238,7 @@ export function PipelineTrigger() {
   const [status, setStatus] = useState(null);
   const [requestError, setRequestError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [simulationTick, setSimulationTick] = useState(0);
 
   useEffect(() => {
     let isActive = true;
@@ -229,8 +266,13 @@ export function PipelineTrigger() {
 
   useEffect(() => {
     if (status?.status !== "running") {
+      setSimulationTick(0);
       return undefined;
     }
+
+    const simulationIntervalId = window.setInterval(() => {
+      setSimulationTick((currentTick) => currentTick + 1);
+    }, PIPELINE_ACTIVITY_INTERVAL_MS);
 
     const intervalId = window.setInterval(async () => {
       try {
@@ -247,6 +289,7 @@ export function PipelineTrigger() {
     }, 750);
 
     return () => {
+      window.clearInterval(simulationIntervalId);
       window.clearInterval(intervalId);
     };
   }, [status?.status]);
@@ -269,9 +312,14 @@ export function PipelineTrigger() {
     }
   }
 
-  const terminalOutput = buildTerminalLines(status).join("\n");
-  const pipelineReady = status?.status === "complete";
   const executionSteps = status?.steps?.length ? status.steps : DEFAULT_STEPS;
+  const runningStep =
+    executionSteps.find((step) => step.status === "running") || null;
+  const activeStageActivity = runningStep
+    ? getActiveStageActivity(runningStep.name, simulationTick)
+    : null;
+  const terminalOutput = buildTerminalLines(status, activeStageActivity).join("\n");
+  const pipelineReady = status?.status === "complete";
   const completedSteps = executionSteps.filter(
     (step) => step.status === "complete",
   ).length;
@@ -294,12 +342,10 @@ export function PipelineTrigger() {
             <button
               className="btn-ghost"
               type="button"
-              onClick={() =>
-                navigate(`/country/${TARGET_COUNTRY.toLowerCase()}`)
-              }
+              onClick={() => navigate("/country")}
               disabled={!pipelineReady}
             >
-              Open lead market
+              Open country intelligence
             </button>
           </div>
         }
@@ -417,7 +463,11 @@ export function PipelineTrigger() {
                   <p className="text-body text-secondary mt-4">
                     {getExecutionCopy(step)}
                   </p>
-                  <StepSimulation stepName={step.name} isRunning={isRunning} />
+                  <StepSimulation
+                    stepName={step.name}
+                    isRunning={isRunning}
+                    tick={simulationTick}
+                  />
                 </article>
               );
             })}

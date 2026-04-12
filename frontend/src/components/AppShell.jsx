@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 const PRIMARY_NAV_ITEMS = [
   { to: "/", label: "Global Overview", exact: true },
-  { to: "/country/br", label: "Country Intelligence" },
+  { to: "/country", label: "Country Intelligence" },
   { to: "/pipeline", label: "How It Works" },
   { to: "/trigger", label: "Pipeline Trigger" },
 ];
@@ -13,8 +13,8 @@ function isItemActive(pathname, item) {
     return pathname === "/";
   }
 
-  if (item.to === "/country/br") {
-    return pathname.startsWith("/country/");
+  if (item.to === "/country") {
+    return pathname === "/country" || pathname.startsWith("/country/");
   }
 
   return pathname.startsWith(item.to);

@@ -1,6 +1,6 @@
 import Flag from "react-world-flags";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -18,6 +18,7 @@ import { apiRequest } from "../api";
 import {
   deriveCoverageBoard,
   deriveOverviewMetrics,
+  derivePressureQueue,
   deriveRegionalBreakdown,
   formatChange,
   formatMetricValue,
@@ -46,6 +47,8 @@ const MAP_POPOVER = {
 };
 
 const MAP_POPOVER_ID = "overview-map-popover";
+const QUEUE_CARD_LIMIT = 2;
+const QUEUE_PREFETCH_ROOT_MARGIN = "320px 0px";
 
 // 165 fills continents into the canvas with less dead ocean at the poles and edges
 const MAP_PROJECTION_CONFIG = {
@@ -112,13 +115,7 @@ async function fetchOverviewData() {
     fetchGlobalOverview(),
   ]);
 
-  const briefings = (
-    await Promise.all(
-      countries.map((country) => fetchCountryBriefing(country.code)),
-    )
-  ).filter(Boolean);
-
-  return { status, countries, indicators, briefings, panelOverview };
+  return { status, countries, indicators, briefings: [], panelOverview };
 }
 
 function getPipelineTone(status) {
@@ -143,12 +140,12 @@ function getIndicatorValue(briefing, indicatorCode) {
   );
 }
 
-function getMarkerToneClass(briefing, isSelected) {
+function getMarkerToneClass(isMaterialised, isSelected) {
   if (isSelected) {
     return "overview-map-marker__dot--selected-core";
   }
 
-  if (!briefing) {
+  if (!isMaterialised) {
     return "overview-map-marker__dot--pending";
   }
 
@@ -199,14 +196,165 @@ function getMapPopoverPosition(point, bounds) {
   };
 }
 
+function mergeBriefings(currentBriefings, nextBriefing) {
+  const nextBriefingCode = nextBriefing?.code;
+  if (!nextBriefingCode) {
+    return currentBriefings;
+  }
+
+  const currentIndex = currentBriefings.findIndex(
+    (briefing) => briefing.code === nextBriefingCode,
+  );
+  if (currentIndex === -1) {
+    return [...currentBriefings, nextBriefing];
+  }
+
+  return currentBriefings.map((briefing, index) =>
+    index === currentIndex ? nextBriefing : briefing,
+  );
+}
+
+function useSectionPrefetch(rootMargin = QUEUE_PREFETCH_ROOT_MARGIN) {
+  const sectionElementRef = useRef(null);
+  const [observedSectionElement, setObservedSectionElement] = useState(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const sectionRef = useCallback((node) => {
+    sectionElementRef.current = node;
+    setObservedSectionElement(node);
+  }, []);
+
+  useEffect(() => {
+    if (isVisible) {
+      return undefined;
+    }
+
+    if (!observedSectionElement) {
+      return undefined;
+    }
+
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin },
+    );
+
+    observer.observe(observedSectionElement);
+    return () => observer.disconnect();
+  }, [isVisible, observedSectionElement, rootMargin]);
+
+  return [sectionRef, sectionElementRef, isVisible];
+}
+
+function OverviewLoadingShell({ headerNarrative }) {
+  return (
+    <div className="page page--overview container">
+      <PageHeader
+        description={headerNarrative}
+        eyebrow="AI-GENERATED OVERVIEW"
+        meta="Coverage board // current slice // live-compatible state"
+        title="Global Overview"
+      />
+
+      <section className="section-gap">
+        <div className="ai-insight ai-insight-panel overview-loading-shell">
+          <div className="panel-header">
+            <div className="overview-loading-shell__hero-copy">
+              <p className="text-label">AI monitored-set brief</p>
+              <div className="skeleton skeleton-title mt-3 overview-skeleton-title" />
+            </div>
+            <div className="skeleton skeleton-pill" />
+          </div>
+
+          <div className="mt-4">
+            <div className="skeleton skeleton-text overview-skeleton-line" />
+            <div className="skeleton skeleton-text overview-skeleton-line" />
+            <div className="skeleton skeleton-text overview-skeleton-line overview-skeleton-line--short" />
+          </div>
+
+          <div className="overview-hero-grid mt-4">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <article className="card overview-hero-stat" key={`hero-${index}`}>
+                <div className="skeleton skeleton-text overview-skeleton-label" />
+                <div className="skeleton skeleton-kpi-value mt-3" />
+                <div className="skeleton skeleton-text overview-skeleton-line mt-3" />
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="kpi-row section-gap">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <article className="kpi-card" key={`kpi-${index}`}>
+            <div className="skeleton skeleton-text overview-skeleton-label" />
+            <div className="skeleton skeleton-kpi-value mt-3" />
+            <div className="skeleton skeleton-text overview-skeleton-line--short mt-3" />
+          </article>
+        ))}
+      </section>
+
+      <section className="overview-main-grid section-gap">
+        <div className="card overview-panel overview-panel--loading">
+          <div className="panel-header">
+            <div>
+              <p className="text-label">Global risk overview</p>
+              <div className="skeleton skeleton-title mt-3 overview-skeleton-panel-title" />
+            </div>
+          </div>
+          <div className="skeleton skeleton-block overview-skeleton-map mt-4" />
+        </div>
+
+        <div className="panel-stack">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              className="card overview-panel overview-panel--loading"
+              key={`panel-${index}`}
+            >
+              <div className="panel-header">
+                <div>
+                  <div className="skeleton skeleton-text overview-skeleton-label" />
+                  <div className="skeleton skeleton-title mt-3 overview-skeleton-panel-title" />
+                </div>
+                <div className="skeleton skeleton-pill" />
+              </div>
+              <div className="mt-4">
+                <div className="skeleton skeleton-text overview-skeleton-line" />
+                <div className="skeleton skeleton-text overview-skeleton-line overview-skeleton-line--short" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+OverviewLoadingShell.propTypes = {
+  headerNarrative: PropTypes.string.isRequired,
+};
+
 function OverviewMapLayer({
   countries,
-  briefings,
+  materialisedCountryCodes,
   selectedMapCountry,
   highlightedMarketCode,
   onToggleMapFocus,
 }) {
   const { projection } = useMapContext();
+  const materialisedCountryCodeSet = useMemo(
+    () => new Set(materialisedCountryCodes),
+    [materialisedCountryCodes],
+  );
 
   return (
     <g className="overview-map-surface__interaction-layer">
@@ -217,7 +365,7 @@ function OverviewMapLayer({
         }
 
         const [x, y] = projection([coordinates.lon, coordinates.lat]);
-        const briefing = briefings.find((item) => item.code === country.code);
+        const isMaterialised = materialisedCountryCodeSet.has(country.code);
 
         return (
           <g key={country.code} transform={`translate(${x} ${y})`}>
@@ -262,7 +410,7 @@ function OverviewMapLayer({
                   >
                     <span
                       className={`overview-map-marker__dot-core ${getMarkerToneClass(
-                        briefing,
+                        isMaterialised,
                         country.code === highlightedMarketCode,
                       )}`}
                     />
@@ -288,13 +436,7 @@ OverviewMapLayer.propTypes = {
       name: PropTypes.string.isRequired,
     }),
   ).isRequired,
-  briefings: PropTypes.arrayOf(
-    PropTypes.shape({
-      code: PropTypes.string.isRequired,
-      macro_synthesis: PropTypes.string,
-      outlook: PropTypes.string,
-    }),
-  ).isRequired,
+  materialisedCountryCodes: PropTypes.arrayOf(PropTypes.string).isRequired,
   selectedMapCountry: PropTypes.string,
   highlightedMarketCode: PropTypes.string,
   onToggleMapFocus: PropTypes.func.isRequired,
@@ -302,6 +444,11 @@ OverviewMapLayer.propTypes = {
 
 export function GlobalOverview() {
   const mapCanvasRef = useRef(null);
+  const landingTokenRef = useRef(0);
+  const pendingBriefingRequestsRef = useRef(new Map());
+  const queuePrefetchStartedRef = useRef(false);
+  const [queueSectionRef, queueSectionElementRef, queueSectionVisible] =
+    useSectionPrefetch();
   const [overview, setOverview] = useState({
     status: null,
     countries: [],
@@ -316,6 +463,71 @@ export function GlobalOverview() {
   const [selectedMarkerRef, setSelectedMarkerRef] = useState(null);
   const [popoverPosition, setPopoverPosition] = useState(null);
   const [mapBounds, setMapBounds] = useState(MAP_DIMENSIONS);
+  const [loadingBriefingCodes, setLoadingBriefingCodes] = useState([]);
+
+  const resetBriefingHydrationState = useCallback(() => {
+    landingTokenRef.current += 1;
+    pendingBriefingRequestsRef.current.clear();
+    queuePrefetchStartedRef.current = false;
+    setLoadingBriefingCodes([]);
+  }, []);
+
+  const loadCountryBriefing = useCallback(
+    async (countryCode) => {
+      const nextCountryCode = countryCode?.toUpperCase();
+      if (!nextCountryCode) {
+        return null;
+      }
+
+      const existingBriefing = overview.briefings.find(
+        (briefing) => briefing.code === nextCountryCode,
+      );
+      if (existingBriefing) {
+        return existingBriefing;
+      }
+
+      const pendingRequest =
+        pendingBriefingRequestsRef.current.get(nextCountryCode);
+      if (pendingRequest) {
+        return pendingRequest;
+      }
+
+      const landingToken = landingTokenRef.current;
+      setLoadingBriefingCodes((currentCodes) =>
+        currentCodes.includes(nextCountryCode)
+          ? currentCodes
+          : [...currentCodes, nextCountryCode],
+      );
+
+      const request = fetchCountryBriefing(nextCountryCode)
+        .then((nextBriefing) => {
+          if (nextBriefing && landingToken === landingTokenRef.current) {
+            setOverview((currentOverview) => ({
+              ...currentOverview,
+              briefings: mergeBriefings(
+                currentOverview.briefings,
+                nextBriefing,
+              ),
+            }));
+          }
+
+          return nextBriefing;
+        })
+        .finally(() => {
+          pendingBriefingRequestsRef.current.delete(nextCountryCode);
+
+          if (landingToken === landingTokenRef.current) {
+            setLoadingBriefingCodes((currentCodes) =>
+              currentCodes.filter((code) => code !== nextCountryCode),
+            );
+          }
+        });
+
+      pendingBriefingRequestsRef.current.set(nextCountryCode, request);
+      return request;
+    },
+    [overview.briefings],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -327,6 +539,7 @@ export function GlobalOverview() {
           return;
         }
 
+        resetBriefingHydrationState();
         setOverview(nextOverview);
         setViewState("ready");
         setRequestError("");
@@ -345,7 +558,7 @@ export function GlobalOverview() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [resetBriefingHydrationState]);
 
   useEffect(() => {
     if (overview.status?.status !== "running") {
@@ -373,6 +586,7 @@ export function GlobalOverview() {
             return;
           }
 
+          resetBriefingHydrationState();
           setOverview(nextOverview);
         }
       } catch (error) {
@@ -389,7 +603,7 @@ export function GlobalOverview() {
       isActive = false;
       window.clearInterval(intervalId);
     };
-  }, [overview.status?.status]);
+  }, [overview.status?.status, resetBriefingHydrationState]);
 
   useEffect(() => {
     const canvasElement = mapCanvasRef.current;
@@ -420,9 +634,14 @@ export function GlobalOverview() {
     };
   }, []);
 
+  const briefingByCode = useMemo(
+    () =>
+      new Map(overview.briefings.map((briefing) => [briefing.code, briefing])),
+    [overview.briefings],
+  );
+
   const {
     anomalyCount,
-    featuredCountry,
     latestRefresh,
     outlookCounts,
     panelOverview,
@@ -433,33 +652,77 @@ export function GlobalOverview() {
     pipelineSteps,
     riskLoadedMarkets,
   } = deriveOverviewMetrics(overview);
+  const materialisedCountryCodes = useMemo(
+    () =>
+      panelOverview?.country_codes?.length
+        ? panelOverview.country_codes
+        : overview.briefings.map((briefing) => briefing.code),
+    [overview.briefings, panelOverview],
+  );
+  const materialisedCountryCodeSet = useMemo(
+    () => new Set(materialisedCountryCodes),
+    [materialisedCountryCodes],
+  );
 
   const coverageBoard = deriveCoverageBoard(
     overview.countries,
     overview.briefings,
-    selectedMapCountry || featuredCountry?.code || null,
+    {
+      focusedCode: selectedMapCountry,
+      materialisedCountryCodes,
+    },
   );
   const regionalBreakdown = deriveRegionalBreakdown(
     overview.countries,
     overview.briefings,
+    materialisedCountryCodes,
   );
-  const highlightedMarketCode =
-    selectedMapCountry ||
-    coverageBoard.find((market) => market.isFeatured)?.code ||
-    coverageBoard.find((market) => market.isMaterialised)?.code ||
-    overview.countries[0]?.code ||
-    null;
+  const coverageBoardByCode = useMemo(
+    () => new Map(coverageBoard.map((market) => [market.code, market])),
+    [coverageBoard],
+  );
+  const pressureQueue = derivePressureQueue(
+    overview.countries,
+    overview.indicators,
+    materialisedCountryCodes,
+  );
+  const queueMarkets = pressureQueue
+    .map(({ code }) => coverageBoardByCode.get(code))
+    .filter(Boolean)
+    .slice(0, QUEUE_CARD_LIMIT);
+  const highlightedMarketCode = selectedMapCountry || null;
   const highlightedMarket =
-    coverageBoard.find((market) => market.code === highlightedMarketCode) ||
-    null;
-  const highlightedBriefing = overview.briefings.find(
-    (briefing) => briefing.code === highlightedMarketCode,
-  );
+    highlightedMarketCode && coverageBoardByCode.has(highlightedMarketCode)
+      ? coverageBoardByCode.get(highlightedMarketCode)
+      : null;
+  const highlightedBriefing = highlightedMarketCode
+    ? briefingByCode.get(highlightedMarketCode) || null
+    : null;
   const highlightedMetrics = buildMarketMetrics(highlightedBriefing);
   const marketOpenHref = highlightedMarket?.href || "/trigger";
+  const selectedBriefingLoading = Boolean(
+    highlightedMarketCode && loadingBriefingCodes.includes(highlightedMarketCode),
+  );
+  const hasLoadedCountryPosture = overview.briefings.length > 0;
+  const loadedQueueCount = queueMarkets.filter((market) =>
+    briefingByCode.has(market.code),
+  ).length;
+  const queueStatusLabel = queueMarkets.length
+    ? loadedQueueCount === queueMarkets.length
+      ? "QUEUE READY"
+      : queueSectionVisible
+        ? `LOADING ${loadedQueueCount}/${queueMarkets.length}`
+        : "ON DEMAND"
+    : "PENDING";
+  const queueStatusTone =
+    loadedQueueCount === queueMarkets.length && queueMarkets.length
+      ? "success"
+      : queueSectionVisible
+        ? "warning"
+        : "neutral";
   const highlightedStatusTone = highlightedBriefing?.outlook
     ? getOutlookTone(highlightedBriefing.outlook)
-    : highlightedMarket?.tone || getOutlookTone(featuredCountry?.outlook);
+    : highlightedMarket?.tone || "neutral";
   const panelOutlookTone = panelOverview?.outlook
     ? getOutlookTone(panelOverview.outlook)
     : getPipelineTone(pipelineStatus);
@@ -467,7 +730,9 @@ export function GlobalOverview() {
     ? panelOverview.outlook.toUpperCase()
     : pipelineStatus.toUpperCase();
   const globalRiskTone =
-    outlookCounts.bearish > 0
+    !hasLoadedCountryPosture
+      ? ""
+      : outlookCounts.bearish > 0
       ? " overview-hero-stat--critical"
       : riskLoadedMarkets > 0
         ? ""
@@ -492,17 +757,35 @@ export function GlobalOverview() {
   const pipelineRefreshLabel = latestRefresh
     ? formatTimestamp(latestRefresh)
     : "Pending";
+  const queueLeadCopy =
+    queueMarkets.length > 0
+      ? "Load the live queue below or focus a market on the map when you want a country briefing."
+      : "Country drilldowns will appear once the monitored-set queue is available.";
+  const riskLoadedValue = hasLoadedCountryPosture ? riskLoadedMarkets : "--";
 
   const sharedActions = (
     <div className="button-row">
       <Link className="btn-primary" to="/trigger">
         {pipelineStatus === "running" ? "Monitor pipeline" : "Open pipeline"}
       </Link>
-      <Link className="btn-ghost" to={marketOpenHref}>
-        {selectedMapCountry
-          ? "Open selected country"
-          : "Open country drilldown"}
-      </Link>
+      {selectedMapCountry ? (
+        <Link className="btn-ghost" to={marketOpenHref}>
+          Open selected country
+        </Link>
+      ) : (
+        <button
+          className="btn-ghost"
+          onClick={() =>
+            queueSectionElementRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            })
+          }
+          type="button"
+        >
+          Review country queue
+        </button>
+      )}
     </div>
   );
 
@@ -510,7 +793,25 @@ export function GlobalOverview() {
     const isDeselect = countryCode === selectedMapCountry;
     setSelectedMapCountry(isDeselect ? null : countryCode);
     setSelectedMarkerRef(isDeselect ? null : element || null);
+
+    if (!isDeselect && materialisedCountryCodeSet.has(countryCode)) {
+      void loadCountryBriefing(countryCode);
+    }
   }
+
+  useEffect(() => {
+    if (
+      viewState !== "ready" ||
+      !queueSectionVisible ||
+      queuePrefetchStartedRef.current ||
+      !queueMarkets.length
+    ) {
+      return;
+    }
+
+    queuePrefetchStartedRef.current = true;
+    void Promise.all(queueMarkets.map((market) => loadCountryBriefing(market.code)));
+  }, [loadCountryBriefing, queueMarkets, queueSectionVisible, viewState]);
 
   // Derive popover position from the marker button's actual DOM bounds.
   // mapBounds is used as a resize trigger — when the canvas resizes, this effect
@@ -534,29 +835,7 @@ export function GlobalOverview() {
   }, [selectedMarkerRef, mapBounds]);
 
   if (viewState === "loading") {
-    return (
-      <div className="page page--overview container">
-        <PageHeader
-          description={headerNarrative}
-          eyebrow="AI-GENERATED OVERVIEW"
-          meta="Coverage board // current slice // live-compatible state"
-          title="Global Overview"
-        />
-
-        <section className="section-gap">
-          <div className="card state-panel">
-            <p className="text-label">Loading current coverage</p>
-            <div className="mt-3">
-              <div className="skeleton skeleton-title" />
-            </div>
-            <div className="mt-4">
-              <div className="skeleton skeleton-text overview-skeleton-line" />
-              <div className="skeleton skeleton-text overview-skeleton-line overview-skeleton-line--short" />
-            </div>
-          </div>
-        </section>
-      </div>
-    );
+    return <OverviewLoadingShell headerNarrative={headerNarrative} />;
   }
 
   if (viewState === "error") {
@@ -605,7 +884,7 @@ export function GlobalOverview() {
                 Live briefings // {materialisedCountries}/{monitoredCountries}
               </span>
               <span className="text-label">
-                Drilldown // {highlightedMarket?.code || "Pending"}
+                Drilldown // {selectedMapCountry || "Select market"}
               </span>
             </div>
           }
@@ -653,14 +932,16 @@ export function GlobalOverview() {
             <article className={`card overview-hero-stat${globalRiskTone}`}>
               <span className="text-label">Risk-loaded markets</span>
               <span className="overview-hero-stat__value">
-                {riskLoadedMarkets}
+                {riskLoadedValue}
               </span>
               <p className="overview-hero-stat__desc text-body text-secondary">
-                {outlookCounts.bearish > 0
-                  ? `${outlookCounts.bearish} bearish and ${outlookCounts.cautious} cautious markets are shaping the panel view.`
-                  : riskLoadedMarkets > 0
-                    ? `${outlookCounts.cautious} cautious markets are shaping the panel view.`
-                    : "No bearish or cautious market outlooks are currently materialised."}
+                {hasLoadedCountryPosture
+                  ? outlookCounts.bearish > 0
+                    ? `${outlookCounts.bearish} bearish and ${outlookCounts.cautious} cautious markets are shaping the panel view.`
+                    : riskLoadedMarkets > 0
+                      ? `${outlookCounts.cautious} cautious markets are shaping the panel view.`
+                      : "No bearish or cautious market outlooks are currently materialised."
+                  : "Country posture stays on demand until you focus a market or load the queue below."}
               </p>
             </article>
           </div>
@@ -720,14 +1001,14 @@ export function GlobalOverview() {
         />
         <KpiCard
           freshness={
-            highlightedBriefing?.outlook
-              ? `${highlightedBriefing.outlook.toUpperCase()} OUTLOOK`
-              : "OUTLOOK PENDING"
+            queueSectionVisible
+              ? "COUNTRY QUEUE HYDRATING"
+              : "COUNTRY DETAIL LOADS ON DEMAND"
           }
-          label="Anomalies Flagged"
-          status={anomalyCount > 0 ? "Escalated" : "Contained"}
-          statusTone={anomalyCount > 0 ? "critical" : "success"}
-          value={anomalyCount}
+          label="Country Queue"
+          status={queueStatusLabel}
+          statusTone={queueStatusTone}
+          value={queueMarkets.length ? `${loadedQueueCount}/${queueMarkets.length}` : "0/0"}
         />
       </section>
 
@@ -767,9 +1048,9 @@ export function GlobalOverview() {
                   }
                 </Geographies>
                 <OverviewMapLayer
-                  briefings={overview.briefings}
                   countries={overview.countries}
                   highlightedMarketCode={highlightedMarketCode}
+                  materialisedCountryCodes={materialisedCountryCodes}
                   onToggleMapFocus={toggleMapFocus}
                   selectedMapCountry={selectedMapCountry}
                 />
@@ -858,7 +1139,43 @@ export function GlobalOverview() {
                 {highlightedMarket?.statusLabel || "Pending"}
               </StatusPill>
             </div>
-            {highlightedMarket ? (
+            {!highlightedMarket ? (
+              <>
+                <div
+                  className="overview-context-market overview-context-market--empty mt-4"
+                  aria-live="polite"
+                >
+                  <div>
+                    <p className="text-label">Panel-first landing</p>
+                    <h3 className="text-title mt-3">No market preselected</h3>
+                    <p className="text-body text-secondary mt-3">
+                      The landing page stays global until you focus a market on
+                      the map or open the drilldown queue below.
+                    </p>
+                  </div>
+                  <StatusPill tone="neutral">ON DEMAND</StatusPill>
+                </div>
+
+                <p className="text-body text-secondary mt-4 overview-market-summary">
+                  {queueLeadCopy}
+                </p>
+
+                <div className="button-row mt-4">
+                  <button
+                    className="btn-ghost"
+                    onClick={() =>
+                      queueSectionElementRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      })
+                    }
+                    type="button"
+                  >
+                    Open drilldown queue
+                  </button>
+                </div>
+              </>
+            ) : (
               <>
                 <div
                   className="overview-context-market mt-4"
@@ -868,11 +1185,7 @@ export function GlobalOverview() {
                     <Flag code={highlightedMarket.code} height="100%" />
                   </span>
                   <div>
-                    <p className="text-label">
-                      {selectedMapCountry
-                        ? "Focused market"
-                        : "Default drilldown"}
-                    </p>
+                    <p className="text-label">Focused market</p>
                     <h3 className="text-title mt-3">
                       {highlightedMarket.name}
                     </h3>
@@ -881,69 +1194,92 @@ export function GlobalOverview() {
                     </p>
                   </div>
                   <StatusPill tone={highlightedStatusTone}>
-                    {highlightedBriefing?.outlook
-                      ? highlightedBriefing.outlook.toUpperCase()
-                      : "PENDING"}
+                    {selectedBriefingLoading
+                      ? "LOADING"
+                      : highlightedBriefing?.outlook
+                        ? highlightedBriefing.outlook.toUpperCase()
+                        : highlightedMarket.statusLabel}
                   </StatusPill>
                 </div>
 
-                <p className="text-body text-secondary mt-4 overview-market-summary">
-                  {highlightedBriefing?.macro_synthesis ||
-                    highlightedMarket.summary}
-                </p>
-
-                {highlightedMetrics.length ? (
-                  <div className="overview-market-metrics mt-4">
-                    {highlightedMetrics.map((indicator) => (
-                      <article
-                        className="overview-market-metric"
-                        key={indicator.indicator_code}
-                      >
-                        <span className="text-label">
-                          {indicator.indicator_name}
-                        </span>
-                        <span className="text-metric mt-3">
-                          {formatMetricValue(
-                            indicator.indicator_code,
-                            indicator.latest_value,
-                          )}
-                        </span>
-                        <span
-                          className={`text-label mt-3 ${getSignalTone(
-                            indicator.indicator_code,
-                            indicator.percent_change,
-                          )}`}
+                {selectedBriefingLoading ? (
+                  <div className="overview-drilldown-loading mt-4">
+                    <div className="skeleton skeleton-text overview-skeleton-line" />
+                    <div className="skeleton skeleton-text overview-skeleton-line" />
+                    <div className="overview-market-metrics mt-4">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <article
+                          className="overview-market-metric overview-market-metric--loading"
+                          key={`metric-skeleton-${index}`}
                         >
-                          {formatChange(indicator.percent_change)}
-                        </span>
-                      </article>
-                    ))}
+                          <div className="skeleton skeleton-text overview-skeleton-label" />
+                          <div className="skeleton skeleton-kpi-value mt-3" />
+                          <div className="skeleton skeleton-text overview-skeleton-line--short mt-3" />
+                        </article>
+                      ))}
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-body text-secondary mt-4">
-                    No live signal pack is materialised for this market yet.
-                  </p>
+                  <>
+                    <p className="text-body text-secondary mt-4 overview-market-summary">
+                      {highlightedBriefing?.macro_synthesis ||
+                        highlightedMarket.summary}
+                    </p>
+
+                    {highlightedMetrics.length ? (
+                      <div className="overview-market-metrics mt-4">
+                        {highlightedMetrics.map((indicator) => (
+                          <article
+                            className="overview-market-metric"
+                            key={indicator.indicator_code}
+                          >
+                            <span className="text-label">
+                              {indicator.indicator_name}
+                            </span>
+                            <span className="text-metric mt-3">
+                              {formatMetricValue(
+                                indicator.indicator_code,
+                                indicator.latest_value,
+                              )}
+                            </span>
+                            <span
+                              className={`text-label mt-3 ${getSignalTone(
+                                indicator.indicator_code,
+                                indicator.percent_change,
+                              )}`}
+                            >
+                              {formatChange(indicator.percent_change)}
+                            </span>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-body text-secondary mt-4">
+                        {highlightedMarket.isMaterialised
+                          ? "The country briefing is still hydrating for this market."
+                          : "No live signal pack is materialised for this market yet."}
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <div className="button-row mt-4">
                   <Link className="btn-ghost" to={marketOpenHref}>
                     Open market
                   </Link>
-                  {selectedMapCountry ? (
-                    <button
-                      className="shell-command-link"
-                      onClick={() => {
-                        setSelectedMapCountry(null);
-                        setSelectedMarkerRef(null);
-                      }}
-                      type="button"
-                    >
-                      Reset focus
-                    </button>
-                  ) : null}
+                  <button
+                    className="shell-command-link"
+                    onClick={() => {
+                      setSelectedMapCountry(null);
+                      setSelectedMarkerRef(null);
+                    }}
+                    type="button"
+                  >
+                    Reset focus
+                  </button>
                 </div>
               </>
-            ) : null}
+            )}
           </div>
 
           <div className="card overview-panel">
@@ -1002,7 +1338,7 @@ export function GlobalOverview() {
         </div>
       </section>
 
-      <section className="section-gap">
+      <section className="section-gap" ref={queueSectionRef}>
         <div className="panel-header">
           <div>
             <p className="text-label">Country intelligence feed</p>
@@ -1010,21 +1346,52 @@ export function GlobalOverview() {
               Panel pressure and drilldown queue
             </h2>
           </div>
-          <StatusPill tone={panelOutlookTone}>
-            {panelOverview?.outlook
-              ? panelOverview.outlook.toUpperCase()
-              : "PENDING"}
-          </StatusPill>
+          <StatusPill tone={queueStatusTone}>{queueStatusLabel}</StatusPill>
         </div>
         <div className="overview-depth-grid mt-4">
-          {coverageBoard.slice(0, 2).map((market, index) => {
-            const briefing = overview.briefings.find(
-              (item) => item.code === market.code,
-            );
+          {queueMarkets.map((market, index) => {
+            const briefing = briefingByCode.get(market.code);
+            const isLoading = loadingBriefingCodes.includes(market.code);
             const leadIndicator = briefing
               ? getIndicatorValue(briefing, "NY.GDP.MKTP.KD.ZG") ||
                 getIndicatorValue(briefing, "FP.CPI.TOTL.ZG")
               : null;
+
+            if (!briefing) {
+              return (
+                <article
+                  className="market-card market-card--loading"
+                  key={market.code}
+                >
+                  <div className="market-card__header">
+                    <div>
+                      <p className="market-card__node-id">
+                        NODE-{String(index + 1).padStart(3, "0")}
+                      </p>
+                      <div className="market-card__title-row mt-3">
+                        <span className="flag-frame flag-frame--sm market-card__flag">
+                          <Flag code={market.code} height="100%" />
+                        </span>
+                        <h3 className="market-card__country">{market.name}</h3>
+                      </div>
+                    </div>
+                    <StatusPill tone={isLoading ? "warning" : "neutral"}>
+                      {isLoading ? "LOADING" : market.statusLabel}
+                    </StatusPill>
+                  </div>
+                  <div className="mt-4">
+                    <div className="skeleton skeleton-text overview-skeleton-line" />
+                    <div className="skeleton skeleton-text overview-skeleton-line" />
+                  </div>
+                  <div className="market-card__meta mt-4">
+                    <span>{market.region}</span>
+                    <span>
+                      {isLoading ? "Hydrating live briefing" : "Awaiting briefing"}
+                    </span>
+                  </div>
+                </article>
+              );
+            }
 
             return (
               <Link className="market-card" key={market.code} to={market.href}>
@@ -1041,13 +1408,13 @@ export function GlobalOverview() {
                     </div>
                   </div>
                   <StatusPill tone={market.tone}>
-                    {market.statusLabel}
+                    {briefing.outlook
+                      ? briefing.outlook.toUpperCase()
+                      : market.statusLabel}
                   </StatusPill>
                 </div>
                 <p className="market-card__insight mt-4">
-                  {briefing?.macro_synthesis
-                    ? briefing.macro_synthesis
-                    : getEmptyStateBody(pipelineStatus)}
+                  {briefing.macro_synthesis}
                 </p>
                 <div className="market-card__meta mt-4">
                   <span>{market.region}</span>

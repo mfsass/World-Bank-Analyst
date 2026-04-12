@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,7 +34,16 @@ afterEach(() => {
 });
 
 describe("GlobalOverview", () => {
-  it("opens a map summary popover and keeps the stable market detail panel in sync", async () => {
+  it("lands in a neutral panel state and hydrates market detail only after focus", async () => {
+    const originalIntersectionObserver = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    };
+
+    let resolveUnitedStatesBriefing;
+
     apiRequest.mockImplementation((path) => {
       if (path === "/pipeline/status") {
         return Promise.resolve({ status: "complete", steps: [] });
@@ -118,104 +134,120 @@ describe("GlobalOverview", () => {
       }
 
       if (path === "/countries/US") {
-        return Promise.resolve({
-          code: "US",
-          name: "United States",
-          region: "North America",
-          outlook: "bullish",
-          macro_synthesis:
-            "Growth is recovering with firmer domestic momentum.",
-          indicators: [
-            {
-              indicator_code: "NY.GDP.MKTP.KD.ZG",
-              indicator_name: "GDP growth",
-              latest_value: 3.1,
-              percent_change: 0.8,
-            },
-            {
-              indicator_code: "FP.CPI.TOTL.ZG",
-              indicator_name: "Inflation",
-              latest_value: 4.4,
-              percent_change: -0.9,
-            },
-            {
-              indicator_code: "SL.UEM.TOTL.ZS",
-              indicator_name: "Unemployment",
-              latest_value: 9.2,
-              percent_change: -0.4,
-            },
-          ],
+        return new Promise((resolve) => {
+          resolveUnitedStatesBriefing = () =>
+            resolve({
+              code: "US",
+              name: "United States",
+              region: "North America",
+              outlook: "bullish",
+              macro_synthesis:
+                "Growth is recovering with firmer domestic momentum.",
+              indicators: [
+                {
+                  indicator_code: "NY.GDP.MKTP.KD.ZG",
+                  indicator_name: "GDP growth",
+                  latest_value: 3.1,
+                  percent_change: 0.8,
+                },
+                {
+                  indicator_code: "FP.CPI.TOTL.ZG",
+                  indicator_name: "Inflation",
+                  latest_value: 4.4,
+                  percent_change: -0.9,
+                },
+                {
+                  indicator_code: "SL.UEM.TOTL.ZS",
+                  indicator_name: "Unemployment",
+                  latest_value: 9.2,
+                  percent_change: -0.4,
+                },
+              ],
+            });
         });
       }
 
       return Promise.reject(new Error(`Unexpected path: ${path}`));
     });
 
-    renderPage();
+    try {
+      renderPage();
 
-    expect(
-      await screen.findByRole("heading", { name: "Country drilldown" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Cross-market inflation pressure remains concentrated even as the monitored set no longer reads like a single-country story.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Source window \/\/ 2010-2024/).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("link", { name: "Open pipeline" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Open country drilldown" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Open pipeline" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Lead market")).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole("heading", { name: "Country drilldown" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Cross-market inflation pressure remains concentrated even as the monitored set no longer reads like a single-country story.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByText(/Source window \/\/ 2010-2024/).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getByRole("link", { name: "Open pipeline" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Review country queue" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Open drilldown queue" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("No market preselected")).toBeInTheDocument();
+      expect(screen.queryByText("Lead market")).not.toBeInTheDocument();
+      expect(
+        apiRequest.mock.calls.map(([path]) => path),
+      ).not.toContain("/countries/US");
 
-    expect(
-      screen.getByRole("group", { name: "World coverage map" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("button", {
-        name: /Focus .* market on world map/,
-      }),
-    ).toHaveLength(2);
+      const unitedStatesMarker = screen.getByRole("button", {
+        name: "Focus United States market on world map",
+      });
 
-    const unitedStatesMarker = screen.getByRole("button", {
-      name: "Focus United States market on world map",
-    });
+      fireEvent.click(unitedStatesMarker);
 
-    fireEvent.click(unitedStatesMarker);
+      expect(screen.getByText("Focused market")).toBeInTheDocument();
+      expect(screen.getAllByText("United States").length).toBeGreaterThan(0);
+      expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "true");
+      expect(unitedStatesMarker).toHaveAttribute(
+        "aria-controls",
+        "overview-map-popover",
+      );
+      expect(unitedStatesMarker).not.toHaveAttribute("aria-pressed");
+      expect(
+        screen.getByRole("region", { name: "United States market actions" }),
+      ).toBeInTheDocument();
+      const drilldownPanel = screen
+        .getByRole("heading", { name: "Country drilldown" })
+        .closest(".overview-panel");
+      expect(drilldownPanel).not.toBeNull();
+      expect(within(drilldownPanel).getByText("LOADING")).toBeInTheDocument();
+      expect(
+        apiRequest.mock.calls.map(([path]) => path),
+      ).toContain("/countries/US");
 
-    expect(screen.getByText("Focused market")).toBeInTheDocument();
-    expect(screen.getAllByText("United States").length).toBeGreaterThan(0);
-    expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "true");
-    expect(unitedStatesMarker).toHaveAttribute(
-      "aria-controls",
-      "overview-map-popover",
-    );
-    expect(unitedStatesMarker).not.toHaveAttribute("aria-pressed");
-    expect(
-      screen.getByRole("region", { name: "United States market actions" }),
-    ).toBeInTheDocument();
-    const mapPopover = screen
-      .getByRole("link", { name: "Open intelligence" })
-      .closest(".overview-map-popover");
-    expect(mapPopover).not.toBeNull();
-    expect(
-      screen.getByRole("link", { name: "Open intelligence" }),
-    ).toHaveAttribute("href", "/country/us");
-    expect(screen.getByRole("link", { name: "Open market" })).toHaveAttribute(
-      "href",
-      "/country/us",
-    );
+      resolveUnitedStatesBriefing();
 
-    fireEvent.click(unitedStatesMarker);
+      expect(
+        await screen.findByText(
+          "Growth is recovering with firmer domestic momentum.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Open intelligence" }),
+      ).toHaveAttribute("href", "/country/us");
+      expect(screen.getByRole("link", { name: "Open market" })).toHaveAttribute(
+        "href",
+        "/country/us",
+      );
 
-    expect(screen.queryByText("Briefing available.")).not.toBeInTheDocument();
-    expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(unitedStatesMarker);
+
+      await waitFor(() => {
+        expect(screen.getByText("No market preselected")).toBeInTheDocument();
+      });
+      expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "false");
+    } finally {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    }
   });
 });

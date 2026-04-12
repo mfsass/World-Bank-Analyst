@@ -1,6 +1,3 @@
-// First country in the 17-country exact-complete panel (ADR-041).
-export const TARGET_COUNTRY = "BR";
-
 export const SIGNAL_PRIORITY = [
   "NY.GDP.MKTP.KD.ZG",
   "FP.CPI.TOTL.ZG",
@@ -124,6 +121,17 @@ export function getLatestDataYear(records = []) {
     .filter((year) => Number.isFinite(year));
 
   return materialisedYears.length ? Math.max(...materialisedYears) : null;
+}
+
+function getMaterialisedCountryCodeSet(
+  briefings = [],
+  materialisedCountryCodes = [],
+) {
+  const codes = materialisedCountryCodes.length
+    ? materialisedCountryCodes
+    : briefings.map((briefing) => briefing.code);
+
+  return new Set(codes.filter(Boolean));
 }
 
 export function getOverviewNarrative(
@@ -320,15 +328,14 @@ export function getSignalTone(indicatorCode, percentChange) {
 export function deriveOverviewMetrics(overview) {
   const pipelineStatus = overview.status?.status || "idle";
   const monitoredCountries = overview.countries.length;
-  const materialisedCountryCodes = [
-    ...new Set(overview.briefings.map((briefing) => briefing.code)),
-  ];
+  const materialisedCountryCodes = overview.panelOverview?.country_codes?.length
+    ? overview.panelOverview.country_codes
+    : [...new Set(overview.briefings.map((briefing) => briefing.code))];
   const materialisedCountries = materialisedCountryCodes.length;
   const anomalyCount = overview.indicators.filter(
     (indicator) => indicator.is_anomaly,
   ).length;
   const latestRefresh = getLatestRefresh(overview.indicators, overview.status);
-  const featuredCountry = overview.briefings[0] || null;
   const panelSignals = getPanelSignals(overview.indicators);
   const outlookCounts = getOutlookCounts(overview.briefings);
   const pipelineSteps = overview.status?.steps?.length
@@ -341,7 +348,6 @@ export function deriveOverviewMetrics(overview) {
     materialisedCountries,
     anomalyCount,
     latestRefresh,
-    featuredCountry,
     outlookCounts,
     panelSignals,
     panelOverview: overview.panelOverview || null,
@@ -350,9 +356,17 @@ export function deriveOverviewMetrics(overview) {
   };
 }
 
-export function deriveRegionalBreakdown(countries = [], briefings = []) {
+export function deriveRegionalBreakdown(
+  countries = [],
+  briefings = [],
+  materialisedCountryCodes = [],
+) {
   const briefingByCode = new Map(
     briefings.map((briefing) => [briefing.code, briefing]),
+  );
+  const materialisedCodeSet = getMaterialisedCountryCodeSet(
+    briefings,
+    materialisedCountryCodes,
   );
   const regionMap = new Map();
 
@@ -373,8 +387,10 @@ export function deriveRegionalBreakdown(countries = [], briefings = []) {
     region.monitoredCount += 1;
 
     const briefing = briefingByCode.get(country.code);
-    if (briefing) {
+    if (materialisedCodeSet.has(country.code)) {
       region.materialisedCount += 1;
+    }
+    if (briefing) {
       const outlookKey = briefing.outlook?.toLowerCase() || "neutral";
       region.outlookCounts[outlookKey] =
         (region.outlookCounts[outlookKey] || 0) + 1;
@@ -401,29 +417,118 @@ export function deriveRegionalBreakdown(countries = [], briefings = []) {
 export function deriveCoverageBoard(
   countries = [],
   briefings = [],
-  featuredCode = null,
+  options = {},
 ) {
+  const { focusedCode = null, materialisedCountryCodes = [] } = options;
   const briefingByCode = new Map(
     briefings.map((briefing) => [briefing.code, briefing]),
+  );
+  const materialisedCodeSet = getMaterialisedCountryCodeSet(
+    briefings,
+    materialisedCountryCodes,
   );
 
   return countries.map((country) => {
     const briefing = briefingByCode.get(country.code);
-    const isMaterialised = Boolean(briefing);
-    const isFeatured = country.code === featuredCode;
+    const isMaterialised = materialisedCodeSet.has(country.code);
+    const isFocused = country.code === focusedCode;
 
     return {
       code: country.code,
       href: `/country/${country.code.toLowerCase()}`,
-      isFeatured,
+      isFocused,
       isMaterialised,
       name: country.name,
       region: country.region || "Unassigned",
       statusLabel: isMaterialised ? "Live" : "Pending",
       summary: isMaterialised
-        ? `${country.name} briefing materialised in the current slice.`
+        ? `${country.name} briefing is available in the current slice.`
         : `${country.name} is monitored but not yet materialised.`,
-      tone: isMaterialised ? getOutlookTone(briefing.outlook) : "neutral",
+      tone: isMaterialised ? getOutlookTone(briefing?.outlook) : "neutral",
     };
   });
+}
+
+function getCountryPressureScore(countryIndicators = []) {
+  return countryIndicators.reduce((score, indicator) => {
+    let nextScore = score;
+
+    if (indicator.is_anomaly) {
+      nextScore += 4;
+    }
+
+    if (isAdverseMove(indicator.indicator_code, indicator.percent_change)) {
+      nextScore += 2;
+    }
+
+    if (indicator.percent_change != null) {
+      nextScore += Math.min(
+        3,
+        Math.abs(Number(indicator.percent_change) || 0) / 3,
+      );
+    }
+
+    return nextScore;
+  }, 0);
+}
+
+export function derivePressureQueue(
+  countries = [],
+  indicators = [],
+  materialisedCountryCodes = [],
+) {
+  const indicatorsByCountry = new Map();
+  const materialisedCodeSet = getMaterialisedCountryCodeSet(
+    [],
+    materialisedCountryCodes,
+  );
+
+  indicators.forEach((indicator) => {
+    const countryCode = indicator.country_code;
+    if (!countryCode) {
+      return;
+    }
+
+    const currentIndicators = indicatorsByCountry.get(countryCode) || [];
+    currentIndicators.push(indicator);
+    indicatorsByCountry.set(countryCode, currentIndicators);
+  });
+
+  return countries
+    .map((country) => {
+      const countryIndicators = indicatorsByCountry.get(country.code) || [];
+      const anomalyCount = countryIndicators.filter(
+        (indicator) => indicator.is_anomaly,
+      ).length;
+      const adverseCount = countryIndicators.filter((indicator) =>
+        isAdverseMove(indicator.indicator_code, indicator.percent_change),
+      ).length;
+
+      return {
+        code: country.code,
+        isMaterialised: materialisedCodeSet.has(country.code),
+        anomalyCount,
+        adverseCount,
+        pressureScore: getCountryPressureScore(countryIndicators),
+      };
+    })
+    .sort((left, right) => {
+      if (left.isMaterialised !== right.isMaterialised) {
+        return left.isMaterialised ? -1 : 1;
+      }
+
+      if (right.pressureScore !== left.pressureScore) {
+        return right.pressureScore - left.pressureScore;
+      }
+
+      if (right.anomalyCount !== left.anomalyCount) {
+        return right.anomalyCount - left.anomalyCount;
+      }
+
+      if (right.adverseCount !== left.adverseCount) {
+        return right.adverseCount - left.adverseCount;
+      }
+
+      return left.code.localeCompare(right.code);
+    });
 }
