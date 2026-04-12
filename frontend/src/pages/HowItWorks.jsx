@@ -4,6 +4,10 @@ import { AIInsightPanel } from "../components/AIInsightPanel";
 import { KpiCard } from "../components/KpiCard";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
+import {
+  PIPELINE_STAGE_MODEL,
+  PIPELINE_TRIGGER_MODES,
+} from "../pipelineStageModel";
 
 const TELEMETRY_CARDS = [
   {
@@ -11,28 +15,32 @@ const TELEMETRY_CARDS = [
     value: "LOCAL-FIRST",
     status: "Current",
     tone: "success",
-    freshness: "Deterministic local mode stays default; deploy-only switches stay explicit.",
+    freshness:
+      "Deterministic local mode stays default; deploy-only switches stay explicit.",
   },
   {
     label: "Narrative chain",
     value: "2-STEP + PANEL",
     status: "Validated",
     tone: "success",
-    freshness: "Provider-backed AI runs the country chain and the monitored-set overview pass in live mode; local mode stays deterministic for tests.",
+    freshness:
+      "Provider-backed AI runs the country chain and the monitored-set overview pass in live mode; local mode stays deterministic for tests.",
   },
   {
     label: "Core panel",
     value: "17 x 6",
     status: "Validated",
     tone: "success",
-    freshness: "Exact-complete 2024 core panel validated against the World Bank API.",
+    freshness:
+      "Exact-complete 2024 core panel validated against the World Bank API.",
   },
   {
     label: "Storage seam",
     value: "LOCAL // FIRESTORE",
     status: "Current",
     tone: "success",
-    freshness: "One repository contract supports local runs and Firestore-backed durable storage.",
+    freshness:
+      "One repository contract supports local runs and Firestore-backed durable storage.",
   },
 ];
 
@@ -48,7 +56,7 @@ const ARCHITECTURE_NODES = [
 ];
 
 const TECH_STRIP = [
-  ["Execution", "Local-first runtime // Cloud Run job stays the deploy target"],
+  ["Execution", "Real run stays API-backed; demo walkthrough stays frontend-only"],
   ["Storage", "Local repository by default // durable backends switch on through explicit envs"],
   ["Frontend", "React 18 + Vite + vanilla CSS tokens"],
   ["Proxy", "nginx template defines the same-origin /api/v1/ proxy for cloud deployment"],
@@ -69,28 +77,50 @@ export function HowItWorks() {
             </Link>
           </div>
         }
-        description="How World Analyst turns World Bank indicators into analyst-ready country briefings and one monitored-set overview. Repo-current behavior and deploy-only runtime switches stay labeled separately."
+        description="How World Analyst turns World Bank indicators into analyst-ready country briefings and one monitored-set overview, while keeping real runs truthful and demo walkthroughs clearly simulated."
         eyebrow="SYSTEM FLOW"
-        meta="World Bank source · Country + panel synthesis contract · Spec-first delivery"
+        meta="World Bank source · Shared stage model · Spec-first delivery"
         title="How It Works"
       />
 
       <section className="section-gap">
         <div className="card architecture-cta">
           <div>
-            <p className="text-label">Live pipeline CTA</p>
+            <p className="text-label">Trigger modes</p>
             <h2 className="text-headline mt-3">
-              Trigger the same World Bank Analyst flow the dashboard reads
+              One stage story, two trigger modes
             </h2>
             <p className="text-body text-secondary mt-4">
-              The trigger page runs the current pipeline flow end to end. It now
-              shows how World Bank records become indicator signals, country
-              briefings, and one monitored-set overview so the global page stays
-              distinct from the country drilldown page.
+              Pipeline Trigger now separates truthful real runs from the fast demo
+              walkthrough. Both modes use the same shared stage model, but only
+              real run touches backend status or stored outputs.
             </p>
           </div>
-          <StatusPill tone="neutral">Current + deploy target</StatusPill>
+          <StatusPill tone="neutral">Shared product story</StatusPill>
         </div>
+      </section>
+
+      <section className="architecture-mode-grid section-gap">
+        {PIPELINE_TRIGGER_MODES.map((mode) => (
+          <article className="card architecture-mode-card" key={mode.key}>
+            <div className="panel-header">
+              <div>
+                <p className="text-label">{mode.eyebrow}</p>
+                <h2 className="text-headline mt-3">{mode.label}</h2>
+              </div>
+              <StatusPill tone={mode.tone}>
+                {mode.key === "real" ? "LIVE" : "SIMULATED"}
+              </StatusPill>
+            </div>
+            <p className="text-body text-secondary mt-4">{mode.description}</p>
+            <div className="architecture-mode-card__detail mt-4">
+              <span className="text-label">{mode.boundaryLabel}</span>
+              <p className="text-body text-secondary mt-3">
+                {mode.boundaryDetail}
+              </p>
+            </div>
+          </article>
+        ))}
       </section>
 
       <section className="kpi-row section-gap">
@@ -172,34 +202,24 @@ export function HowItWorks() {
       </section>
 
       <section className="architecture-prompt-grid section-gap">
-        <div className="card architecture-step-card">
-          <p className="text-label">Step 1</p>
-          <h2 className="text-headline mt-3">Fetch and normalize</h2>
-          <p className="text-body text-secondary mt-4">
-            The pipeline requests the approved World Bank indicator panel, drops unusable rows, and reshapes the response into one normalized record per country-indicator-year before any AI stage runs.
-          </p>
-        </div>
-        <div className="card architecture-step-card">
-          <p className="text-label">Step 2</p>
-          <h2 className="text-headline mt-3">Statistical signal layer</h2>
-          <p className="text-body text-secondary mt-4">
-            Pandas calculates deltas, trend shifts, and anomaly flags first. That keeps the analysis prompts narrow and the result auditable because the math is already settled before narrative generation starts.
-          </p>
-        </div>
-        <div className="card architecture-step-card">
-          <p className="text-label">Step 3</p>
-          <h2 className="text-headline mt-3">Country synthesis</h2>
-          <p className="text-body text-secondary mt-4">
-            The first live synthesis stage writes one note per indicator, then rolls those structured notes into a country briefing with outlook and risk flags the drilldown page can render directly.
-          </p>
-        </div>
-        <div className="card architecture-step-card">
-          <p className="text-label">Step 4</p>
-          <h2 className="text-headline mt-3">Panel overview + storage</h2>
-          <p className="text-body text-secondary mt-4">
-            A final pass synthesizes all stored country briefings into one cross-country overview, then persists both the overview and country outputs to the shared repository.
-          </p>
-        </div>
+        {PIPELINE_STAGE_MODEL.map((stage, index) => (
+          <div className="card architecture-step-card" key={stage.name}>
+            <div className="panel-header">
+              <div>
+                <p className="text-label">
+                  Stage {String(index + 1).padStart(2, "0")}
+                </p>
+                <h2 className="text-headline mt-3">{stage.title}</h2>
+              </div>
+              <StatusPill tone="neutral">{stage.name}</StatusPill>
+            </div>
+            <p className="text-body text-secondary mt-4">{stage.story}</p>
+            <div className="architecture-step-card__detail mt-4">
+              <span className="text-label">Output</span>
+              <p className="text-body text-secondary mt-3">{stage.outcome}</p>
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="architecture-spec-strip section-gap">
