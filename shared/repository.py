@@ -14,7 +14,13 @@ from threading import Lock
 from typing import Any, Protocol
 
 PIPELINE_STEP_NAMES = ("fetch", "analyse", "synthesise", "store")
-PIPELINE_STATUS_PUBLIC_FIELDS = ("status", "started_at", "completed_at", "steps", "error")
+PIPELINE_STATUS_PUBLIC_FIELDS = (
+    "status",
+    "started_at",
+    "completed_at",
+    "steps",
+    "error",
+)
 PIPELINE_STATUS_STEP_PUBLIC_FIELDS = ("name", "status", "duration_ms")
 INDICATOR_PUBLIC_FIELDS = (
     "indicator_code",
@@ -36,6 +42,16 @@ COUNTRY_PUBLIC_FIELDS = (
     "macro_synthesis",
     "risk_flags",
     "outlook",
+    "source_date_range",
+    "updated_at",
+)
+GLOBAL_OVERVIEW_PUBLIC_FIELDS = (
+    "summary",
+    "risk_flags",
+    "outlook",
+    "country_count",
+    "country_codes",
+    "source_date_range",
     "updated_at",
 )
 
@@ -66,17 +82,36 @@ class InsightsRepository(Protocol):
     def upsert_country(self, record: dict[str, Any]) -> None:
         """Store one materialised country briefing."""
 
+    def upsert_global_overview(self, record: dict[str, Any]) -> None:
+        """Store the latest cross-country overview briefing."""
+
     def upsert_pipeline_status(self, record: dict[str, Any]) -> None:
         """Store the latest pipeline status payload."""
+
+    def claim_pipeline_run(self, record: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Claim the current pipeline slot when no run is active.
+
+        Args:
+            record: Candidate running-status payload for the next run.
+
+        Returns:
+            Tuple of (stored_status_record, claimed). ``claimed`` is ``False`` when an
+            active run already owns the slot.
+        """
 
     def get_pipeline_status_record(self) -> dict[str, Any]:
         """Return the full stored pipeline status for internal mutation."""
 
-    def list_indicator_insights(self, country_code: str | None = None) -> list[dict[str, Any]]:
+    def list_indicator_insights(
+        self, country_code: str | None = None
+    ) -> list[dict[str, Any]]:
         """Return indicator insights, optionally filtered by country."""
 
     def get_country_detail(self, country_code: str) -> dict[str, Any] | None:
         """Return one country detail payload if materialised."""
+
+    def get_global_overview(self) -> dict[str, Any] | None:
+        """Return the latest cross-country overview payload if materialised."""
 
     def get_pipeline_status(self) -> dict[str, Any]:
         """Return the latest pipeline status payload."""
@@ -127,6 +162,9 @@ def project_public_record(record: dict[str, Any]) -> dict[str, Any]:
     if entity_type == "country":
         return _project_fields(record, COUNTRY_PUBLIC_FIELDS)
 
+    if entity_type == "global_overview":
+        return _project_fields(record, GLOBAL_OVERVIEW_PUBLIC_FIELDS)
+
     if entity_type == "pipeline_status":
         projected = _project_fields(record, PIPELINE_STATUS_PUBLIC_FIELDS)
         projected["steps"] = [
@@ -140,7 +178,9 @@ def project_public_record(record: dict[str, Any]) -> dict[str, Any]:
     return public_record
 
 
-def require_fields(record: dict[str, Any], required_fields: tuple[str, ...], record_type: str) -> None:
+def require_fields(
+    record: dict[str, Any], required_fields: tuple[str, ...], record_type: str
+) -> None:
     """Validate that a record contains the fields required by the repository.
 
     Args:
@@ -227,7 +267,9 @@ def _build_repository(backend: str) -> InsightsRepository:
     if backend == "firestore":
         from shared.firestore_repository import FirestoreInsightsRepository
 
-        project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT_ID")
+        project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get(
+            "GCP_PROJECT_ID"
+        )
         if not project_id:
             raise ValueError(
                 "REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
@@ -235,13 +277,17 @@ def _build_repository(backend: str) -> InsightsRepository:
 
         return FirestoreInsightsRepository(
             project_id=project_id,
-            collection_name=os.environ.get("WORLD_ANALYST_FIRESTORE_COLLECTION", "insights"),
+            collection_name=os.environ.get(
+                "WORLD_ANALYST_FIRESTORE_COLLECTION", "insights"
+            ),
         )
 
     raise ValueError(f"Unsupported repository backend: {backend}")
 
 
-def _project_fields(record: dict[str, Any], field_names: tuple[str, ...]) -> dict[str, Any]:
+def _project_fields(
+    record: dict[str, Any], field_names: tuple[str, ...]
+) -> dict[str, Any]:
     """Copy a known subset of fields from a stored record.
 
     Args:
@@ -251,7 +297,11 @@ def _project_fields(record: dict[str, Any], field_names: tuple[str, ...]) -> dic
     Returns:
         Copied subset of the stored record.
     """
-    return {field_name: copy.deepcopy(record[field_name]) for field_name in field_names if field_name in record}
+    return {
+        field_name: copy.deepcopy(record[field_name])
+        for field_name in field_names
+        if field_name in record
+    }
 
 
 def is_reusable_ai_record(

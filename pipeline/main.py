@@ -7,11 +7,13 @@ live mode uses the provider-backed client.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import os
 import sys
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -24,6 +26,8 @@ from pipeline.ai_client import (  # noqa: E402
     STEP1_PROMPT_VERSION,
     STEP2_NAME,
     STEP2_PROMPT_VERSION,
+    STEP3_NAME,
+    STEP3_PROMPT_VERSION,
     build_input_fingerprint,
     create_client,
 )
@@ -31,10 +35,11 @@ from pipeline.analyser import compute_changes, prepare_llm_context  # noqa: E402
 from pipeline.dev_ai_adapter import create_development_client  # noqa: E402
 from pipeline.fetcher import INDICATORS, WorldBankFetchError, fetch_live_data  # noqa: E402
 from pipeline.local_data import LOCAL_TARGET_COUNTRY, load_local_data_points  # noqa: E402
-from pipeline.storage import RawArchiveStore, store_slice  # noqa: E402
+from pipeline.storage import RawArchiveStore, get_raw_archive_store, store_slice  # noqa: E402
 from shared.country_catalog import MONITORED_COUNTRY_CODES  # noqa: E402
 from shared.repository import (  # noqa: E402
     InsightsRepository,
+    build_pipeline_steps,
     get_repository,
     is_reusable_ai_record,
 )
@@ -71,6 +76,224 @@ class PipelineExecutionError(RuntimeError):
         self.step_name = step_name
         self.country_codes = country_codes or []
         self.indicator_codes = indicator_codes or []
+
+
+class PipelineStatusTracker:
+    """Own durable pipeline status transitions for one run."""
+
+    def __init__(self, repository: InsightsRepository, run_id: str) -> None:
+        """Initialise the tracker for one claimed or standalone run."""
+        self._repository = repository
+        self._run_id = run_id
+        self._step_started_at: dict[str, float] = {}
+
+    def ensure_running(self, *, already_claimed: bool) -> None:
+        """Ensure the current run has a persisted running status record."""
+        if already_claimed:
+            current_status = self._repository.get_pipeline_status_record()
+            if (
+                current_status.get("run_id") == self._run_id
+                and current_status.get("status") == "running"
+            ):
+                return
+
+        self._repository.upsert_pipeline_status(
+            {
+                "status": "running",
+                "run_id": self._run_id,
+                "started_at": _utc_now(),
+                "steps": build_pipeline_steps(),
+            }
+        )
+
+    def update_step_status(self, step_name: str, step_status: str) -> None:
+        """Update one pipeline step inside the durable status payload."""
+        status = self._repository.get_pipeline_status_record()
+        for step in status.get("steps", []):
+            if step.get("name") != step_name:
+                continue
+            step["status"] = step_status
+            if step_status == "running":
+                step["started_at"] = _utc_now()
+                self._step_started_at[step_name] = perf_counter()
+                step.pop("duration_ms", None)
+                step.pop("completed_at", None)
+            elif (
+                step_status in {"complete", "failed"}
+                and step_name in self._step_started_at
+            ):
+                step["duration_ms"] = int(
+                    (perf_counter() - self._step_started_at.pop(step_name)) * 1000
+                )
+                step["completed_at"] = _utc_now()
+            break
+        self._repository.upsert_pipeline_status(status)
+
+    def mark_complete(self) -> None:
+        """Mark the current run complete and clear stale failure detail."""
+        status = self._repository.get_pipeline_status_record()
+        status["status"] = "complete"
+        status["completed_at"] = _utc_now()
+        status.pop("error", None)
+        status.pop("failure_summary", None)
+        self._repository.upsert_pipeline_status(status)
+
+    def mark_failed(
+        self,
+        *,
+        message: str,
+        step_name: str | None,
+        country_codes: list[str] | None = None,
+        indicator_codes: list[str] | None = None,
+    ) -> None:
+        """Mark the current run failed with step-aware failure detail."""
+        status = self._repository.get_pipeline_status_record()
+        self._mark_failed_step(status, step_name)
+        status["status"] = "failed"
+        status["completed_at"] = _utc_now()
+        status["error"] = message
+        status["failure_summary"] = {
+            "run_id": self._run_id,
+            "step": step_name,
+            "message": message,
+        }
+        if country_codes:
+            status["failure_summary"]["country_codes"] = country_codes
+        if indicator_codes:
+            status["failure_summary"]["indicator_codes"] = indicator_codes
+        self._repository.upsert_pipeline_status(status)
+
+    def mark_preflight_failure(self, *, step_name: str, message: str) -> None:
+        """Persist a failed status when execution cannot start cleanly."""
+        timestamp = _utc_now()
+        steps = build_pipeline_steps()
+        for step in steps:
+            if step["name"] == step_name:
+                step["status"] = "failed"
+                break
+
+        self._repository.upsert_pipeline_status(
+            {
+                "status": "failed",
+                "run_id": self._run_id,
+                "started_at": timestamp,
+                "completed_at": timestamp,
+                "steps": steps,
+                "error": message,
+                "failure_summary": {
+                    "run_id": self._run_id,
+                    "step": step_name,
+                    "message": message,
+                },
+            }
+        )
+
+    def find_running_step_name(self) -> str | None:
+        """Return the step currently marked running, when one exists."""
+        status = self._repository.get_pipeline_status_record()
+        for step in status.get("steps", []):
+            if step.get("status") == "running":
+                return step.get("name")
+        return None
+
+    def _mark_failed_step(
+        self,
+        status: dict[str, Any],
+        fallback_step_name: str | None,
+    ) -> None:
+        """Mark the relevant step failed while preserving existing timing data."""
+        running_step_marked = False
+        for step in status.get("steps", []):
+            if step.get("status") != "running":
+                continue
+            self._apply_failed_step_state(step)
+            running_step_marked = True
+
+        if running_step_marked or fallback_step_name is None:
+            return
+
+        for step in status.get("steps", []):
+            if step.get("name") != fallback_step_name:
+                continue
+            self._apply_failed_step_state(step)
+            break
+
+    def _apply_failed_step_state(self, step: dict[str, Any]) -> None:
+        """Apply the failed terminal state to one pipeline step."""
+        step_name = step.get("name")
+        step["status"] = "failed"
+        if step_name in self._step_started_at:
+            step["duration_ms"] = int(
+                (perf_counter() - self._step_started_at.pop(step_name)) * 1000
+            )
+        if not step.get("completed_at"):
+            step["completed_at"] = _utc_now()
+
+
+def run_managed_pipeline(
+    country_code: str = LOCAL_TARGET_COUNTRY,
+    repository: InsightsRepository | None = None,
+    run_id: str | None = None,
+    raw_archive_store: RawArchiveStore | None = None,
+    status_already_claimed: bool = False,
+) -> dict[str, Any]:
+    """Execute the pipeline while keeping durable status transitions in sync.
+
+    Args:
+        country_code: Requested country scope for the pipeline entry point.
+        repository: Optional repository override.
+        run_id: Optional pre-claimed run identifier.
+        raw_archive_store: Optional raw archive store override.
+        status_already_claimed: True when another process already persisted the
+            running status record for this run.
+
+    Returns:
+        Pipeline execution summary dict.
+    """
+    repo = repository or get_repository()
+    configured_country_code = (
+        os.environ.get("WORLD_ANALYST_PIPELINE_COUNTRY_CODE", "").strip().upper()
+    )
+    requested_country_code = configured_country_code or country_code.upper()
+    current_run_id = (
+        run_id or os.environ.get("WORLD_ANALYST_PIPELINE_RUN_ID") or str(uuid4())
+    )
+    tracker = PipelineStatusTracker(repository=repo, run_id=current_run_id)
+    tracker.ensure_running(already_claimed=status_already_claimed)
+
+    resolved_raw_archive_store = raw_archive_store
+    if resolved_raw_archive_store is None:
+        try:
+            resolved_raw_archive_store = get_raw_archive_store()
+        except Exception as exc:
+            tracker.mark_preflight_failure(step_name="store", message=str(exc))
+            raise
+
+    try:
+        summary = run_pipeline(
+            country_code=requested_country_code,
+            repository=repo,
+            step_callback=tracker.update_step_status,
+            run_id=current_run_id,
+            raw_archive_store=resolved_raw_archive_store,
+        )
+    except PipelineExecutionError as exc:
+        tracker.mark_failed(
+            message=str(exc),
+            step_name=exc.step_name,
+            country_codes=exc.country_codes,
+            indicator_codes=exc.indicator_codes,
+        )
+        raise
+    except Exception as exc:
+        tracker.mark_failed(
+            message=str(exc),
+            step_name=tracker.find_running_step_name(),
+        )
+        raise
+
+    tracker.mark_complete()
+    return summary
 
 
 def run_pipeline(
@@ -256,6 +479,34 @@ def run_pipeline(
             country_code=country_code,
             risk_flags=len(synthesis.get("risk_flags", [])),
         )
+
+    overview_input = _build_global_overview_inputs(
+        country_syntheses=country_syntheses,
+        llm_contexts=llm_contexts,
+        repository=repo,
+    )
+    global_overview = _reuse_global_overview_synthesis(
+        repository=repo,
+        country_briefings=overview_input,
+        provider=ai_provider,
+        model=ai_model,
+    )
+    if global_overview is None:
+        try:
+            global_overview = ai.synthesise_global_overview(overview_input)
+        except Exception as exc:
+            raise PipelineExecutionError(
+                step_name="synthesise",
+                message=str(exc),
+                country_codes=sorted(country_syntheses.keys()),
+            ) from exc
+    _log_event(
+        logging.INFO,
+        "pipeline_global_overview_complete",
+        run_id=current_run_id,
+        country_count=len(overview_input),
+        risk_flags=len(global_overview.get("risk_flags", [])),
+    )
     _notify_step(step_callback, "synthesise", "complete")
 
     # Step 4: STORE
@@ -264,6 +515,7 @@ def run_pipeline(
         storage_summary = store_slice(
             insights=llm_contexts,
             country_syntheses=country_syntheses,
+            global_overview=global_overview,
             raw_data_points=all_data_points,
             raw_fetch_payloads=raw_fetch_payloads,
             run_id=current_run_id,
@@ -289,7 +541,11 @@ def run_pipeline(
         "anomalies_detected": sum(1 for c in llm_contexts if c.get("is_anomaly")),
         **storage_summary,
     }
-    ai_degradation = _summarize_ai_degradation(llm_contexts, country_syntheses)
+    ai_degradation = _summarize_ai_degradation(
+        llm_contexts,
+        country_syntheses,
+        global_overview,
+    )
     if runtime_mode == "live" and fetch_failures:
         incomplete_coverage_message = _build_live_failure_message(
             run_id=current_run_id,
@@ -313,7 +569,11 @@ def run_pipeline(
             or target_country_codes,
             indicator_codes=_get_failure_indicator_codes(fetch_failures),
         )
-    if ai_degradation["indicator_count"] or ai_degradation["country_count"]:
+    if (
+        ai_degradation["indicator_count"]
+        or ai_degradation["country_count"]
+        or ai_degradation["overview_count"]
+    ):
         degradation_message = _build_ai_degradation_message(
             run_id=current_run_id,
             ai_degradation=ai_degradation,
@@ -610,7 +870,38 @@ def _reuse_country_synthesis(
     return _build_reused_ai_result(reusable_record)
 
 
-def _ordered_reuse_indicator_inputs(indicators: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _reuse_global_overview_synthesis(
+    *,
+    repository: InsightsRepository,
+    country_briefings: list[dict[str, Any]],
+    provider: str,
+    model: str,
+) -> dict[str, Any] | None:
+    """Reuse an exact-match Step 3 result from persisted records when available."""
+
+    input_fingerprint = build_input_fingerprint(
+        step_name=STEP3_NAME,
+        prompt_version=STEP3_PROMPT_VERSION,
+        prompt_input=_ordered_reuse_country_briefings(country_briefings),
+        provider=provider,
+        model=model,
+    )
+    reusable_record = repository.get_stored_record(
+        entity_type="global_overview",
+        key="current",
+    )
+    if not reusable_record or not is_reusable_ai_record(
+        record=reusable_record,
+        step_name=STEP3_NAME,
+        input_fingerprint=input_fingerprint,
+    ):
+        return None
+    return _build_reused_ai_result(reusable_record)
+
+
+def _ordered_reuse_indicator_inputs(
+    indicators: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Return deterministic Step 2 inputs for exact-match reuse lookups."""
     return [
         _strip_reuse_private_fields(indicator)
@@ -620,6 +911,23 @@ def _ordered_reuse_indicator_inputs(indicators: list[dict[str, Any]]) -> list[di
                 str(item.get("country_code", "")),
                 str(item.get("indicator_code", "")),
                 int(item.get("data_year", 0) or 0),
+            ),
+        )
+    ]
+
+
+def _ordered_reuse_country_briefings(
+    country_briefings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return deterministic Step 3 inputs for exact-match reuse lookups."""
+
+    return [
+        _strip_reuse_private_fields(briefing)
+        for briefing in sorted(
+            country_briefings,
+            key=lambda item: (
+                str(item.get("code", "")),
+                str(item.get("name", "")),
             ),
         )
     ]
@@ -665,6 +973,7 @@ def _build_reused_ai_result(record: dict[str, Any] | None) -> dict[str, Any] | N
 def _summarize_ai_degradation(
     llm_contexts: list[dict[str, Any]],
     country_syntheses: dict[str, dict[str, Any]],
+    global_overview: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Summarize degraded AI outputs so terminal run status can stay honest."""
     degraded_indicator_records = [
@@ -677,6 +986,9 @@ def _summarize_ai_degradation(
         for country_code, synthesis in country_syntheses.items()
         if bool(synthesis.get("ai_provenance", {}).get("degraded"))
     ]
+    overview_degraded = bool(
+        global_overview and global_overview.get("ai_provenance", {}).get("degraded")
+    )
 
     country_codes: list[str] = []
     indicator_codes: list[str] = []
@@ -689,6 +1001,7 @@ def _summarize_ai_degradation(
     return {
         "indicator_count": len(degraded_indicator_records),
         "country_count": len(degraded_country_records),
+        "overview_count": 1 if overview_degraded else 0,
         "country_codes": country_codes,
         "indicator_codes": indicator_codes,
     }
@@ -724,7 +1037,51 @@ def _build_ai_degradation_clause(ai_degradation: dict[str, Any]) -> str:
             f"Country syntheses degraded: {ai_degradation['country_count']} "
             f"for {', '.join(ai_degradation['country_codes'])}"
         )
+    if ai_degradation["overview_count"]:
+        fragments.append("Global overview synthesis degraded for the monitored panel")
     return "; ".join(fragments)
+
+
+def _build_global_overview_inputs(
+    *,
+    country_syntheses: dict[str, dict[str, Any]],
+    llm_contexts: list[dict[str, Any]],
+    repository: InsightsRepository,
+) -> list[dict[str, Any]]:
+    """Build the Step 3 input from materialised country syntheses and metrics."""
+
+    llm_contexts_by_country: dict[str, list[dict[str, Any]]] = {}
+    for context in llm_contexts:
+        llm_contexts_by_country.setdefault(
+            str(context["country_code"]).upper(), []
+        ).append(context)
+
+    overview_inputs: list[dict[str, Any]] = []
+    for country_code, synthesis in sorted(country_syntheses.items()):
+        contexts = llm_contexts_by_country.get(country_code, [])
+        metadata = repository.get_country_metadata(country_code) or {
+            "code": country_code,
+            "name": contexts[0].get("country_name", country_code)
+            if contexts
+            else country_code,
+            "region": None,
+            "income_level": None,
+        }
+        overview_inputs.append(
+            {
+                "code": metadata.get("code", country_code),
+                "name": metadata.get("name", country_code),
+                "region": metadata.get("region"),
+                "income_level": metadata.get("income_level"),
+                "summary": synthesis.get("summary", ""),
+                "risk_flags": synthesis.get("risk_flags", []),
+                "outlook": synthesis.get("outlook", "cautious"),
+                "anomaly_count": sum(
+                    1 for context in contexts if context.get("is_anomaly")
+                ),
+            }
+        )
+    return overview_inputs
 
 
 def _log_event(level: int, event: str, **fields: Any) -> None:
@@ -740,5 +1097,12 @@ def _log_event(level: int, event: str, **fields: Any) -> None:
     )
 
 
+def _utc_now() -> str:
+    """Return the current UTC timestamp as an ISO string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 if __name__ == "__main__":
-    run_pipeline()
+    run_managed_pipeline(
+        status_already_claimed=bool(os.environ.get("WORLD_ANALYST_PIPELINE_RUN_ID"))
+    )

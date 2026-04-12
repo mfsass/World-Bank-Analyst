@@ -20,7 +20,9 @@ from shared.repository import get_repository, reset_repository_cache  # noqa: E4
 @pytest.fixture(autouse=True)
 def reset_repository(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Reset the shared repository between tests."""
-    monkeypatch.setenv("WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR", str(tmp_path / "raw-archives"))
+    monkeypatch.setenv(
+        "WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR", str(tmp_path / "raw-archives")
+    )
     # Default all pipeline unit tests to local mode. Live tests override this explicitly
     # via monkeypatch.setenv("PIPELINE_MODE", "live") in each test body.
     monkeypatch.setenv("PIPELINE_MODE", "local")
@@ -35,6 +37,8 @@ def reset_repository(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("WORLD_ANALYST_OPENAI_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_AI_MAX_ATTEMPTS", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_PIPELINE_RUN_ID", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_PIPELINE_COUNTRY_CODE", raising=False)
     reset_repository_cache()
     repository = get_repository()
     repository.reset()

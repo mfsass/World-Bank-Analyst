@@ -64,7 +64,9 @@ class FirestoreInsightsRepository:
         Returns:
             Country metadata entries.
         """
-        return [copy.deepcopy(country) for country in MONITORED_COUNTRY_CATALOG.values()]
+        return [
+            copy.deepcopy(country) for country in MONITORED_COUNTRY_CATALOG.values()
+        ]
 
     def get_country_metadata(self, country_code: str) -> dict[str, Any] | None:
         """Return metadata for a monitored country.
@@ -86,7 +88,11 @@ class FirestoreInsightsRepository:
         Raises:
             ValueError: If the record is missing required fields.
         """
-        require_fields(record, ("country_code", "indicator_code", "indicator_name", "data_year"), "indicator")
+        require_fields(
+            record,
+            ("country_code", "indicator_code", "indicator_name", "data_year"),
+            "indicator",
+        )
         country_code = record["country_code"].upper()
         indicator_code = record["indicator_code"]
         document_id = self._document_id("indicator", f"{country_code}:{indicator_code}")
@@ -106,13 +112,34 @@ class FirestoreInsightsRepository:
         """
         require_fields(
             record,
-            ("code", "name", "region", "income_level", "macro_synthesis", "risk_flags", "outlook"),
+            (
+                "code",
+                "name",
+                "region",
+                "income_level",
+                "macro_synthesis",
+                "risk_flags",
+                "outlook",
+            ),
             "country",
         )
         country_code = record["code"].upper()
         document_id = self._document_id("country", country_code)
         self._collection.document(document_id).set(
             {"entity_type": "country", **record, "code": country_code},
+            merge=True,
+        )
+
+    def upsert_global_overview(self, record: dict[str, Any]) -> None:
+        """Store or replace the latest cross-country overview synthesis."""
+        require_fields(
+            record,
+            ("summary", "risk_flags", "outlook", "country_count", "country_codes"),
+            "global_overview",
+        )
+        document_id = self._document_id("global_overview", "current")
+        self._collection.document(document_id).set(
+            {"entity_type": "global_overview", **record},
             merge=True,
         )
 
@@ -132,7 +159,47 @@ class FirestoreInsightsRepository:
             merge=False,
         )
 
-    def list_indicator_insights(self, country_code: str | None = None) -> list[dict[str, Any]]:
+    def claim_pipeline_run(self, record: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Claim the current pipeline slot when no run is active.
+
+        Args:
+            record: Candidate running-status payload for the next run.
+
+        Returns:
+            Tuple of (stored_status_record, claimed).
+        """
+        require_fields(record, ("status", "steps"), "pipeline_status")
+        document_id = self._document_id("pipeline_status", "current")
+        document = self._collection.document(document_id)
+        transaction = self._client.transaction()
+
+        @firestore.transactional
+        def claim_in_transaction(
+            active_transaction: firestore.Transaction,
+        ) -> tuple[dict[str, Any], bool]:
+            snapshot = document.get(transaction=active_transaction)
+            current_record = (
+                copy.deepcopy(snapshot.to_dict() or {})
+                if snapshot.exists
+                else {"entity_type": "pipeline_status", **default_pipeline_status()}
+            )
+            current_record.pop("entity_type", None)
+            if current_record.get("status") == "running":
+                return current_record, False
+
+            claimed_record = copy.deepcopy(record)
+            active_transaction.set(
+                document,
+                {"entity_type": "pipeline_status", **claimed_record},
+                merge=False,
+            )
+            return claimed_record, True
+
+        return claim_in_transaction(transaction)
+
+    def list_indicator_insights(
+        self, country_code: str | None = None
+    ) -> list[dict[str, Any]]:
         """Retrieve indicator insight payloads.
 
         Args:
@@ -161,7 +228,9 @@ class FirestoreInsightsRepository:
             Country detail payload or None when not yet materialised.
         """
         normalized = country_code.upper()
-        snapshot = self._collection.document(self._document_id("country", normalized)).get()
+        snapshot = self._collection.document(
+            self._document_id("country", normalized)
+        ).get()
         if not snapshot.exists:
             return None
 
@@ -169,13 +238,24 @@ class FirestoreInsightsRepository:
         detail["indicators"] = self.list_indicator_insights(normalized)
         return detail
 
+    def get_global_overview(self) -> dict[str, Any] | None:
+        """Return the latest stored cross-country overview when available."""
+        snapshot = self._collection.document(
+            self._document_id("global_overview", "current")
+        ).get()
+        if not snapshot.exists:
+            return None
+        return project_public_record(snapshot.to_dict() or {})
+
     def get_pipeline_status_record(self) -> dict[str, Any]:
         """Return the stored pipeline status, including private fields.
 
         Returns:
             Full stored pipeline status payload.
         """
-        snapshot = self._collection.document(self._document_id("pipeline_status", "current")).get()
+        snapshot = self._collection.document(
+            self._document_id("pipeline_status", "current")
+        ).get()
         if not snapshot.exists:
             return default_pipeline_status()
 
@@ -189,7 +269,9 @@ class FirestoreInsightsRepository:
         Returns:
             Pipeline status dict.
         """
-        snapshot = self._collection.document(self._document_id("pipeline_status", "current")).get()
+        snapshot = self._collection.document(
+            self._document_id("pipeline_status", "current")
+        ).get()
         if not snapshot.exists:
             return default_pipeline_status()
         return project_public_record(snapshot.to_dict() or {})

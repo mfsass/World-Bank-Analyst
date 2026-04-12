@@ -1,14 +1,10 @@
-"""Pipeline trigger and status handlers.
-
-Provides manual pipeline execution and status polling endpoints.
-"""
+"""Pipeline trigger and status handlers."""
 
 from datetime import datetime, timezone
 import logging
 import sys
 from pathlib import Path
-from threading import Lock, Thread
-from time import perf_counter
+from threading import Thread
 from typing import Any
 from uuid import uuid4
 
@@ -18,14 +14,19 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from pipeline.local_data import LOCAL_DEV_COUNTRY  # noqa: E402
-from pipeline.main import PipelineExecutionError, run_pipeline  # noqa: E402
-from pipeline.storage import get_raw_archive_store  # noqa: E402
-from shared.repository import build_pipeline_steps, get_repository, project_public_record  # noqa: E402
+from pipeline.storage import RawArchiveStore, get_raw_archive_store  # noqa: E402
+from api.pipeline_dispatch import (  # noqa: E402
+    dispatch_cloud_run_job,
+    ensure_cloud_run_job_configured,
+    get_pipeline_dispatch_mode,
+)
+from shared.repository import (  # noqa: E402
+    build_pipeline_steps,
+    get_repository,
+    project_public_record,
+)
 
 logger = logging.getLogger(__name__)
-
-_TRIGGER_LOCK = Lock()
-_STEP_STARTED_AT: dict[str, float] = {}
 
 
 def trigger() -> tuple[dict[str, Any], int]:
@@ -42,33 +43,56 @@ def trigger() -> tuple[dict[str, Any], int]:
         repository = get_repository()
     except ValueError as exc:
         logger.exception("Pipeline trigger rejected due to repository configuration")
-        return _project_public_status(_build_preflight_failure_status(run_id, str(exc))), 202
+        return _project_public_status(
+            _build_preflight_failure_status(run_id, str(exc))
+        ), 202
 
-    with _TRIGGER_LOCK:
-        current_status = repository.get_pipeline_status()
-        if current_status["status"] == "running":
-            return current_status, 409
+    try:
+        dispatch_mode = get_pipeline_dispatch_mode()
+    except ValueError as exc:
+        logger.exception("Pipeline trigger rejected due to dispatch-mode configuration")
+        failed_status = _build_preflight_failure_status(run_id, str(exc))
+        repository.upsert_pipeline_status(failed_status)
+        return _project_public_status(failed_status), 202
 
-        try:
-            get_raw_archive_store()
-        except ValueError as exc:
-            logger.exception("Pipeline trigger rejected due to storage configuration")
-            repository.upsert_pipeline_status(_build_preflight_failure_status(run_id, str(exc)))
-            return repository.get_pipeline_status(), 202
-
-        _STEP_STARTED_AT.clear()
-        repository.upsert_pipeline_status(
-            {
-                "status": "running",
-                "run_id": run_id,
-                "started_at": _utc_now(),
-                "steps": build_pipeline_steps(),
-            }
+    raw_archive_store: RawArchiveStore | None = None
+    try:
+        if dispatch_mode == "local":
+            raw_archive_store = get_raw_archive_store()
+        else:
+            ensure_cloud_run_job_configured()
+    except ValueError as exc:
+        logger.exception("Pipeline trigger rejected during dispatch preflight")
+        failed_status = (
+            _build_preflight_failure_status(run_id, str(exc))
+            if dispatch_mode == "local"
+            else _build_dispatch_failure_status(run_id, str(exc))
         )
-        # Return 202 immediately while the background run updates repository-backed status.
-        Thread(target=_execute_local_pipeline, args=(run_id,), daemon=True).start()
+        repository.upsert_pipeline_status(failed_status)
+        return _project_public_status(failed_status), 202
 
-    return repository.get_pipeline_status(), 202
+    claimed_status, claimed = repository.claim_pipeline_run(
+        _build_running_status(run_id)
+    )
+    if not claimed:
+        return _project_public_status(claimed_status), 409
+
+    if dispatch_mode == "local":
+        _start_local_pipeline_thread(
+            run_id=run_id,
+            raw_archive_store=raw_archive_store,
+        )
+        return _project_public_status(claimed_status), 202
+
+    try:
+        dispatch_cloud_run_job(run_id=run_id, country_code=LOCAL_DEV_COUNTRY)
+    except Exception as exc:
+        logger.exception("Cloud pipeline dispatch failed")
+        failed_status = _build_dispatch_failure_status(run_id, str(exc))
+        repository.upsert_pipeline_status(failed_status)
+        return _project_public_status(failed_status), 202
+
+    return _project_public_status(claimed_status), 202
 
 
 def get_status() -> tuple[dict[str, Any], int]:
@@ -82,135 +106,52 @@ def get_status() -> tuple[dict[str, Any], int]:
         repository = get_repository()
     except ValueError as exc:
         logger.exception("Pipeline status unavailable due to repository configuration")
-        return _project_public_status(_build_preflight_failure_status(str(uuid4()), str(exc))), 200
+        return _project_public_status(
+            _build_preflight_failure_status(str(uuid4()), str(exc))
+        ), 200
 
     return repository.get_pipeline_status(), 200
 
 
-def _execute_local_pipeline(run_id: str) -> None:
-    """Run the local pipeline asynchronously and update ephemeral status."""
-    repository = get_repository()
+def _start_local_pipeline_thread(
+    *, run_id: str, raw_archive_store: RawArchiveStore | None
+) -> None:
+    """Start the deterministic local pipeline on a background thread."""
+    thread = Thread(
+        target=_execute_local_pipeline,
+        kwargs={"run_id": run_id, "raw_archive_store": raw_archive_store},
+        daemon=True,
+    )
+    thread.start()
+
+
+def _execute_local_pipeline(
+    *, run_id: str, raw_archive_store: RawArchiveStore | None
+) -> None:
+    """Run the local pipeline asynchronously after the trigger returns 202."""
+    from pipeline.main import run_managed_pipeline
+
     try:
-        run_pipeline(
+        run_managed_pipeline(
             country_code=LOCAL_DEV_COUNTRY,
-            repository=repository,
-            step_callback=_update_step_status,
+            repository=get_repository(),
             run_id=run_id,
+            raw_archive_store=raw_archive_store,
+            status_already_claimed=True,
         )
-        status = repository.get_pipeline_status_record()
-        status["status"] = "complete"
-        status["completed_at"] = _utc_now()
-        status["error"] = None
-        status.pop("failure_summary", None)
-        status.pop("error", None)
-        repository.upsert_pipeline_status(status)
-    except PipelineExecutionError as exc:
-        logger.exception("Local pipeline execution failed")
-        failed_status = repository.get_pipeline_status_record()
-        _mark_failed_step(failed_status, exc.step_name)
-        failed_status["status"] = "failed"
-        failed_status["completed_at"] = _utc_now()
-        failed_status["error"] = str(exc)
-        failed_status["failure_summary"] = {
-            "run_id": run_id,
-            "step": exc.step_name,
-            "message": str(exc),
-            "country_codes": exc.country_codes,
-            "indicator_codes": exc.indicator_codes,
-        }
-        repository.upsert_pipeline_status(failed_status)
-    except Exception as exc:
-        logger.exception("Local pipeline execution failed")
-        failed_status = repository.get_pipeline_status_record()
-        failure_step_name = _find_running_step_name(failed_status)
-        _mark_failed_step(failed_status, failure_step_name)
-        failed_status["status"] = "failed"
-        failed_status["completed_at"] = _utc_now()
-        failed_status["error"] = str(exc)
-        failed_status["failure_summary"] = {
-            "run_id": run_id,
-            "step": failure_step_name,
-            "message": str(exc),
-        }
-        repository.upsert_pipeline_status(failed_status)
-
-
-def _update_step_status(step_name: str, step_status: str) -> None:
-    """Update a single step inside the shared pipeline status payload.
-
-    Args:
-        step_name: Pipeline step name.
-        step_status: New step status.
-    """
-    repository = get_repository()
-    status = repository.get_pipeline_status_record()
-    for step in status.get("steps", []):
-        if step.get("name") != step_name:
-            continue
-        step["status"] = step_status
-        if step_status == "running":
-            step["started_at"] = _utc_now()
-            _STEP_STARTED_AT[step_name] = perf_counter()
-            step.pop("duration_ms", None)
-            step.pop("completed_at", None)
-        elif step_status in {"complete", "failed"} and step_name in _STEP_STARTED_AT:
-            step["duration_ms"] = int((perf_counter() - _STEP_STARTED_AT.pop(step_name)) * 1000)
-            step["completed_at"] = _utc_now()
-        break
-    repository.upsert_pipeline_status(status)
-
-
-def _find_running_step_name(status: dict[str, Any]) -> str | None:
-    """Return the currently running step name when one exists.
-
-    Args:
-        status: Stored pipeline status payload.
-
-    Returns:
-        Running step name, else None.
-    """
-    for step in status.get("steps", []):
-        if step.get("status") == "running":
-            return step.get("name")
-    return None
-
-
-def _mark_failed_step(status: dict[str, Any], fallback_step_name: str | None) -> None:
-    """Mark the most relevant pipeline step as failed.
-
-    Args:
-        status: Stored pipeline status payload.
-        fallback_step_name: Step name to fail when no step is still running.
-    """
-    running_step_marked = False
-    for step in status.get("steps", []):
-        if step.get("status") != "running":
-            continue
-        _apply_failed_step_state(step)
-        running_step_marked = True
-
-    if running_step_marked or fallback_step_name is None:
+    except Exception:
+        # run_managed_pipeline already writes the terminal status before returning.
         return
 
-    for step in status.get("steps", []):
-        if step.get("name") != fallback_step_name:
-            continue
-        _apply_failed_step_state(step)
-        break
 
-
-def _apply_failed_step_state(step: dict[str, Any]) -> None:
-    """Set one pipeline step to failed while preserving existing timing data.
-
-    Args:
-        step: Mutable pipeline step payload.
-    """
-    step_name = step.get("name")
-    step["status"] = "failed"
-    if step_name in _STEP_STARTED_AT:
-        step["duration_ms"] = int((perf_counter() - _STEP_STARTED_AT.pop(step_name)) * 1000)
-    if not step.get("completed_at"):
-        step["completed_at"] = _utc_now()
+def _build_running_status(run_id: str) -> dict[str, Any]:
+    """Build the stored running-status payload for a newly claimed run."""
+    return {
+        "status": "running",
+        "run_id": run_id,
+        "started_at": _utc_now(),
+        "steps": build_pipeline_steps(),
+    }
 
 
 def _build_preflight_failure_status(run_id: str, message: str) -> dict[str, Any]:
@@ -240,6 +181,26 @@ def _build_preflight_failure_status(run_id: str, message: str) -> dict[str, Any]
         "failure_summary": {
             "run_id": run_id,
             "step": "store",
+            "message": message,
+        },
+    }
+
+
+def _build_dispatch_failure_status(run_id: str, message: str) -> dict[str, Any]:
+    """Build a failed status payload for job-dispatch errors."""
+    timestamp = _utc_now()
+    steps = [{"name": "dispatch", "status": "failed"}, *build_pipeline_steps()]
+
+    return {
+        "status": "failed",
+        "run_id": run_id,
+        "started_at": timestamp,
+        "completed_at": timestamp,
+        "steps": steps,
+        "error": message,
+        "failure_summary": {
+            "run_id": run_id,
+            "step": "dispatch",
             "message": message,
         },
     }

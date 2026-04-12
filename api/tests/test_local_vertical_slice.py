@@ -69,6 +69,18 @@ class StubLiveAIClient:
         )
         return result
 
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        result = self._delegate.synthesise_global_overview(country_briefings)
+        result["ai_provenance"].update(
+            {
+                "provider": "stub-live-provider",
+                "model": "stub-live-model",
+            }
+        )
+        return result
+
     def get_provenance(self) -> dict[str, str]:
         return {
             "provider": "stub-live-provider",
@@ -94,7 +106,9 @@ class DegradingStubLiveAIClient(StubLiveAIClient):
         )
         result["confidence"] = "low"
         result["ai_provenance"]["degraded"] = True
-        result["ai_provenance"]["degraded_reason"] = "Synthetic structured-output failure."
+        result["ai_provenance"]["degraded_reason"] = (
+            "Synthetic structured-output failure."
+        )
         return result
 
 
@@ -137,6 +151,7 @@ def test_trigger_status_transition_and_country_detail_flow(client) -> None:
     assert detail["macro_synthesis"]
     assert len(detail["risk_flags"]) >= 2
     assert detail["outlook"] in {"cautious", "bearish", "neutral", "bullish"}
+    assert detail["source_date_range"] == "2017:2023"
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert all("run_id" not in indicator for indicator in detail["indicators"])
@@ -144,10 +159,27 @@ def test_trigger_status_transition_and_country_detail_flow(client) -> None:
         "source_provenance" not in indicator for indicator in detail["indicators"]
     )
 
+    overview_response = client.get("/api/v1/overview", headers=AUTH_HEADERS)
+    assert overview_response.status_code == 200
+    overview = overview_response.json()
+    assert overview["summary"]
+    assert overview["country_count"] == 1
+    assert overview["country_codes"] == ["BR"]
+    assert overview["source_date_range"] == "2017:2023"
+    assert "run_id" not in overview
+    assert "raw_backup_reference" not in overview
+
 
 def test_country_detail_returns_not_found_before_trigger(client) -> None:
     """Country detail should not exist before the local slice has run."""
     response = client.get("/api/v1/countries/BR", headers=AUTH_HEADERS)
+    assert response.status_code == 404
+    assert response.json()["error"] == "Not found"
+
+
+def test_overview_returns_not_found_before_trigger(client) -> None:
+    """The monitored-set overview should not exist before the local slice has run."""
+    response = client.get("/api/v1/overview", headers=AUTH_HEADERS)
     assert response.status_code == 404
     assert response.json()["error"] == "Not found"
 
@@ -176,14 +208,16 @@ def test_failed_trigger_keeps_public_status_stable_and_persists_failure_summary(
     """A failed run should surface a failed public status while keeping private detail internal."""
 
     def fail_pipeline(*_args, **_kwargs):
-        raise pipeline_handler.PipelineExecutionError(
+        raise pipeline_main.PipelineExecutionError(
             step_name="synthesise",
             message="Synthetic country synthesis failure.",
             country_codes=["ZA"],
             indicator_codes=["NY.GDP.MKTP.KD.ZG"],
         )
 
-    monkeypatch.setattr(pipeline_handler, "run_pipeline", fail_pipeline)
+    # The trigger now calls run_managed_pipeline, which owns durable status writes
+    # while delegating the business execution path to run_pipeline.
+    monkeypatch.setattr(pipeline_main, "run_pipeline", fail_pipeline)
 
     trigger_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
     assert trigger_response.status_code == 202
@@ -220,16 +254,18 @@ def test_trigger_fails_before_background_run_when_storage_is_misconfigured(
     monkeypatch,
 ) -> None:
     """A storage configuration error should fail the run before background execution starts."""
-    run_pipeline_called = False
+    local_thread_started = False
 
-    def unexpected_run(*_args, **_kwargs):
-        nonlocal run_pipeline_called
-        run_pipeline_called = True
+    def unexpected_start(*_args, **_kwargs):
+        nonlocal local_thread_started
+        local_thread_started = True
 
     def raise_storage_error() -> None:
         raise ValueError("Raw archive bucket is required for Firestore mode.")
 
-    monkeypatch.setattr(pipeline_handler, "run_pipeline", unexpected_run)
+    monkeypatch.setattr(
+        pipeline_handler, "_start_local_pipeline_thread", unexpected_start
+    )
     monkeypatch.setattr(pipeline_handler, "get_raw_archive_store", raise_storage_error)
 
     trigger_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
@@ -240,7 +276,7 @@ def test_trigger_fails_before_background_run_when_storage_is_misconfigured(
         trigger_response.json()["error"]
         == "Raw archive bucket is required for Firestore mode."
     )
-    assert not run_pipeline_called
+    assert not local_thread_started
 
     stored_status = get_repository().get_pipeline_status_record()
     assert stored_status["failure_summary"] == {
@@ -256,18 +292,20 @@ def test_repository_misconfiguration_returns_failed_status_without_starting_run(
     monkeypatch,
 ) -> None:
     """A broken repository configuration should return a failed status immediately."""
-    run_pipeline_called = False
+    local_thread_started = False
 
-    def unexpected_run(*_args, **_kwargs):
-        nonlocal run_pipeline_called
-        run_pipeline_called = True
+    def unexpected_start(*_args, **_kwargs):
+        nonlocal local_thread_started
+        local_thread_started = True
 
     def raise_repository_error() -> None:
         raise ValueError(
             "REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
         )
 
-    monkeypatch.setattr(pipeline_handler, "run_pipeline", unexpected_run)
+    monkeypatch.setattr(
+        pipeline_handler, "_start_local_pipeline_thread", unexpected_start
+    )
     monkeypatch.setattr(pipeline_handler, "get_repository", raise_repository_error)
 
     trigger_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
@@ -288,7 +326,127 @@ def test_repository_misconfiguration_returns_failed_status_without_starting_run(
         == "REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
     )
     assert "run_id" not in status_response.json()
-    assert not run_pipeline_called
+    assert not local_thread_started
+
+
+def test_cloud_dispatch_mode_claims_running_status_before_dispatch(
+    client, monkeypatch
+) -> None:
+    """Cloud dispatch should keep the public contract while claiming one durable run."""
+    dispatched: dict[str, str] = {}
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_DISPATCH_MODE", "cloud")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID", "world-bank-analyst")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_REGION", "europe-west1")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_NAME", "world-analyst-pipeline")
+
+    def fake_dispatch_cloud_run_job(
+        *, run_id: str, country_code: str
+    ) -> dict[str, str]:
+        dispatched["run_id"] = run_id
+        dispatched["country_code"] = country_code
+        return {"name": "operations/dispatch-123"}
+
+    monkeypatch.setattr(
+        pipeline_handler,
+        "dispatch_cloud_run_job",
+        fake_dispatch_cloud_run_job,
+    )
+
+    response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "running"
+    assert "run_id" not in response.json()
+    assert dispatched["country_code"] == "BR"
+    stored_status = get_repository().get_pipeline_status_record()
+    assert stored_status["status"] == "running"
+    assert stored_status["run_id"] == dispatched["run_id"]
+
+
+def test_cloud_dispatch_mode_refuses_duplicate_manual_run(client, monkeypatch) -> None:
+    """A second cloud trigger should refuse to dispatch while a run is already active."""
+    dispatch_called = False
+    repository = get_repository()
+    repository.upsert_pipeline_status(
+        {
+            "status": "running",
+            "run_id": "existing-cloud-run",
+            "started_at": "2026-04-12T12:00:00+00:00",
+            "steps": [{"name": "fetch", "status": "running"}],
+        }
+    )
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_DISPATCH_MODE", "cloud")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID", "world-bank-analyst")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_REGION", "europe-west1")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_NAME", "world-analyst-pipeline")
+
+    def unexpected_dispatch(**_kwargs) -> None:
+        nonlocal dispatch_called
+        dispatch_called = True
+
+    monkeypatch.setattr(pipeline_handler, "dispatch_cloud_run_job", unexpected_dispatch)
+
+    response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert response.status_code == 409
+    assert response.json()["status"] == "running"
+    assert "run_id" not in response.json()
+    assert not dispatch_called
+
+
+def test_cloud_dispatch_preflight_failure_returns_failed_status(
+    client, monkeypatch
+) -> None:
+    """Cloud dispatch should fail fast when explicit job config is incomplete."""
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_DISPATCH_MODE", "cloud")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID", "world-bank-analyst")
+    monkeypatch.delenv("WORLD_ANALYST_PIPELINE_JOB_REGION", raising=False)
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_NAME", "world-analyst-pipeline")
+
+    response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "failed"
+    assert "WORLD_ANALYST_PIPELINE_JOB_REGION" in response.json()["error"]
+    assert "run_id" not in response.json()
+
+
+def test_cloud_dispatch_failure_after_claim_releases_the_trigger_slot(
+    client, monkeypatch
+) -> None:
+    """A failed Cloud Run dispatch should publish failure and allow a later retry."""
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_DISPATCH_MODE", "cloud")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID", "world-bank-analyst")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_REGION", "europe-west1")
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_JOB_NAME", "world-analyst-pipeline")
+
+    def fail_dispatch(**_kwargs) -> None:
+        raise RuntimeError("Synthetic Cloud Run dispatch failure.")
+
+    monkeypatch.setattr(pipeline_handler, "dispatch_cloud_run_job", fail_dispatch)
+
+    failed_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert failed_response.status_code == 202
+    assert failed_response.json()["status"] == "failed"
+    assert failed_response.json()["error"] == "Synthetic Cloud Run dispatch failure."
+    stored_status = get_repository().get_pipeline_status_record()
+    assert stored_status["failure_summary"] == {
+        "run_id": stored_status["run_id"],
+        "step": "dispatch",
+        "message": "Synthetic Cloud Run dispatch failure.",
+    }
+
+    monkeypatch.setattr(
+        pipeline_handler,
+        "dispatch_cloud_run_job",
+        lambda **_kwargs: {"name": "operations/retry-123"},
+    )
+
+    retry_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert retry_response.status_code == 202
+    assert retry_response.json()["status"] == "running"
 
 
 def test_partial_live_trigger_preserves_country_detail_and_marks_fetch_failed(
@@ -422,7 +580,9 @@ def test_live_trigger_preserves_outputs_but_fails_status_when_ai_degrades(
     assert detail_response.status_code == 200
     stored_status = get_repository().get_pipeline_status_record()
     assert stored_status["failure_summary"]["step"] == "synthesise"
-    assert degraded_indicator_code in stored_status["failure_summary"]["indicator_codes"]
+    assert (
+        degraded_indicator_code in stored_status["failure_summary"]["indicator_codes"]
+    )
 
 
 def _build_partial_live_fetch_result(

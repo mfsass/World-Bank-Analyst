@@ -14,6 +14,8 @@ from pipeline.ai_client import (
     STEP1_PROMPT_VERSION,
     STEP2_NAME,
     STEP2_PROMPT_VERSION,
+    STEP3_NAME,
+    STEP3_PROMPT_VERSION,
     build_input_fingerprint,
 )
 from pipeline.dev_ai_adapter import create_development_client
@@ -99,12 +101,14 @@ class StubLiveAIClient:
                 "model": "stub-live-model",
             }
         )
-        result["ai_provenance"]["lineage"]["input_fingerprint"] = build_input_fingerprint(
-            step_name=STEP1_NAME,
-            prompt_version=STEP1_PROMPT_VERSION,
-            prompt_input=_strip_private_fields(context),
-            provider="stub-live-provider",
-            model="stub-live-model",
+        result["ai_provenance"]["lineage"]["input_fingerprint"] = (
+            build_input_fingerprint(
+                step_name=STEP1_NAME,
+                prompt_version=STEP1_PROMPT_VERSION,
+                prompt_input=_strip_private_fields(context),
+                provider="stub-live-provider",
+                model="stub-live-model",
+            )
         )
         return result
 
@@ -116,12 +120,35 @@ class StubLiveAIClient:
                 "model": "stub-live-model",
             }
         )
-        result["ai_provenance"]["lineage"]["input_fingerprint"] = build_input_fingerprint(
-            step_name=STEP2_NAME,
-            prompt_version=STEP2_PROMPT_VERSION,
-            prompt_input=_ordered_indicator_inputs(indicators),
-            provider="stub-live-provider",
-            model="stub-live-model",
+        result["ai_provenance"]["lineage"]["input_fingerprint"] = (
+            build_input_fingerprint(
+                step_name=STEP2_NAME,
+                prompt_version=STEP2_PROMPT_VERSION,
+                prompt_input=_ordered_indicator_inputs(indicators),
+                provider="stub-live-provider",
+                model="stub-live-model",
+            )
+        )
+        return result
+
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        result = self._delegate.synthesise_global_overview(country_briefings)
+        result["ai_provenance"].update(
+            {
+                "provider": "stub-live-provider",
+                "model": "stub-live-model",
+            }
+        )
+        result["ai_provenance"]["lineage"]["input_fingerprint"] = (
+            build_input_fingerprint(
+                step_name=STEP3_NAME,
+                prompt_version=STEP3_PROMPT_VERSION,
+                prompt_input=_ordered_country_briefings(country_briefings),
+                provider="stub-live-provider",
+                model="stub-live-model",
+            )
         )
         return result
 
@@ -139,6 +166,7 @@ class CountingStubLiveAIClient(StubLiveAIClient):
         super().__init__()
         self.indicator_calls = 0
         self.country_calls = 0
+        self.overview_calls = 0
 
     def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
         self.indicator_calls += 1
@@ -147,6 +175,12 @@ class CountingStubLiveAIClient(StubLiveAIClient):
     def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
         self.country_calls += 1
         return super().synthesise_country(indicators)
+
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        self.overview_calls += 1
+        return super().synthesise_global_overview(country_briefings)
 
 
 class DegradingStubLiveAIClient(StubLiveAIClient):
@@ -167,7 +201,9 @@ class DegradingStubLiveAIClient(StubLiveAIClient):
         )
         result["confidence"] = "low"
         result["ai_provenance"]["degraded"] = True
-        result["ai_provenance"]["degraded_reason"] = "Synthetic structured-output failure."
+        result["ai_provenance"]["degraded_reason"] = (
+            "Synthetic structured-output failure."
+        )
         return result
 
 
@@ -584,10 +620,12 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
         EXPECTED_MONITORED_COUNTRY_CODES
     )
     assert summary["country_records"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert summary["global_overview_records"] == 1
     assert summary["raw_archives_written"] == 7
 
     indicator_record = repository._records["indicator:BR:NY.GDP.MKTP.KD.ZG"]
     country_record = repository._records["country:BR"]
+    overview_record = repository._records["global_overview:current"]
     assert indicator_record["source_provenance"] == {
         "source_name": WORLD_BANK_SOURCE_NAME,
         "source_date_range": LIVE_DATE_RANGE,
@@ -604,16 +642,24 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
     assert country_record["ai_provenance"]["provider"] == "stub-live-provider"
     assert country_record["ai_provenance"]["prompt_version"] == "step2.v1.0.0"
     assert country_record["ai_provenance"]["degraded"] is False
+    assert overview_record["ai_provenance"]["provider"] == "stub-live-provider"
+    assert overview_record["ai_provenance"]["prompt_version"] == "step3.v1.0.0"
+    assert overview_record["ai_provenance"]["degraded"] is False
+    assert overview_record["country_count"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
 
     brazil_detail = repository.get_country_detail("BR")
     uruguay_detail = repository.get_country_detail("UY")
+    global_overview = repository.get_global_overview()
     assert brazil_detail is not None
     assert uruguay_detail is not None
+    assert global_overview is not None
     assert brazil_detail["code"] == "BR"
     assert brazil_detail["name"] == "Brazil"
     assert len(brazil_detail["indicators"]) == len(INDICATORS)
     assert uruguay_detail["code"] == "UY"
     assert len(uruguay_detail["indicators"]) == len(INDICATORS)
+    assert global_overview["country_count"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert global_overview["summary"]
 
     raw_archive_path = (
         tmp_path / "raw-archives" / "runs" / run_id / "raw" / "NY.GDP.MKTP.KD.ZG.json"
@@ -700,19 +746,31 @@ def test_live_pipeline_reuses_exact_match_ai_results_from_persisted_records(
     assert first_summary["indicators_analysed"] == len(INDICATORS) * len(
         EXPECTED_MONITORED_COUNTRY_CODES
     )
-    assert first_summary["countries_synthesised"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
-    assert live_ai.indicator_calls == len(INDICATORS) * len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert first_summary["countries_synthesised"] == len(
+        EXPECTED_MONITORED_COUNTRY_CODES
+    )
+    assert live_ai.indicator_calls == len(INDICATORS) * len(
+        EXPECTED_MONITORED_COUNTRY_CODES
+    )
     assert live_ai.country_calls == len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert live_ai.overview_calls == 1
 
     second_summary = run_pipeline(repository=repository, run_id=second_run_id)
 
     assert second_summary["indicators_analysed"] == first_summary["indicators_analysed"]
-    assert second_summary["countries_synthesised"] == first_summary["countries_synthesised"]
-    assert live_ai.indicator_calls == len(INDICATORS) * len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert (
+        second_summary["countries_synthesised"]
+        == first_summary["countries_synthesised"]
+    )
+    assert live_ai.indicator_calls == len(INDICATORS) * len(
+        EXPECTED_MONITORED_COUNTRY_CODES
+    )
     assert live_ai.country_calls == len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert live_ai.overview_calls == 1
 
     reused_indicator_record = repository._records["indicator:BR:NY.GDP.MKTP.KD.ZG"]
     reused_country_record = repository._records["country:BR"]
+    reused_overview_record = repository._records["global_overview:current"]
     assert reused_indicator_record["run_id"] == second_run_id
     assert reused_indicator_record["ai_provenance"]["lineage"]["reused_from"] == {
         "document_id": "indicator:BR:NY.GDP.MKTP.KD.ZG",
@@ -720,6 +778,10 @@ def test_live_pipeline_reuses_exact_match_ai_results_from_persisted_records(
     }
     assert reused_country_record["ai_provenance"]["lineage"]["reused_from"] == {
         "document_id": "country:BR",
+        "run_id": first_run_id,
+    }
+    assert reused_overview_record["ai_provenance"]["lineage"]["reused_from"] == {
+        "document_id": "global_overview:current",
         "run_id": first_run_id,
     }
     assert "usage" not in reused_indicator_record["ai_provenance"]
@@ -758,7 +820,10 @@ def test_live_pipeline_marks_terminal_status_failed_when_ai_falls_back_to_degrad
     assert brazil_detail["macro_synthesis"]
     indicator_record = repository._records[f"indicator:BR:{degraded_indicator_code}"]
     assert indicator_record["ai_provenance"]["degraded"] is True
-    assert indicator_record["ai_provenance"]["degraded_reason"] == "Synthetic structured-output failure."
+    assert (
+        indicator_record["ai_provenance"]["degraded_reason"]
+        == "Synthetic structured-output failure."
+    )
 
 
 def test_live_pipeline_preserves_successful_outputs_when_indicator_coverage_is_incomplete(
@@ -887,6 +952,23 @@ def _ordered_indicator_inputs(indicators: list[dict[str, Any]]) -> list[dict[str
                 str(item.get("country_code", "")),
                 str(item.get("indicator_code", "")),
                 int(item.get("data_year", 0) or 0),
+            ),
+        )
+    ]
+
+
+def _ordered_country_briefings(
+    country_briefings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Mirror the runtime's deterministic Step 3 ordering for test doubles."""
+
+    return [
+        _strip_private_fields(briefing)
+        for briefing in sorted(
+            country_briefings,
+            key=lambda item: (
+                str(item.get("code", "")),
+                str(item.get("name", "")),
             ),
         )
     ]

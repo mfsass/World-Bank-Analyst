@@ -126,6 +126,7 @@ class GCSRawArchiveStore:
 def store_slice(
     insights: list[dict[str, Any]],
     country_syntheses: dict[str, dict[str, Any]],
+    global_overview: dict[str, Any],
     raw_data_points: list[dict[str, Any]],
     run_id: str,
     raw_fetch_payloads: dict[str, Any] | None = None,
@@ -138,6 +139,7 @@ def store_slice(
     Args:
         insights: Enriched per-indicator insight payloads.
         country_syntheses: Country synthesis payloads keyed by country code.
+        global_overview: Cross-country overview synthesis payload.
         raw_data_points: Raw fetched payloads for the current run.
         raw_fetch_payloads: Optional live request-response envelopes keyed by indicator code.
         run_id: UUID v4 run identifier for durable provenance.
@@ -146,7 +148,7 @@ def store_slice(
         raw_archive_store: Optional raw archive implementation override.
 
     Returns:
-        Counts of indicator and country records written.
+        Counts of indicator, country, and overview records written.
     """
     repo = repository or get_repository()
     updated_at = datetime.now(timezone.utc).isoformat()
@@ -227,6 +229,9 @@ def store_slice(
         )
         if country_source_provenance:
             country_record["source_provenance"] = country_source_provenance
+            country_record["source_date_range"] = country_source_provenance.get(
+                "source_date_range"
+            )
         record_ai_provenance = _resolve_record_ai_provenance(synthesis, ai_provenance)
         if record_ai_provenance and synthesis.get("summary"):
             country_record["ai_provenance"] = record_ai_provenance
@@ -237,8 +242,36 @@ def store_slice(
         repo.upsert_country(country_record)
         country_writes += 1
 
+    overview_record = {
+        "summary": global_overview["summary"],
+        "risk_flags": copy.deepcopy(global_overview["risk_flags"]),
+        "outlook": global_overview["outlook"],
+        "country_count": len(country_syntheses),
+        "country_codes": sorted(country_syntheses.keys()),
+        "updated_at": updated_at,
+        "run_id": run_id,
+        "raw_backup_reference": archive_result.manifest_reference,
+    }
+    overview_source_provenance = _build_panel_source_provenance(
+        country_syntheses=country_syntheses,
+        source_provenance_by_indicator=source_provenance_by_indicator,
+    )
+    if overview_source_provenance:
+        overview_record["source_provenance"] = overview_source_provenance
+        overview_record["source_date_range"] = overview_source_provenance.get(
+            "source_date_range"
+        )
+    record_ai_provenance = _resolve_record_ai_provenance(global_overview, ai_provenance)
+    if record_ai_provenance and global_overview.get("summary"):
+        overview_record["ai_provenance"] = record_ai_provenance
+    structured_ai_output = _build_global_overview_structured_output(global_overview)
+    if structured_ai_output:
+        overview_record["ai_structured_output"] = structured_ai_output
+
+    repo.upsert_global_overview(overview_record)
+
     logger.info(
-        "Stored %d indicator insights, %d country syntheses, and %d raw payload archives for run %s",
+        "Stored %d indicator insights, %d country syntheses, one global overview, and %d raw payload archives for run %s",
         indicator_writes,
         country_writes,
         len(archive_result.scope_references) + 1,
@@ -247,6 +280,7 @@ def store_slice(
     return {
         "indicator_records": indicator_writes,
         "country_records": country_writes,
+        "global_overview_records": 1,
         "raw_archives_written": len(archive_result.scope_references) + 1,
     }
 
@@ -254,6 +288,7 @@ def store_slice(
 def store_local_slice(
     insights: list[dict[str, Any]],
     country_syntheses: dict[str, dict[str, Any]],
+    global_overview: dict[str, Any],
     raw_data_points: list[dict[str, Any]],
     run_id: str,
     raw_fetch_payloads: dict[str, Any] | None = None,
@@ -266,6 +301,7 @@ def store_local_slice(
     Args:
         insights: Enriched per-indicator insight payloads.
         country_syntheses: Country synthesis payloads keyed by country code.
+        global_overview: Cross-country overview synthesis payload.
         raw_data_points: Raw fetched payloads for the current run.
         raw_fetch_payloads: Optional live request-response envelopes keyed by indicator code.
         run_id: UUID v4 run identifier for durable provenance.
@@ -274,11 +310,12 @@ def store_local_slice(
         raw_archive_store: Optional raw archive implementation override.
 
     Returns:
-        Counts of indicator and country records written.
+        Counts of indicator, country, and overview records written.
     """
     return store_slice(
         insights=insights,
         country_syntheses=country_syntheses,
+        global_overview=global_overview,
         raw_data_points=raw_data_points,
         raw_fetch_payloads=raw_fetch_payloads,
         run_id=run_id,
@@ -447,6 +484,69 @@ def _build_country_source_provenance(
     return country_provenance
 
 
+def _build_panel_source_provenance(
+    *,
+    country_syntheses: dict[str, dict[str, Any]],
+    source_provenance_by_indicator: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Build source provenance for the cross-country overview record."""
+
+    source_names = {
+        provenance.get("source_name")
+        for provenance in source_provenance_by_indicator.values()
+        if provenance.get("source_name")
+    }
+    source_date_ranges = {
+        provenance.get("source_date_range")
+        for provenance in source_provenance_by_indicator.values()
+        if provenance.get("source_date_range")
+    }
+    source_last_updated = {
+        provenance.get("source_last_updated")
+        for provenance in source_provenance_by_indicator.values()
+        if provenance.get("source_last_updated")
+    }
+    source_ids = {
+        provenance.get("source_id")
+        for provenance in source_provenance_by_indicator.values()
+        if provenance.get("source_id")
+    }
+    if not source_names:
+        return {}
+
+    return {
+        "source_name": sorted(source_names)[0],
+        "source_date_range": _merge_source_date_ranges(source_date_ranges),
+        "source_last_updated": max(source_last_updated)
+        if source_last_updated
+        else None,
+        "source_id": sorted(source_ids)[0] if source_ids else None,
+        "country_codes": sorted(country_syntheses.keys()),
+    }
+
+
+def _merge_source_date_ranges(source_date_ranges: set[str]) -> str | None:
+    """Merge one or more YYYY:YYYY source windows into one panel-wide range."""
+
+    if not source_date_ranges:
+        return None
+
+    parsed_ranges: list[tuple[int, int]] = []
+    for value in source_date_ranges:
+        try:
+            start_text, end_text = str(value).split(":", maxsplit=1)
+            parsed_ranges.append((int(start_text), int(end_text)))
+        except (TypeError, ValueError):
+            continue
+
+    if not parsed_ranges:
+        return sorted(source_date_ranges)[0]
+
+    start_year = min(start_year for start_year, _ in parsed_ranges)
+    end_year = max(end_year for _, end_year in parsed_ranges)
+    return f"{start_year}:{end_year}"
+
+
 def _resolve_record_ai_provenance(
     record: dict[str, Any],
     default_ai_provenance: dict[str, Any] | None,
@@ -495,6 +595,22 @@ def _build_country_structured_output(
     Returns:
         Private structured AI payload, else None when the required fields are absent.
     """
+    required_fields = ("summary", "risk_flags", "outlook")
+    if any(field_name not in synthesis for field_name in required_fields):
+        return None
+
+    return {
+        "summary": synthesis["summary"],
+        "risk_flags": copy.deepcopy(synthesis["risk_flags"]),
+        "outlook": synthesis["outlook"],
+    }
+
+
+def _build_global_overview_structured_output(
+    synthesis: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Persist the private Step 3 payload in one stable shape for reuse."""
+
     required_fields = ("summary", "risk_flags", "outlook")
     if any(field_name not in synthesis for field_name in required_fields):
         return None

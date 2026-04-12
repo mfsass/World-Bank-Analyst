@@ -7,8 +7,12 @@ from pathlib import Path
 import pytest
 
 import pipeline.main as pipeline_main
-from pipeline.main import run_pipeline
-from pipeline.storage import LocalRawArchiveStore, get_raw_archive_store
+from pipeline.main import run_managed_pipeline, run_pipeline
+from pipeline.storage import (
+    LocalRawArchiveStore,
+    _build_panel_source_provenance,
+    get_raw_archive_store,
+)
 from shared.repository import get_repository, get_repository_backend
 
 EXPECTED_MONITORED_COUNTRY_CODES = [
@@ -62,13 +66,21 @@ def test_local_pipeline_persists_indicator_and_country_records() -> None:
     assert summary["countries_synthesised"] == 1
     assert summary["indicator_records"] == 6
     assert summary["country_records"] == 1
+    assert summary["global_overview_records"] == 1
 
     detail = repository.get_country_detail("ZA")
+    overview = repository.get_global_overview()
     assert detail is not None
+    assert overview is not None
     assert detail["code"] == "ZA"
     assert len(detail["indicators"]) == 6
     assert detail["macro_synthesis"]
     assert len(detail["risk_flags"]) == 3
+    assert detail["source_date_range"] == "2017:2023"
+    assert overview["country_count"] == 1
+    assert overview["country_codes"] == ["ZA"]
+    assert overview["summary"]
+    assert overview["source_date_range"] == "2017:2023"
     assert repository.get_country_detail("BE") is None
 
 
@@ -78,14 +90,20 @@ def test_local_pipeline_is_deterministic_across_reruns() -> None:
 
     run_pipeline(repository=repository)
     first_detail = repository.get_country_detail("ZA")
+    first_overview = repository.get_global_overview()
 
     run_pipeline(repository=repository)
     second_detail = repository.get_country_detail("ZA")
+    second_overview = repository.get_global_overview()
 
     assert first_detail is not None
     assert second_detail is not None
+    assert first_overview is not None
+    assert second_overview is not None
     assert first_detail["macro_synthesis"] == second_detail["macro_synthesis"]
     assert first_detail["risk_flags"] == second_detail["risk_flags"]
+    assert first_overview["summary"] == second_overview["summary"]
+    assert first_overview["risk_flags"] == second_overview["risk_flags"]
     assert [indicator["ai_analysis"] for indicator in first_detail["indicators"]] == [
         indicator["ai_analysis"] for indicator in second_detail["indicators"]
     ]
@@ -123,6 +141,7 @@ def test_local_pipeline_persists_private_provenance_and_raw_archives(
 
     indicator_record = repository._records["indicator:ZA:NY.GDP.MKTP.KD.ZG"]
     country_record = repository._records["country:ZA"]
+    overview_record = repository._records["global_overview:current"]
 
     assert summary["raw_archives_written"] == 7
     assert indicator_record["run_id"] == run_id
@@ -156,10 +175,36 @@ def test_local_pipeline_persists_private_provenance_and_raw_archives(
             "SL.UEM.TOTL.ZS",
         ]
     )
+    assert overview_record["run_id"] == run_id
+    assert (
+        overview_record["raw_backup_reference"]
+        == f"local://runs/{run_id}/raw/manifest.json"
+    )
+    assert overview_record["ai_provenance"]["prompt_version"] == "step3.v1.0.0"
+    assert overview_record["ai_provenance"]["degraded"] is False
+    assert overview_record["country_codes"] == ["ZA"]
 
     raw_archive_root = tmp_path / "raw-archives" / "runs" / run_id / "raw"
     assert raw_archive_root.joinpath("manifest.json").exists()
     assert raw_archive_root.joinpath("NY.GDP.MKTP.KD.ZG.json").exists()
+
+
+def test_managed_pipeline_run_updates_durable_status_for_job_execution() -> None:
+    """A standalone job-style run should keep durable status in sync with the records it writes."""
+    repository = get_repository()
+    run_id = "4be0b760-87f3-40e9-9ad2-f35318d872f1"
+
+    summary = run_managed_pipeline(repository=repository, run_id=run_id)
+
+    stored_status = repository.get_pipeline_status_record()
+    assert summary["run_id"] == run_id
+    assert stored_status["status"] == "complete"
+    assert stored_status["run_id"] == run_id
+    assert stored_status["completed_at"]
+    assert any(
+        step["name"] == "store" and step["status"] == "complete"
+        for step in stored_status["steps"]
+    )
 
 
 def test_repository_backend_prefers_repository_mode_alias(monkeypatch) -> None:
@@ -168,6 +213,34 @@ def test_repository_backend_prefers_repository_mode_alias(monkeypatch) -> None:
     monkeypatch.setenv("REPOSITORY_MODE", "firestore")
 
     assert get_repository_backend() == "firestore"
+
+
+def test_panel_source_provenance_merges_the_full_source_window() -> None:
+    """Panel provenance should expose one merged source window across indicators."""
+
+    provenance = _build_panel_source_provenance(
+        country_syntheses={
+            "BR": {"summary": "placeholder"},
+            "ZA": {"summary": "placeholder"},
+        },
+        source_provenance_by_indicator={
+            "GDP": {
+                "source_name": "world_bank_indicators_api",
+                "source_date_range": "2010:2024",
+                "source_last_updated": "2026-04-10",
+                "source_id": "2",
+            },
+            "CPI": {
+                "source_name": "world_bank_indicators_api",
+                "source_date_range": "2012:2023",
+                "source_last_updated": "2026-04-12",
+                "source_id": "2",
+            },
+        },
+    )
+
+    assert provenance["source_date_range"] == "2010:2024"
+    assert provenance["source_last_updated"] == "2026-04-12"
 
 
 def test_firestore_mode_requires_gcs_raw_archive_bucket(

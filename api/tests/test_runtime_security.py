@@ -75,3 +75,35 @@ def test_validate_api_key_accepts_configured_non_local_secret(
     monkeypatch.setenv("WORLD_ANALYST_API_KEY", "configured-secret")
 
     assert validate_api_key("configured-secret") is not None
+
+
+def test_protected_endpoint_rejects_requests_without_api_key_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Protected endpoints should return 401 when the browser skips the API key."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.setenv("WORLD_ANALYST_ALLOWED_ORIGINS", "https://world-analyst.example")
+    monkeypatch.setenv("WORLD_ANALYST_API_KEY", "configured-secret")
+
+    client = create_app().test_client()
+
+    response = client.get("/api/v1/countries")
+
+    assert response.status_code == 401
+    assert "configured-secret" not in response.text
+
+
+def test_protected_endpoint_rejects_wrong_api_key_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Protected endpoints should return 401 for the wrong shared API key."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.setenv("WORLD_ANALYST_ALLOWED_ORIGINS", "https://world-analyst.example")
+    monkeypatch.setenv("WORLD_ANALYST_API_KEY", "configured-secret")
+
+    client = create_app().test_client()
+
+    response = client.get("/api/v1/countries", headers={"X-API-Key": "wrong-secret"})
+
+    assert response.status_code == 401
+    assert "configured-secret" not in response.text

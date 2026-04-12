@@ -12,6 +12,8 @@ from pipeline.ai_client import (
     STEP1_PROMPT_VERSION,
     STEP2_NAME,
     STEP2_PROMPT_VERSION,
+    STEP3_NAME,
+    STEP3_PROMPT_VERSION,
 )
 
 
@@ -118,6 +120,61 @@ class DeterministicDevelopmentAIClient(AIClient):
                 step_name=STEP2_NAME,
                 prompt_version=STEP2_PROMPT_VERSION,
                 prompt_input=indicators,
+                provider=self._PROVIDER_NAME,
+                model=self._MODEL_NAME,
+            ),
+        }
+
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Return deterministic cross-country overview synthesis."""
+
+        country_count = len(country_briefings)
+        bearish_count = sum(
+            1 for briefing in country_briefings if briefing.get("outlook") == "bearish"
+        )
+        cautious_count = sum(
+            1 for briefing in country_briefings if briefing.get("outlook") == "cautious"
+        )
+        bullish_count = sum(
+            1 for briefing in country_briefings if briefing.get("outlook") == "bullish"
+        )
+        dominant_country = (
+            country_briefings[0]["name"] if country_briefings else "the panel"
+        )
+
+        summary = (
+            f"The monitored panel currently spans {country_count} materialised country briefings, "
+            f"with {bearish_count} bearish, {cautious_count} cautious, and {bullish_count} bullish outlooks. "
+            f"The current operating picture is not one lead market story: it is a panel view built from all stored "
+            f"country briefings, even when the sharpest pressure point is visible in {dominant_country}."
+        )
+        risk_flags = [
+            f"{briefing['name']} remains flagged: {briefing['risk_flags'][0]}"
+            for briefing in country_briefings
+            if briefing.get("risk_flags")
+        ][:3]
+        if not risk_flags:
+            risk_flags = [
+                "No country-level risk flags are materialised yet for the monitored panel."
+            ]
+
+        if bearish_count > 0:
+            outlook = "bearish"
+        elif cautious_count > 0:
+            outlook = "cautious"
+        else:
+            outlook = "bullish"
+
+        return {
+            "summary": summary,
+            "risk_flags": risk_flags,
+            "outlook": outlook,
+            "ai_provenance": _build_ai_provenance(
+                step_name=STEP3_NAME,
+                prompt_version=STEP3_PROMPT_VERSION,
+                prompt_input=country_briefings,
                 provider=self._PROVIDER_NAME,
                 model=self._MODEL_NAME,
             ),

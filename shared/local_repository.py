@@ -11,7 +11,11 @@ from threading import RLock
 from typing import Any
 
 from shared.country_catalog import MONITORED_COUNTRY_CATALOG
-from shared.repository import default_pipeline_status, project_public_record, require_fields
+from shared.repository import (
+    default_pipeline_status,
+    project_public_record,
+    require_fields,
+)
 
 
 class InMemoryInsightsRepository:
@@ -43,7 +47,9 @@ class InMemoryInsightsRepository:
         Returns:
             Country metadata entries.
         """
-        return [copy.deepcopy(country) for country in MONITORED_COUNTRY_CATALOG.values()]
+        return [
+            copy.deepcopy(country) for country in MONITORED_COUNTRY_CATALOG.values()
+        ]
 
     def get_country_metadata(self, country_code: str) -> dict[str, Any] | None:
         """Return metadata for a supported country.
@@ -65,11 +71,18 @@ class InMemoryInsightsRepository:
         Raises:
             ValueError: If the record is missing required fields.
         """
-        require_fields(record, ("country_code", "indicator_code", "indicator_name", "data_year"), "indicator")
+        require_fields(
+            record,
+            ("country_code", "indicator_code", "indicator_name", "data_year"),
+            "indicator",
+        )
         country_code = record["country_code"].upper()
         indicator_code = record["indicator_code"]
         document_id = self._document_id("indicator", f"{country_code}:{indicator_code}")
-        self._upsert(document_id, {"entity_type": "indicator", **record, "country_code": country_code})
+        self._upsert(
+            document_id,
+            {"entity_type": "indicator", **record, "country_code": country_code},
+        )
 
     def upsert_country(self, record: dict[str, Any]) -> None:
         """Store or replace a country synthesis record.
@@ -82,12 +95,39 @@ class InMemoryInsightsRepository:
         """
         require_fields(
             record,
-            ("code", "name", "region", "income_level", "macro_synthesis", "risk_flags", "outlook"),
+            (
+                "code",
+                "name",
+                "region",
+                "income_level",
+                "macro_synthesis",
+                "risk_flags",
+                "outlook",
+            ),
             "country",
         )
         country_code = record["code"].upper()
         document_id = self._document_id("country", country_code)
-        self._upsert(document_id, {"entity_type": "country", **record, "code": country_code})
+        self._upsert(
+            document_id, {"entity_type": "country", **record, "code": country_code}
+        )
+
+    def upsert_global_overview(self, record: dict[str, Any]) -> None:
+        """Store or replace the latest cross-country overview synthesis.
+
+        Args:
+            record: Mixed-document overview record.
+
+        Raises:
+            ValueError: If the record is missing required fields.
+        """
+        require_fields(
+            record,
+            ("summary", "risk_flags", "outlook", "country_count", "country_codes"),
+            "global_overview",
+        )
+        document_id = self._document_id("global_overview", "current")
+        self._upsert(document_id, {"entity_type": "global_overview", **record})
 
     def upsert_pipeline_status(self, record: dict[str, Any]) -> None:
         """Store the latest pipeline status record.
@@ -102,7 +142,38 @@ class InMemoryInsightsRepository:
         document_id = self._document_id("pipeline_status", "current")
         self._upsert(document_id, {"entity_type": "pipeline_status", **record})
 
-    def list_indicator_insights(self, country_code: str | None = None) -> list[dict[str, Any]]:
+    def claim_pipeline_run(self, record: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Claim the current pipeline slot when no run is active.
+
+        Args:
+            record: Candidate running-status payload for the next run.
+
+        Returns:
+            Tuple of (stored_status_record, claimed).
+        """
+        require_fields(record, ("status", "steps"), "pipeline_status")
+        document_id = self._document_id("pipeline_status", "current")
+        with self._lock:
+            current_record = copy.deepcopy(
+                self._records.get(
+                    document_id,
+                    {"entity_type": "pipeline_status", **default_pipeline_status()},
+                )
+            )
+            current_record.pop("entity_type", None)
+            if current_record.get("status") == "running":
+                return current_record, False
+
+            claimed_record = copy.deepcopy(record)
+            self._records[document_id] = {
+                "entity_type": "pipeline_status",
+                **claimed_record,
+            }
+            return claimed_record, True
+
+    def list_indicator_insights(
+        self, country_code: str | None = None
+    ) -> list[dict[str, Any]]:
         """Retrieve indicator insight payloads.
 
         Args:
@@ -143,6 +214,15 @@ class InMemoryInsightsRepository:
         detail["indicators"] = self.list_indicator_insights(normalized)
         return detail
 
+    def get_global_overview(self) -> dict[str, Any] | None:
+        """Return the latest stored cross-country overview when available."""
+        document_id = self._document_id("global_overview", "current")
+        with self._lock:
+            overview_record = self._records.get(document_id)
+            if overview_record is None:
+                return None
+        return project_public_record(overview_record)
+
     def get_pipeline_status_record(self) -> dict[str, Any]:
         """Return the stored pipeline status, including private fields.
 
@@ -151,7 +231,10 @@ class InMemoryInsightsRepository:
         """
         document_id = self._document_id("pipeline_status", "current")
         with self._lock:
-            record = self._records.get(document_id, {"entity_type": "pipeline_status", **default_pipeline_status()})
+            record = self._records.get(
+                document_id,
+                {"entity_type": "pipeline_status", **default_pipeline_status()},
+            )
 
         stored_record = copy.deepcopy(record)
         stored_record.pop("entity_type", None)
@@ -165,7 +248,10 @@ class InMemoryInsightsRepository:
         """
         document_id = self._document_id("pipeline_status", "current")
         with self._lock:
-            record = self._records.get(document_id, {"entity_type": "pipeline_status", **default_pipeline_status()})
+            record = self._records.get(
+                document_id,
+                {"entity_type": "pipeline_status", **default_pipeline_status()},
+            )
         return project_public_record(record)
 
     def get_stored_record(
@@ -215,4 +301,3 @@ class InMemoryInsightsRepository:
             Stable document identifier.
         """
         return f"{entity_type}:{key}"
-

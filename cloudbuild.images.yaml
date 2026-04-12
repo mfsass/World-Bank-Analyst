@@ -1,0 +1,29 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - api/Dockerfile
+      - -t
+      - gcr.io/${PROJECT_ID}/world-analyst-api
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - frontend/Dockerfile
+      - -t
+      - gcr.io/${PROJECT_ID}/world-analyst-frontend
+      - frontend
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - pipeline/Dockerfile
+      - -t
+      - gcr.io/${PROJECT_ID}/world-analyst-pipeline
+      - .
+images:
+  - gcr.io/${PROJECT_ID}/world-analyst-api
+  - gcr.io/${PROJECT_ID}/world-analyst-frontend
+  - gcr.io/${PROJECT_ID}/world-analyst-pipeline

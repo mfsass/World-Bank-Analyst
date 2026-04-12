@@ -8,7 +8,32 @@ import pytest
 
 import shared.firestore_repository as firestore_repository_module
 from shared.firestore_repository import FirestoreInsightsRepository
-from shared.repository import get_repository, get_repository_backend, reset_repository_cache
+from shared.repository import (
+    get_repository,
+    get_repository_backend,
+    reset_repository_cache,
+)
+
+
+@pytest.fixture(autouse=True)
+def patch_transactional(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep repository transaction tests deterministic with the fake client."""
+
+    def fake_transactional(callback):
+        def wrapped(transaction, *args, **kwargs):
+            result = callback(transaction, *args, **kwargs)
+            commit = getattr(transaction, "commit", None)
+            if callable(commit):
+                commit()
+            return result
+
+        return wrapped
+
+    monkeypatch.setattr(
+        firestore_repository_module.firestore,
+        "transactional",
+        fake_transactional,
+    )
 
 
 class FakeDocumentSnapshot:
@@ -41,11 +66,15 @@ class FakeDocumentReference:
 
     def set(self, data: dict, merge: bool = False) -> None:
         if merge and self._document_id in self._store:
-            self._store[self._document_id] = {**self._store[self._document_id], **copy.deepcopy(data)}
+            self._store[self._document_id] = {
+                **self._store[self._document_id],
+                **copy.deepcopy(data),
+            }
             return
         self._store[self._document_id] = copy.deepcopy(data)
 
-    def get(self) -> FakeDocumentSnapshot:
+    def get(self, transaction=None) -> FakeDocumentSnapshot:
+        del transaction
         return FakeDocumentSnapshot(self._store, self._document_id)
 
     def delete(self) -> None:
@@ -66,6 +95,23 @@ class FakeBatch:
             reference.delete()
 
 
+class FakeTransaction:
+    """Minimal Firestore transaction implementation for claim tests."""
+
+    def __init__(self) -> None:
+        self._writes: list[tuple[FakeDocumentReference, dict, bool]] = []
+
+    def set(
+        self, reference: FakeDocumentReference, data: dict, merge: bool = False
+    ) -> None:
+        self._writes.append((reference, copy.deepcopy(data), merge))
+
+    def commit(self) -> None:
+        for reference, data, merge in self._writes:
+            reference.set(data, merge=merge)
+        self._writes.clear()
+
+
 class FakeCollection:
     """Minimal Firestore collection interface used by the adapter tests."""
 
@@ -76,7 +122,10 @@ class FakeCollection:
         return FakeDocumentReference(self._store, document_id)
 
     def stream(self) -> list[FakeDocumentSnapshot]:
-        return [FakeDocumentSnapshot(self._store, document_id) for document_id in list(self._store.keys())]
+        return [
+            FakeDocumentSnapshot(self._store, document_id)
+            for document_id in list(self._store.keys())
+        ]
 
 
 class FakeFirestoreClient:
@@ -90,6 +139,9 @@ class FakeFirestoreClient:
 
     def batch(self) -> FakeBatch:
         return FakeBatch()
+
+    def transaction(self) -> FakeTransaction:
+        return FakeTransaction()
 
 
 def test_firestore_repository_persists_status_and_country_detail() -> None:
@@ -145,6 +197,7 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "macro_synthesis": "The macro picture remains fragile.",
             "risk_flags": ["Growth is weak", "Inflation is sticky"],
             "outlook": "cautious",
+            "source_date_range": "2010:2024",
             "updated_at": "2026-04-09T12:00:05+00:00",
             "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
             "raw_backup_reference": "gs://world-analyst-raw/runs/f9710a31-8f35-43d0-b75e-78054470ab80/raw/manifest.json",
@@ -165,12 +218,16 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
     assert detail is not None
     assert detail["code"] == "ZA"
     assert detail["macro_synthesis"] == "The macro picture remains fragile."
+    assert detail["source_date_range"] == "2010:2024"
     assert len(detail["indicators"]) == 1
     assert detail["indicators"][0]["country_code"] == "ZA"
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert "source_provenance" not in detail["indicators"][0]
-    assert client.store["indicator:ZA:NY.GDP.MKTP.KD.ZG"]["run_id"] == "f9710a31-8f35-43d0-b75e-78054470ab80"
+    assert (
+        client.store["indicator:ZA:NY.GDP.MKTP.KD.ZG"]["run_id"]
+        == "f9710a31-8f35-43d0-b75e-78054470ab80"
+    )
     assert client.store["country:ZA"]["raw_backup_reference"].endswith("/manifest.json")
 
 
@@ -203,7 +260,9 @@ def test_firestore_repository_rejects_missing_required_fields() -> None:
     client = FakeFirestoreClient()
     repository = FirestoreInsightsRepository(project_id="test-project", client=client)
 
-    with pytest.raises(ValueError, match=r"indicator record missing required field\(s\): country_code"):
+    with pytest.raises(
+        ValueError, match=r"indicator record missing required field\(s\): country_code"
+    ):
         repository.upsert_indicator(
             {
                 "indicator_code": "NY.GDP.MKTP.KD.ZG",
@@ -213,7 +272,9 @@ def test_firestore_repository_rejects_missing_required_fields() -> None:
         )
 
 
-def test_repository_backend_alias_remains_backward_compatible(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_repository_backend_alias_remains_backward_compatible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The legacy storage env var should still work when REPOSITORY_MODE is unset."""
     monkeypatch.delenv("REPOSITORY_MODE", raising=False)
     monkeypatch.setenv("WORLD_ANALYST_STORAGE_BACKEND", "local")
@@ -323,6 +384,37 @@ def test_firestore_status_write_clears_stale_failure_fields() -> None:
     assert stored_status["status"] == "complete"
     assert "error" not in stored_status
     assert "failure_summary" not in stored_status
+
+
+def test_firestore_claim_pipeline_run_is_idempotent_with_existing_running_status() -> (
+    None
+):
+    """A second Firestore claim should keep the first active run instead of overwriting it."""
+    client = FakeFirestoreClient()
+    repository = FirestoreInsightsRepository(project_id="test-project", client=client)
+
+    claimed_status, claimed = repository.claim_pipeline_run(
+        {
+            "status": "running",
+            "run_id": "run-one",
+            "started_at": "2026-04-12T12:00:00+00:00",
+            "steps": [{"name": "fetch", "status": "pending"}],
+        }
+    )
+    current_status, claimed_again = repository.claim_pipeline_run(
+        {
+            "status": "running",
+            "run_id": "run-two",
+            "started_at": "2026-04-12T12:05:00+00:00",
+            "steps": [{"name": "fetch", "status": "pending"}],
+        }
+    )
+
+    assert claimed is True
+    assert claimed_status["run_id"] == "run-one"
+    assert claimed_again is False
+    assert current_status["run_id"] == "run-one"
+    assert repository.get_pipeline_status_record()["run_id"] == "run-one"
 
 
 def test_firestore_repository_can_load_private_stored_record_for_ai_reuse() -> None:

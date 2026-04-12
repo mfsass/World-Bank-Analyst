@@ -1,8 +1,9 @@
-"""LLM abstraction layer for the two-step analysis chain.
+"""LLM abstraction layer for the analysis and synthesis chain.
 
 Why this exists:
     The pipeline needs one provider-facing seam for live AI while keeping the
-    caller contract stable: `analyse_indicator()` and `synthesise_country()`.
+    caller contract stable: `analyse_indicator()`, `synthesise_country()`, and
+    `synthesise_global_overview()`.
 
 Why it is hardened:
     Real provider output can still fail around the edges even with structured
@@ -30,8 +31,10 @@ DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_MAX_ATTEMPTS = 2
 STEP1_NAME = "indicator_analysis"
 STEP2_NAME = "macro_synthesis"
+STEP3_NAME = "panel_overview"
 STEP1_PROMPT_VERSION = "step1.v1.0.0"
 STEP2_PROMPT_VERSION = "step2.v1.0.0"
+STEP3_PROMPT_VERSION = "step3.v1.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +60,7 @@ class IndicatorInsight(BaseModel):
 
 
 class MacroSynthesis(BaseModel):
-    """Step 2 output: country-level synthesis across all indicators."""
+    """Structured synthesis output reused for country and panel briefings."""
 
     summary: str = Field(
         description="Executive summary, 3-4 sentences, suitable for a policy brief"
@@ -98,6 +101,19 @@ You receive multiple indicator insights for a single country. Your task:
 Cross-reference indicators. If GDP is weak but employment is strong,
 acknowledge the tension. Be specific — cite exact figures."""
 
+STEP3_SYSTEM = """You are a senior macroeconomic strategist synthesising
+country-level briefings into one monitored-set operating picture.
+
+You receive country summaries for the active 17-country World Analyst panel.
+Your task:
+1. Identify the dominant cross-country macro narrative across the monitored set.
+2. Flag the top 2-3 cross-country risk concentrations with supporting country references.
+3. Write an executive summary suitable for the Global Overview hero (max 200 words).
+4. Assign one panel outlook based on the balance of country briefings.
+
+Be explicit that this is the monitored panel, not the whole world economy.
+Cross-reference multiple countries rather than retelling one country's story."""
+
 
 def _build_step1_prompt(context: dict[str, Any]) -> str:
     """Build the Step 1 user prompt."""
@@ -125,6 +141,19 @@ def _build_step2_prompt(indicators: list[dict[str, Any]]) -> str:
 {indicator_summary}"""
 
 
+def _build_step3_prompt(country_briefings: list[dict[str, Any]]) -> str:
+    """Build the Step 3 user prompt."""
+
+    ordered_briefings = _ordered_country_briefings(country_briefings)
+    briefing_summary = json.dumps(
+        ordered_briefings, indent=2, default=str, sort_keys=True
+    )
+    return (
+        "Synthesise these country briefings into one monitored-set overview:\n\n"
+        f"{briefing_summary}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Abstract Base
 # ---------------------------------------------------------------------------
@@ -141,6 +170,13 @@ class AIClient(ABC):
     @abstractmethod
     def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
         """Generate macro-level country synthesis."""
+        ...
+
+    @abstractmethod
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Generate monitored-set synthesis across country briefings."""
         ...
 
     @abstractmethod
@@ -214,6 +250,23 @@ class GeminiClient(AIClient):
             system_instruction=STEP2_SYSTEM,
             response_model=MacroSynthesis,
             fallback_payload=_build_macro_fallback(ordered_indicators),
+            max_output_tokens=420,
+        )
+
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Generate monitored-set overview with bounded repair and fallback."""
+
+        ordered_briefings = _ordered_country_briefings(country_briefings)
+        return self._generate_structured_result(
+            step_name=STEP3_NAME,
+            prompt_version=STEP3_PROMPT_VERSION,
+            prompt_input=ordered_briefings,
+            contents=_build_step3_prompt(ordered_briefings),
+            system_instruction=STEP3_SYSTEM,
+            response_model=MacroSynthesis,
+            fallback_payload=_build_panel_overview_fallback(ordered_briefings),
             max_output_tokens=420,
         )
 
@@ -299,7 +352,9 @@ class GeminiClient(AIClient):
                     self._max_attempts,
                     exc,
                 )
-            except APIError as exc:  # pragma: no cover - exercised by live-provider runs
+            except (
+                APIError
+            ) as exc:  # pragma: no cover - exercised by live-provider runs
                 last_error = str(exc)
                 logger.warning(
                     "Gemini request failed for %s on attempt %d/%d: %s",
@@ -308,7 +363,9 @@ class GeminiClient(AIClient):
                     self._max_attempts,
                     exc,
                 )
-                if isinstance(exc, ClientError) and getattr(exc, "status", None) not in {408, 429}:
+                if isinstance(exc, ClientError) and getattr(
+                    exc, "status", None
+                ) not in {408, 429}:
                     break
 
         fallback_result = dict(fallback_payload)
@@ -392,6 +449,27 @@ class OpenAIClient(AIClient):
             fallback_payload=_build_macro_fallback(ordered_indicators),
         )
 
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Generate monitored-set overview synthesis."""
+
+        ordered_briefings = _ordered_country_briefings(country_briefings)
+        return self._generate_structured_result(
+            step_name=STEP3_NAME,
+            prompt_version=STEP3_PROMPT_VERSION,
+            prompt_input=ordered_briefings,
+            messages=[
+                {"role": "system", "content": STEP3_SYSTEM},
+                {
+                    "role": "user",
+                    "content": _build_step3_prompt(ordered_briefings),
+                },
+            ],
+            response_model=MacroSynthesis,
+            fallback_payload=_build_panel_overview_fallback(ordered_briefings),
+        )
+
     def get_provenance(self) -> dict[str, Any]:
         """Return provider and model metadata."""
 
@@ -461,7 +539,10 @@ class OpenAIClient(AIClient):
                     self._max_attempts,
                     exc,
                 )
-            except (APIConnectionError, APITimeoutError) as exc:  # pragma: no cover - fallback provider
+            except (
+                APIConnectionError,
+                APITimeoutError,
+            ) as exc:  # pragma: no cover - fallback provider
                 last_error = str(exc)
                 logger.warning(
                     "OpenAI request failed for %s on attempt %d/%d: %s",
@@ -479,7 +560,14 @@ class OpenAIClient(AIClient):
                     self._max_attempts,
                     exc,
                 )
-                if getattr(exc, "status_code", None) not in {408, 429, 500, 502, 503, 504}:
+                if getattr(exc, "status_code", None) not in {
+                    408,
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                }:
                     break
             except APIError as exc:  # pragma: no cover - fallback provider
                 last_error = str(exc)
@@ -677,9 +765,7 @@ def _extract_openai_usage(response: Any) -> dict[str, Any] | None:
         return None
 
     compact_usage = {
-        key: value
-        for key, value in usage_payload.items()
-        if value is not None
+        key: value for key, value in usage_payload.items() if value is not None
     }
     return compact_usage or None
 
@@ -695,6 +781,23 @@ def _ordered_indicator_inputs(indicators: list[dict[str, Any]]) -> list[dict[str
                 str(item.get("country_code", "")),
                 str(item.get("indicator_code", "")),
                 int(item.get("data_year", 0) or 0),
+            ),
+        )
+    ]
+
+
+def _ordered_country_briefings(
+    country_briefings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return Step 3 inputs in a deterministic order for prompt and lineage stability."""
+
+    return [
+        _strip_private_fields(briefing)
+        for briefing in sorted(
+            country_briefings,
+            key=lambda item: (
+                str(item.get("code", "")),
+                str(item.get("name", "")),
             ),
         )
     ]
@@ -770,6 +873,49 @@ def _build_macro_fallback(indicators: list[dict[str, Any]]) -> dict[str, Any]:
         "summary": summary,
         "risk_flags": risk_flags,
         "outlook": "bearish" if len(high_risk_indicators) >= 3 else "cautious",
+    }
+
+
+def _build_panel_overview_fallback(
+    country_briefings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Create an explicit degraded Step 3 payload when structured output fails."""
+
+    country_count = len(country_briefings)
+    bearish_count = sum(
+        1 for briefing in country_briefings if briefing.get("outlook") == "bearish"
+    )
+    cautious_count = sum(
+        1 for briefing in country_briefings if briefing.get("outlook") == "cautious"
+    )
+    summary = (
+        "Live AI panel synthesis degraded after structured-output retries. "
+        f"The monitored set still contains {country_count} materialised country briefings, "
+        f"including {bearish_count} bearish and {cautious_count} cautious outlooks; "
+        "review the stored country briefings directly."
+    )
+
+    risk_flags = [
+        f"{briefing.get('code', 'Unknown')} remains flagged: {briefing['risk_flags'][0]}"
+        for briefing in country_briefings
+        if briefing.get("risk_flags")
+    ][:3]
+    if not risk_flags:
+        risk_flags = [
+            "Review the country drilldown cards directly for the current monitored-set pressures."
+        ]
+
+    if bearish_count > 0:
+        outlook = "bearish"
+    elif cautious_count > 0:
+        outlook = "cautious"
+    else:
+        outlook = "bullish"
+
+    return {
+        "summary": summary,
+        "risk_flags": risk_flags,
+        "outlook": outlook,
     }
 
 
