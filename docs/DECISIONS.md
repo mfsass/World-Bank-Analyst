@@ -808,6 +808,16 @@
 **Decision:** Keep temperature=0 for all Gemma 4 calls in `ai_client.py`. The `repair_markdown_fences()` workaround remains as a safety net. Document the empirical basis here so any future reviewer understands this is intentional, not accidental.
 **Consequences:** Slightly less output variance. Narratives may be more uniform across runs. Monitor for truncation if context window pressure increases.
 
+## ADR-059: Evaluation rubric — word-boundary matching for single-country anchoring
+
+**Date:** 2026-04-12
+**Status:** Accepted
+**Context:** The `no_single_country_anchoring` dimension in the builtin evaluation rubric used simple substring search to detect whether the global overview summary opened with a country name or ISO-2 code. Short codes like `"br"` caused false positives: common English words such as "broadly", "brought", and "broader" matched the substring and scored the dimension 0.0, causing the gate to fail even when the model correctly produced a multi-regional opening.
+**Decision:** Replace substring search with `re.search(r'\btoken\b', text)` word-boundary matching for all anchor tokens in the rubric. Longer names (e.g. "brazil", "united states") are unaffected; short codes (e.g. `"br"`, `"us"`, `"cn"`) now only match as standalone tokens.
+**Consequences:** False positives on common English prefixes are eliminated. The rubric remains deterministic and requires no LLM call. Gate now correctly distinguishes a country-anchored opening from a globally-framed one. Confirmed clean pass: `no_single_country_anchoring: 1.0` on eval run `24539edc`.
+
+---
+
 ## ADR-058: Remove pipeline KPI cards from Global Overview page
 
 **Date:** 2026-04-17
