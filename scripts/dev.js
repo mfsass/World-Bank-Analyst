@@ -64,12 +64,13 @@ if (isProd) {
  * @param {string} command - Shell command to run inside the new window.
  */
 function openWindow(title, command) {
-  // Build one shell string: start "<title>" cmd /k <command>
-  // cmd.exe /c then parses it, treating the quoted token as the title.
+  // windowsVerbatimArguments prevents Node from escaping the quotes inside the
+  // shell string, which would turn `"title"` into `\"title\"` and cause Windows
+  // to try to resolve the title as an executable name.
   const proc = spawn(
     "cmd.exe",
     ["/c", `start "${title}" cmd /k ${command}`],
-    { cwd: ROOT, detached: true, stdio: "ignore" }
+    { cwd: ROOT, detached: true, stdio: "ignore", windowsVerbatimArguments: true }
   );
   proc.unref();
 }
