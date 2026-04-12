@@ -20,6 +20,7 @@ COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY docker-entrypoint.d/30-validate-runtime-env.sh /docker-entrypoint.d/30-validate-runtime-env.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 
-RUN chmod +x /docker-entrypoint.d/30-validate-runtime-env.sh
+RUN chmod +x /docker-entrypoint.d/30-validate-runtime-env.sh \
+    && sed -i 's/\r$//' /docker-entrypoint.d/30-validate-runtime-env.sh
 
 EXPOSE 8080
