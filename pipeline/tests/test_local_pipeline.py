@@ -180,7 +180,7 @@ def test_local_pipeline_persists_private_provenance_and_raw_archives(
         overview_record["raw_backup_reference"]
         == f"local://runs/{run_id}/raw/manifest.json"
     )
-    assert overview_record["ai_provenance"]["prompt_version"] == "step3.v1.0.0"
+    assert overview_record["ai_provenance"]["prompt_version"] == "step3.v2.0.0"
     assert overview_record["ai_provenance"]["degraded"] is False
     assert overview_record["country_codes"] == ["ZA"]
 

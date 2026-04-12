@@ -139,46 +139,43 @@ export function getOverviewNarrative(
   monitoredCountries,
   materialisedCountries,
 ) {
-  const monitoredCountryLabel =
-    monitoredCountries === 1 ? "country" : "countries";
-
   if (status === "running") {
-    return "Polling the active pipeline run while the monitored-set overview and country drilldowns materialise. Counts below reflect confirmed country briefings until the run completes.";
+    return "The data pipeline is running. Country briefings are loading — the overview will refresh automatically when complete.";
   }
 
   if (status === "complete") {
-    return `The landing page reflects the current monitored-set overview rather than a single-country narrative. ${materialisedCountries} of ${monitoredCountries} monitored countries now have a live briefing feeding the panel view.`;
+    return `Showing the current global economic outlook across ${materialisedCountries} of ${monitoredCountries} tracked markets. Select a country below to drill into its indicator trends and AI-generated briefing.`;
   }
 
   if (status === "failed") {
-    return "The latest run failed. Any previously materialised briefing remains visible below, while the status feed preserves the failure state for follow-up.";
+    return "The latest data refresh failed. The overview reflects the most recent available data. Run the pipeline again from the trigger page to refresh.";
   }
 
-  return `The landing page is wired to the current API/repository slice. ${monitoredCountries} ${monitoredCountryLabel} ${monitoredCountries === 1 ? "is" : "are"} currently configured, with ${materialisedCountries} confirmed briefing${materialisedCountries === 1 ? "" : "s"} feeding the monitored-set view until the pipeline runs.`;
+  return `Showing the current global economic outlook. ${monitoredCountries} markets are tracked, with ${materialisedCountries} briefings currently available.`;
 }
 
 export function getEmptyStateHeading(status) {
   if (status === "running") {
-    return "Materialising Coverage";
+    return "Loading market data";
   }
 
   if (status === "failed") {
-    return "Latest Run Failed";
+    return "Data refresh failed";
   }
 
-  return "No Live Briefing Yet";
+  return "No data yet";
 }
 
 export function getEmptyStateBody(status) {
   if (status === "running") {
-    return "The current slice is fetching, analysing, synthesising, and storing monitored market data in the active runtime. This page will refresh once the monitored-set overview and country drilldowns finish materialising.";
+    return "The pipeline is fetching, analysing, and storing the latest economic data. This page will update automatically once the briefings are ready.";
   }
 
   if (status === "failed") {
-    return "The last trigger ended in failure before the market briefing could be refreshed. Review the step status, rerun the pipeline, and reopen the market view once the slice completes.";
+    return "The last pipeline run ended in failure. Review the error details on the trigger page and run again to refresh the market briefings.";
   }
 
-  return "Run the pipeline to materialise the monitored-set overview and populate the country drilldown surfaces on this page.";
+  return "No market briefings are available yet. Run the pipeline from the trigger page to fetch and analyse the latest World Bank economic data.";
 }
 
 function getOutlookCounts(briefings = []) {

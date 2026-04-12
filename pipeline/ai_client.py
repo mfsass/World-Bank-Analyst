@@ -34,7 +34,7 @@ STEP2_NAME = "macro_synthesis"
 STEP3_NAME = "panel_overview"
 STEP1_PROMPT_VERSION = "step1.v1.0.0"
 STEP2_PROMPT_VERSION = "step2.v1.0.0"
-STEP3_PROMPT_VERSION = "step3.v1.0.0"
+STEP3_PROMPT_VERSION = "step3.v2.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -101,18 +101,30 @@ You receive multiple indicator insights for a single country. Your task:
 Cross-reference indicators. If GDP is weak but employment is strong,
 acknowledge the tension. Be specific — cite exact figures."""
 
-STEP3_SYSTEM = """You are a senior macroeconomic strategist synthesising
-country-level briefings into one monitored-set operating picture.
+STEP3_SYSTEM = """You are a senior macroeconomic strategist writing a global economic
+intelligence brief for professional financial users.
 
-You receive country summaries for the active 17-country World Analyst panel.
+You receive country-level briefings from a 17-country coverage set spanning six major regions:
+Europe, Latin America, Asia-Pacific, Sub-Saharan Africa, the Middle East & North Africa,
+and North America/South Asia.
+
 Your task:
-1. Identify the dominant cross-country macro narrative across the monitored set.
-2. Flag the top 2-3 cross-country risk concentrations with supporting country references.
-3. Write an executive summary suitable for the Global Overview hero (max 200 words).
-4. Assign one panel outlook based on the balance of country briefings.
+1. Write an executive summary of the global economic picture. Lead with the dominant
+   macro narrative across regions — not any single country's story. Open with what
+   matters most to institutional investors and analysts: growth trajectory, inflation
+   regime, fiscal pressures, or trade vulnerabilities.
+2. Flag the top 2–3 cross-country risk concentrations. Each flag must cite at least
+   two countries and name the specific indicator driving the risk.
+3. Assign a global outlook (bullish / cautious / bearish) based on the
+   balance of country outlooks across the coverage set.
 
-Be explicit that this is the monitored panel, not the whole world economy.
-Cross-reference multiple countries rather than retelling one country's story."""
+Hard rules:
+- NEVER open your summary with a single country's name or story.
+- Cover at least three distinct geographic regions in the executive summary.
+- Reference the data year when citing trends (the data year is provided in the prompt).
+- Keep the summary to 220 words maximum. Each risk flag is one concise sentence.
+- Write in plain financial English. No jargon: no "monitored-set", "materialised",
+  "panel" in user-facing prose, or operational/pipeline language of any kind."""
 
 
 def _build_step1_prompt(context: dict[str, Any]) -> str:
@@ -142,14 +154,20 @@ def _build_step2_prompt(indicators: list[dict[str, Any]]) -> str:
 
 
 def _build_step3_prompt(country_briefings: list[dict[str, Any]]) -> str:
-    """Build the Step 3 user prompt."""
+    """Build the Step 3 user prompt with data year context."""
 
     ordered_briefings = _ordered_country_briefings(country_briefings)
+    # Extract the most recent data year across all briefings for the prompt header.
+    data_year = max(
+        (int(b.get("data_year", 0) or 0) for b in ordered_briefings),
+        default=0,
+    ) or None
+    year_note = f" (data year: {data_year})" if data_year else ""
     briefing_summary = json.dumps(
         ordered_briefings, indent=2, default=str, sort_keys=True
     )
     return (
-        "Synthesise these country briefings into one monitored-set overview:\n\n"
+        f"Synthesise these 17-country briefings into a global economic overview{year_note}:\n\n"
         f"{briefing_summary}"
     )
 
@@ -176,7 +194,7 @@ class AIClient(ABC):
     def synthesise_global_overview(
         self, country_briefings: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        """Generate monitored-set synthesis across country briefings."""
+        """Generate cross-country global economic synthesis from country briefings."""
         ...
 
     @abstractmethod
@@ -786,18 +804,35 @@ def _ordered_indicator_inputs(indicators: list[dict[str, Any]]) -> list[dict[str
     ]
 
 
+# Geographic region ordering for Step 3 prompt — leading with Europe and developed
+# markets ensures the model opens with the most institutionally watched economies
+# rather than anchoring to whichever code sorts first alphabetically (BR = Brazil).
+_REGION_PROMPT_ORDER: dict[str, int] = {
+    "Europe & Central Asia": 0,
+    "North America": 1,
+    "East Asia & Pacific": 2,
+    "Latin America & Caribbean": 3,
+    "Middle East & North Africa": 4,
+    "Sub-Saharan Africa": 5,
+    "South Asia": 6,
+}
+
+
 def _ordered_country_briefings(
     country_briefings: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Return Step 3 inputs in a deterministic order for prompt and lineage stability."""
+    """Return Step 3 inputs ordered by geographic region then country code.
 
+    Leading with Europe and developed markets prevents the model from anchoring
+    to whichever country sorts first alphabetically (historically Brazil).
+    """
     return [
         _strip_private_fields(briefing)
         for briefing in sorted(
             country_briefings,
             key=lambda item: (
+                _REGION_PROMPT_ORDER.get(str(item.get("region") or ""), 99),
                 str(item.get("code", "")),
-                str(item.get("name", "")),
             ),
         )
     ]

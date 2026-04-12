@@ -791,3 +791,11 @@
 **Trade-off:** The frontend now carries more orchestration state, and per-country briefings can still incur individual latency after the landing view renders because we did not add a batch endpoint. We accept that because the critical review issue was the blocked landing experience, and the client-side change fixed it with lower delivery risk.
 
 **Date:** 2026-04-12
+
+## ADR-056: Step 3 AI prompt v2 — geographic ordering and cross-continental synthesis
+
+**Date:** 2026-04-16
+**Status:** Accepted
+**Context:** Step 3 was sorting country briefings alphabetically (BR first), causing the LLM to anchor narratives on Brazil. The system prompt lacked hard rules about geographic coverage and data year citation.
+**Decision:** Sort Step 3 briefings by geographic region (Europe first) and add explicit continental coverage requirements and data year context to the prompt. Bump version to step3.v2.0.0 to invalidate cache.
+**Consequences:** The next pipeline run will re-generate the global overview synthesis. Lineage/reuse records using step3.v1.0.0 will not match and will be regenerated.

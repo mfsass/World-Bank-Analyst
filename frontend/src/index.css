@@ -1089,6 +1089,49 @@ a {
 /* --------------------------------------------------------------------------
    Anomaly Banner — Full-width accent bar
    -------------------------------------------------------------------------- */
+
+/* Pipeline status notice — non-intrusive warning shown when pipeline is not idle */
+.pipeline-status-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.pipeline-status-notice--running {
+  border-color: var(--color-warning);
+}
+
+.pipeline-status-notice--failed {
+  border-color: var(--color-critical);
+}
+
+.pipeline-status-notice__icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.pipeline-status-notice__text {
+  flex: 1;
+}
+
+.pipeline-status-notice__link {
+  font-size: 0.6875rem;
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pipeline-status-notice__link:hover {
+  text-decoration: underline;
+}
+
 .anomaly-banner {
   display: flex;
   align-items: center;
@@ -1998,6 +2041,12 @@ a {
   .architecture-spec-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .country-detail-grid {
+    gap: var(--space-6);
+  }
+  .overview-main-grid {
+    gap: var(--space-6);
+  }
 }
 
 @media (max-width: 900px) {
@@ -2483,6 +2532,9 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-2);
 }
 
 .overview-market-command {
@@ -2755,3 +2807,5 @@ a {
     width: 100%;
   }
 }
+
+

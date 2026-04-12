@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 import worldGeography from "world-atlas/countries-110m.json";
 
 import { AIInsightPanel } from "../components/AIInsightPanel";
-import { KpiCard } from "../components/KpiCard";
+
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { apiRequest } from "../api";
@@ -107,16 +107,24 @@ async function fetchGlobalOverview() {
   }
 }
 
-async function fetchOverviewData() {
-  const [status, countries, indicators, panelOverview] = await Promise.all([
-    apiRequest("/pipeline/status"),
-    apiRequest("/countries"),
-    apiRequest("/indicators"),
+/** Phase 1: fetch the AI global overview and country list — renders the hero panel. */
+async function fetchOverviewPhase1() {
+  const [panelOverview, countries] = await Promise.all([
     fetchGlobalOverview(),
+    apiRequest("/countries"),
   ]);
-
-  return { status, countries, indicators, briefings: [], panelOverview };
+  return { countries, briefings: [], panelOverview };
 }
+
+/** Phase 2: fetch indicators and pipeline status — hydrates stats and country grid. */
+async function fetchOverviewPhase2() {
+  const [status, indicators] = await Promise.all([
+    apiRequest("/pipeline/status"),
+    apiRequest("/indicators"),
+  ]);
+  return { status, indicators };
+}
+
 
 function getPipelineTone(status) {
   if (status === "complete") {
@@ -261,7 +269,7 @@ function OverviewLoadingShell({ headerNarrative }) {
       <PageHeader
         description={headerNarrative}
         eyebrow="AI-GENERATED OVERVIEW"
-        meta="Coverage board // current slice // live-compatible state"
+        meta="Overview // current data window"
         title="Global Overview"
       />
 
@@ -283,7 +291,10 @@ function OverviewLoadingShell({ headerNarrative }) {
 
           <div className="overview-hero-grid mt-4">
             {Array.from({ length: 3 }).map((_, index) => (
-              <article className="card overview-hero-stat" key={`hero-${index}`}>
+              <article
+                className="card overview-hero-stat"
+                key={`hero-${index}`}
+              >
                 <div className="skeleton skeleton-text overview-skeleton-label" />
                 <div className="skeleton skeleton-kpi-value mt-3" />
                 <div className="skeleton skeleton-text overview-skeleton-line mt-3" />
@@ -534,20 +545,24 @@ export function GlobalOverview() {
 
     async function loadOverview() {
       try {
-        const nextOverview = await fetchOverviewData();
-        if (!isActive) {
-          return;
-        }
-
+        // Phase 1: render AI panel immediately
+        const phase1 = await fetchOverviewPhase1();
+        if (!isActive) return;
         resetBriefingHydrationState();
-        setOverview(nextOverview);
+        setOverview((prev) => ({ ...prev, ...phase1 }));
         setViewState("ready");
         setRequestError("");
+        // Phase 2: hydrate indicator stats and pipeline status in background
+        fetchOverviewPhase2().then((phase2) => {
+          if (!isActive) return;
+          setOverview((prev) => ({ ...prev, ...phase2 }));
+        }).catch((err) => {
+          console.error("phase2 fetch failed", err);
+        });
       } catch (error) {
         if (!isActive) {
           return;
         }
-
         setViewState("error");
         setRequestError(error.message);
       }
@@ -581,13 +596,17 @@ export function GlobalOverview() {
 
         if (nextStatus.status !== "running") {
           window.clearInterval(intervalId);
-          const nextOverview = await fetchOverviewData();
-          if (!isActive) {
-            return;
-          }
-
+          // Two-phase reload
+          const phase1 = await fetchOverviewPhase1();
+          if (!isActive) return;
           resetBriefingHydrationState();
-          setOverview(nextOverview);
+          setOverview((prev) => ({ ...prev, ...phase1 }));
+          fetchOverviewPhase2().then((phase2) => {
+            if (!isActive) return;
+            setOverview((prev) => ({ ...prev, ...phase2 }));
+          }).catch((err) => {
+            console.error("phase2 fetch failed", err);
+          });
         }
       } catch (error) {
         if (!isActive) {
@@ -701,7 +720,8 @@ export function GlobalOverview() {
   const highlightedMetrics = buildMarketMetrics(highlightedBriefing);
   const marketOpenHref = highlightedMarket?.href || "/trigger";
   const selectedBriefingLoading = Boolean(
-    highlightedMarketCode && loadingBriefingCodes.includes(highlightedMarketCode),
+    highlightedMarketCode &&
+    loadingBriefingCodes.includes(highlightedMarketCode),
   );
   const hasLoadedCountryPosture = overview.briefings.length > 0;
   const loadedQueueCount = queueMarkets.filter((market) =>
@@ -729,10 +749,9 @@ export function GlobalOverview() {
   const panelStatusLabel = panelOverview?.outlook
     ? panelOverview.outlook.toUpperCase()
     : pipelineStatus.toUpperCase();
-  const globalRiskTone =
-    !hasLoadedCountryPosture
-      ? ""
-      : outlookCounts.bearish > 0
+  const globalRiskTone = !hasLoadedCountryPosture
+    ? ""
+    : outlookCounts.bearish > 0
       ? " overview-hero-stat--critical"
       : riskLoadedMarkets > 0
         ? ""
@@ -810,7 +829,9 @@ export function GlobalOverview() {
     }
 
     queuePrefetchStartedRef.current = true;
-    void Promise.all(queueMarkets.map((market) => loadCountryBriefing(market.code)));
+    void Promise.all(
+      queueMarkets.map((market) => loadCountryBriefing(market.code)),
+    );
   }, [loadCountryBriefing, queueMarkets, queueSectionVisible, viewState]);
 
   // Derive popover position from the marker button's actual DOM bounds.
@@ -845,7 +866,7 @@ export function GlobalOverview() {
           actions={sharedActions}
           description={headerNarrative}
           eyebrow="AI-GENERATED OVERVIEW"
-          meta="Coverage board // current slice // live-compatible state"
+          meta="Overview // current data window"
           title="Global Overview"
         />
 
@@ -853,7 +874,7 @@ export function GlobalOverview() {
           <div className="card state-panel">
             <p className="text-label">Overview unavailable</p>
             <h2 className="text-headline mt-3">
-              The landing page could not hydrate
+              Overview unavailable
             </h2>
             <p className="text-body text-secondary mt-4">{requestError}</p>
           </div>
@@ -874,22 +895,22 @@ export function GlobalOverview() {
 
       <section className="section-gap">
         <AIInsightPanel
-          eyebrow="AI monitored-set brief"
+          eyebrow="AI GLOBAL SYNTHESIS"
           footer={
             <div className="overview-hero-footer">
               <span className="text-label">
-                Source window // {sourceWindowLabel}
+                Data window // {sourceWindowLabel}
               </span>
               <span className="text-label">
-                Live briefings // {materialisedCountries}/{monitoredCountries}
+                Latest year // {latestDataYearLabel}
               </span>
               <span className="text-label">
-                Drilldown // {selectedMapCountry || "Select market"}
+                Focus market // {selectedMapCountry || "Select a market below"}
               </span>
             </div>
           }
           status={panelStatusLabel}
-          title="Monitored-set operating picture"
+          title="Global economic outlook"
           tone={panelOutlookTone}
         >
           <p className="text-body">
@@ -902,31 +923,27 @@ export function GlobalOverview() {
                   className="overview-signal-card"
                   key={`${riskFlag}-${index}`}
                 >
-                  <p className="text-label">Cross-market flag {index + 1}</p>
+                  <p className="text-label">Risk flag {index + 1}</p>
                   <p className="text-body text-secondary mt-3">{riskFlag}</p>
                 </article>
               ))}
             </div>
           ) : null}
           <div className="overview-hero-grid mt-4">
-            <article
-              className={`card overview-hero-stat${materialisedCountries > 0 ? " overview-hero-stat--success" : ""}`}
-            >
-              <span className="text-label">Coverage</span>
-              <span className="overview-hero-stat__value">
-                {materialisedCountries}/{monitoredCountries}
-              </span>
+            <article className="card overview-hero-stat overview-hero-stat--success">
+              <span className="text-label">Latest data year</span>
+              <span className="overview-hero-stat__value">{latestDataYearLabel}</span>
               <p className="overview-hero-stat__desc text-body text-secondary">
-                Live briefings confirmed in the active monitored set.
+                Most recent year of World Bank data in this analysis.
               </p>
             </article>
             <article
               className={`card overview-hero-stat${anomalyCount > 0 ? " overview-hero-stat--critical" : " overview-hero-stat--success"}`}
             >
-              <span className="text-label">Signal pressure</span>
+              <span className="text-label">Anomalies detected</span>
               <span className="overview-hero-stat__value">{anomalyCount}</span>
               <p className="overview-hero-stat__desc text-body text-secondary">
-                Indicator anomalies flagged in the latest pool.
+                Indicator anomalies flagged across the current data window.
               </p>
             </article>
             <article className={`card overview-hero-stat${globalRiskTone}`}>
@@ -937,11 +954,11 @@ export function GlobalOverview() {
               <p className="overview-hero-stat__desc text-body text-secondary">
                 {hasLoadedCountryPosture
                   ? outlookCounts.bearish > 0
-                    ? `${outlookCounts.bearish} bearish and ${outlookCounts.cautious} cautious markets are shaping the panel view.`
+                    ? `${outlookCounts.bearish} bearish and ${outlookCounts.cautious} cautious markets are shaping the overall outlook.`
                     : riskLoadedMarkets > 0
-                      ? `${outlookCounts.cautious} cautious markets are shaping the panel view.`
-                      : "No bearish or cautious market outlooks are currently materialised."
-                  : "Country posture stays on demand until you focus a market or load the queue below."}
+                      ? `${outlookCounts.cautious} cautious markets are shaping the overall outlook.`
+                      : "No markets are currently flagged as bearish or cautious."
+                  : "Select a market on the map to see its outlook."}
               </p>
             </article>
           </div>
@@ -967,57 +984,30 @@ export function GlobalOverview() {
         </section>
       ) : null}
 
-      <section className="kpi-row section-gap" aria-live="polite">
-        <KpiCard
-          freshness={
-            overview.status?.started_at
-              ? `PIPELINE REFRESH ${formatTimestamp(
-                  overview.status.completed_at || overview.status.started_at,
-                )}`
-              : "AWAITING FIRST RUN"
-          }
-          label="Pipeline Status"
-          status={pipelineStatus.toUpperCase()}
-          statusTone={getStepTone(pipelineStatus)}
-          value={pipelineStatus.toUpperCase()}
-        />
-        <KpiCard
-          freshness={`${monitoredCountries} MONITORED IN CURRENT SCOPE`}
-          label="Countries Materialised"
-          status={`${materialisedCountries}/${monitoredCountries}`}
-          statusTone={materialisedCountries > 0 ? "success" : "neutral"}
-          value={materialisedCountries}
-        />
-        <KpiCard
-          freshness={
-            sourceWindowLabel !== "Pending"
-              ? `SOURCE WINDOW ${sourceWindowLabel}`
-              : "SOURCE WINDOW PENDING"
-          }
-          label="Indicators Analysed"
-          status={`${overview.indicators.length} ROWS`}
-          statusTone={overview.indicators.length > 0 ? "success" : "neutral"}
-          value={overview.indicators.length}
-        />
-        <KpiCard
-          freshness={
-            queueSectionVisible
-              ? "COUNTRY QUEUE HYDRATING"
-              : "COUNTRY DETAIL LOADS ON DEMAND"
-          }
-          label="Country Queue"
-          status={queueStatusLabel}
-          statusTone={queueStatusTone}
-          value={queueMarkets.length ? `${loadedQueueCount}/${queueMarkets.length}` : "0/0"}
-        />
-      </section>
+      {(pipelineStatus === "running" || pipelineStatus === "failed") && (
+        <section className="section-gap">
+          <div className={`pipeline-status-notice pipeline-status-notice--${pipelineStatus}`}>
+            <span className="material-symbols-outlined pipeline-status-notice__icon">
+              {pipelineStatus === "running" ? "sync" : "warning"}
+            </span>
+            <span className="pipeline-status-notice__text">
+              {pipelineStatus === "running"
+                ? "Pipeline is running — data may be partial"
+                : "Last pipeline run failed — showing most recent available data"}
+            </span>
+            <Link className="pipeline-status-notice__link" to="/trigger">
+              View pipeline
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className="overview-main-grid section-gap">
         <div className="card overview-panel">
           <div className="panel-header">
             <div>
               <p className="text-label">Global risk overview</p>
-              <h2 className="text-headline mt-3">Monitored markets</h2>
+              <h2 className="text-headline mt-3">Tracked markets</h2>
             </div>
             <StatusPill tone="neutral">Current slice</StatusPill>
           </div>
@@ -1386,7 +1376,9 @@ export function GlobalOverview() {
                   <div className="market-card__meta mt-4">
                     <span>{market.region}</span>
                     <span>
-                      {isLoading ? "Hydrating live briefing" : "Awaiting briefing"}
+                      {isLoading
+                        ? "Loading briefing"
+                        : "Awaiting briefing"}
                     </span>
                   </div>
                 </article>
@@ -1480,3 +1472,4 @@ export function GlobalOverview() {
   );
 }
 export default GlobalOverview;
+

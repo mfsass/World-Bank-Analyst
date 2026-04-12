@@ -643,7 +643,7 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
     assert country_record["ai_provenance"]["prompt_version"] == "step2.v1.0.0"
     assert country_record["ai_provenance"]["degraded"] is False
     assert overview_record["ai_provenance"]["provider"] == "stub-live-provider"
-    assert overview_record["ai_provenance"]["prompt_version"] == "step3.v1.0.0"
+    assert overview_record["ai_provenance"]["prompt_version"] == STEP3_PROMPT_VERSION
     assert overview_record["ai_provenance"]["degraded"] is False
     assert overview_record["country_count"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
 

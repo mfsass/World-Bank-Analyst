@@ -1079,6 +1079,10 @@ def _build_global_overview_inputs(
                 "anomaly_count": sum(
                     1 for context in contexts if context.get("is_anomaly")
                 ),
+                "data_year": max(
+                    (int(ctx.get("data_year", 0) or 0) for ctx in contexts),
+                    default=0,
+                ) or None,
             }
         )
     return overview_inputs
