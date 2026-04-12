@@ -1,6 +1,10 @@
 {
   "private": true,
   "scripts": {
+    "app": "node scripts/dev.js",
+    "app:prod": "node scripts/dev.js --prod",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd api && python app.py",
     "deploy": "node scripts/deploy.js",
     "deploy:skip-build": "node scripts/deploy.js --skip-build",
     "eval": "python -m pipeline.evaluation",
