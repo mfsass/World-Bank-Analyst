@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("HowItWorks", () => {
-  it("keeps the approved 17-country scope and current runtime labels free of stale copy", () => {
+  it("keeps the approved scope while explaining the shared stage model and the real-vs-demo trigger split", () => {
     renderPage();
 
     expect(
@@ -32,7 +32,19 @@ describe("HowItWorks", () => {
     expect(screen.getByText("2-STEP + PANEL")).toBeInTheDocument();
     expect(screen.getByText("LOCAL // FIRESTORE")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Panel overview + storage" }),
+      screen.getByRole("heading", { name: "Real run" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Demo walkthrough" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Country + panel synthesis" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Persist outputs" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/frontend-only simulation/i),
     ).toBeInTheDocument();
     expect(screen.queryByText("15 x 6")).not.toBeInTheDocument();
     expect(screen.queryByText("LOCAL DEFAULTS")).not.toBeInTheDocument();

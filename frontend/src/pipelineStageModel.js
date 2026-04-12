@@ -56,7 +56,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "fetch",
     title: "Fetch and normalize",
     story:
-      "Calls the World Bank Indicators API v2 for six macro series \u2014 GDP growth, inflation, unemployment, current account balance, government debt, and nominal GDP \u2014 across all 17 monitored markets. The 2010\u20132024 window gives the statistical layer 15 annual observations per country to establish a defensible cross-panel baseline. Raw API payloads are archived to GCS before analysis runs.",
+      "Six macro series pulled from the World Bank Indicators API v2 for all 17 monitored markets: GDP growth, inflation, unemployment, current account balance, government debt, and nominal GDP. The 2010\u20132024 window gives 15 annual observations per country \u2014 enough for the statistical pass to detect meaningful movement without being dominated by any single year. Raw API payloads are archived to GCS before analysis starts.",
     outcome:
       "102 normalised year-on-year records ready for the statistical pass, plus a raw payload archive for provenance.",
     latencyNote:
@@ -65,7 +65,8 @@ export const PIPELINE_STAGE_MODEL = [
       pending: "Waiting to request the approved World Bank indicator set.",
       running:
         "Pulling the approved World Bank indicator set for the active monitored panel.",
-      complete: "World Bank source data was fetched and normalized for this run.",
+      complete:
+        "World Bank source data was fetched and normalized for this run.",
       failed:
         "The run stopped while requesting or normalizing World Bank source data.",
     },
@@ -98,7 +99,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "analyse",
     title: "Statistical signal layer",
     story:
-      "Pandas computes year-over-year percentage changes and tests each record against a z-score threshold of 2.0 standard deviations. The threshold is calibrated cross-panel per indicator \u2014 not per country \u2014 because each country has roughly seven annual observations in the target window, too few for a reliable per-country baseline. Pooled across 17 markets, each indicator has ~102 observations. A GDP growth swing that is routine in one regime registers clearly against the full global peer group.",
+      "Pandas computes year-over-year percentage changes and tests each record against a z-score threshold of 2.0 standard deviations. The threshold is calibrated cross-panel per indicator \u2014 not per country \u2014 because each country has roughly seven annual observations, too few for a reliable per-country baseline. Pooled across 17 markets, each indicator has roughly 102 observations. A GDP swing that looks routine inside one economy still registers clearly when measured against the full peer group.",
     outcome:
       "Structured signal layer: deltas, z-scores, anomaly flags, and regime context. The model never touches raw numbers.",
     latencyNote:
@@ -114,7 +115,8 @@ export const PIPELINE_STAGE_MODEL = [
       {
         label: "Frame data",
         verb: "assembling",
-        detail: "Lining up yearly observations across the monitored indicators.",
+        detail:
+          "Lining up yearly observations across the monitored indicators.",
       },
       {
         label: "Score change",
@@ -138,7 +140,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "synthesise",
     title: "Country + panel synthesis",
     story:
-      "Three model passes per run. Step 1: the model receives one indicator\u2019s signal data per call and returns a structured note \u2014 trend direction, a 2\u20133 sentence narrative, risk level, and confidence. Step 2: all six indicator notes for a country feed a second call that returns an executive summary, top risk flags, economic outlook (bullish / cautious / bearish), and a regime label (recovery / expansion / overheating / contraction / stagnation). Step 3: all 17 country briefings feed a single panel overview call. Every output is validated against a Pydantic schema before being accepted.",
+      "Three model passes per run. Step 1: one call per indicator \u2014 the model receives single-series signal data and returns trend direction, a short narrative, risk level, and confidence score. Step 2: all six indicator notes for a country go into a second call that returns an executive summary, top risk flags, economic outlook (bullish / cautious / bearish), and a regime label (recovery / expansion / overheating / contraction / stagnation). Step 3: all 17 country briefings go into a single panel overview call. Every output is validated against a Pydantic schema before the run accepts it.",
     outcome:
       "17 country briefings and one cross-market panel overview, each with risk flags, regime label, and structured outlook fields.",
     latencyNote:
@@ -194,7 +196,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "store",
     title: "Persist outputs",
     story:
-      "Country briefings, the panel overview, and runtime status are written through a shared repository contract that supports local JSON-backed storage and durable Firestore-backed storage without changing the calling code. The local path keeps development deterministic; Firestore turns on via an environment variable. The same contract is used by the development runner and the deployed Cloud Run job.",
+      "Country briefings, the panel overview, and runtime status are written through a shared repository layer that switches between local JSON and Firestore without any code change. Firestore turns on via an environment variable. The same write path runs in local development and in the deployed Cloud Run job \u2014 there is no separate production code path.",
     outcome:
       "Dashboard-ready records in the configured store. Pipeline status sealed with per-step durations and completion timestamps.",
     latencyNote:
@@ -253,7 +255,8 @@ const LIVE_ONLY_STAGE_META = {
       {
         label: "Validate config",
         verb: "checking",
-        detail: "Verifying Cloud Run job configuration and runtime credentials.",
+        detail:
+          "Verifying Cloud Run job configuration and runtime credentials.",
       },
       {
         label: "Reserve slot",
@@ -272,10 +275,9 @@ const LIVE_ONLY_STAGE_META = {
 };
 
 const PIPELINE_STAGE_LOOKUP = Object.fromEntries(
-  [...PIPELINE_STAGE_MODEL, ...Object.values(LIVE_ONLY_STAGE_META)].map((stage) => [
-    stage.name,
-    stage,
-  ]),
+  [...PIPELINE_STAGE_MODEL, ...Object.values(LIVE_ONLY_STAGE_META)].map(
+    (stage) => [stage.name, stage],
+  ),
 );
 
 export function buildDefaultPipelineSteps() {
@@ -286,10 +288,12 @@ export function buildDefaultPipelineSteps() {
 }
 
 export function getPipelineStageMeta(stepName) {
-  return PIPELINE_STAGE_LOOKUP[stepName] || {
-    ...FALLBACK_STAGE,
-    name: stepName || FALLBACK_STAGE.name,
-  };
+  return (
+    PIPELINE_STAGE_LOOKUP[stepName] || {
+      ...FALLBACK_STAGE,
+      name: stepName || FALLBACK_STAGE.name,
+    }
+  );
 }
 
 export function getPipelineStageActivities(stepName) {

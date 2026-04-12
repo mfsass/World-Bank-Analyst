@@ -1,213 +1,62 @@
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { apiRequest } from "../api";
 import { KpiCard } from "../components/KpiCard";
 import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
-import { apiRequest } from "../api";
+import {
+  PIPELINE_STAGE_MODEL,
+  PIPELINE_TRIGGER_MODES,
+  buildDefaultPipelineSteps,
+  decoratePipelineSteps,
+  getActivePipelineStageActivity,
+  getPipelineStageActivities,
+  getPipelineStageStatusCopy,
+} from "../pipelineStageModel";
 
 const PIPELINE_ACTIVITY_INTERVAL_MS = 900;
-const DEFAULT_STEPS = [
-  { name: "fetch", status: "pending" },
-  { name: "analyse", status: "pending" },
-  { name: "synthesise", status: "pending" },
-  { name: "store", status: "pending" },
-];
+const PIPELINE_REPLAY_ACTIVITY_INTERVAL_MS = 900;
+const PIPELINE_REPLAY_STAGE_ADVANCE_MS = 2600;
 
-const STEP_COPY = {
-  dispatch: {
-    pending: "Waiting for a Cloud Run Job dispatch request.",
-    running: "Sending the job to Cloud Run.",
-    complete: "Cloud Run accepted the job dispatch request.",
-    failed:
-      "The run stopped before pipeline execution because Cloud Run dispatch failed.",
-  },
-  fetch: {
-    pending: "Waiting to request the approved World Bank indicator set.",
-    running:
-      "Pulling the approved World Bank indicator set for the active monitored panel.",
-    complete: "World Bank source data was fetched and normalized for this run.",
-    failed:
-      "The run stopped while requesting or normalizing World Bank source data.",
-  },
-  analyse: {
-    pending: "Waiting for the statistical analysis stage.",
-    running:
-      "Calculating deltas, stress direction, and anomaly flags with Pandas.",
-    complete: "Pandas finished the statistical pass for this run.",
-    failed: "The run stopped while computing the statistical signal layer.",
-  },
-  synthesise: {
-    pending: "Waiting for the AI synthesis stage.",
-    running:
-      "Turning structured signals into country briefings and a global overview. This is the longest stage — narratives are generated for all 17 markets.",
-    complete:
-      "Country narratives and the global overview were generated for this run.",
-    failed: "The run stopped while generating the analyst narratives.",
-  },
-  store: {
-    pending: "Waiting to persist the finished briefing.",
-    running:
-      "Writing processed insights, the monitored-set overview, and runtime status to the configured store.",
-    complete:
-      "Processed insights, the monitored-set overview, and status were saved for this run.",
-    failed: "The run stopped while persisting the finished outputs.",
-  },
-};
-
-const STAGE_ACTIVITY_LOG = {
-  dispatch: [
-    {
-      label: "Validate config",
-      verb: "checking",
-      detail: "Verifying Cloud Run job configuration and runtime credentials.",
-    },
-    {
-      label: "Reserve slot",
-      verb: "claiming",
-      detail:
-        "Holding the monitored-set run slot so only one execution stays active.",
-    },
-    {
-      label: "Dispatch job",
-      verb: "launching",
-      detail: "Handing the bounded panel run to Cloud Run Jobs.",
-    },
-  ],
-  fetch: [
-    {
-      label: "Open source",
-      verb: "opening",
-      detail:
-        "Connecting to the World Bank Indicators API for the approved panel.",
-    },
-    {
-      label: "Collect series",
-      verb: "pulling",
-      detail: "Fetching GDP, inflation, labour, fiscal, and external series.",
-    },
-    {
-      label: "Normalize rows",
-      verb: "shaping",
-      detail: "Normalizing raw indicator payloads into one comparable frame.",
-    },
-    {
-      label: "Seal ingest",
-      verb: "indexing",
-      detail: "Finalizing the source ingest before the signal pass starts.",
-    },
-  ],
-  analyse: [
-    {
-      label: "Frame data",
-      verb: "assembling",
-      detail: "Lining up yearly observations across the monitored indicators.",
-    },
-    {
-      label: "Score change",
-      verb: "measuring",
-      detail: "Calculating deltas, direction of travel, and stress movement.",
-    },
-    {
-      label: "Flag anomalies",
-      verb: "screening",
-      detail: "Testing each indicator against anomaly thresholds.",
-    },
-    {
-      label: "Package signals",
-      verb: "staging",
-      detail: "Preparing the structured signal layer for model input.",
-    },
-  ],
-  synthesise: [
-    {
-      label: "Prepare context",
-      verb: "aligning",
-      detail: "Gathering structured indicator evidence for the model.",
-    },
-    {
-      label: "Write notes",
-      verb: "drafting",
-      detail: "Turning each indicator into analyst-ready signal notes.",
-    },
-    {
-      label: "Blend signals",
-      verb: "weaving",
-      detail: "Combining risk signals into country-level narratives.",
-    },
-    {
-      label: "Work queue",
-      verb: "orchestrating",
-      detail: "Moving through the monitored-set country briefing queue.",
-    },
-    {
-      label: "Compare markets",
-      verb: "reconciling",
-      detail: "Comparing cross-market pressure before the overview pass.",
-    },
-    {
-      label: "Finish overview",
-      verb: "composing",
-      detail: "Writing the monitored-set overview and risk language.",
-    },
-    {
-      label: "Check schema",
-      verb: "validating",
-      detail: "Verifying structured output before persistence.",
-    },
-  ],
-  store: [
-    {
-      label: "Prepare records",
-      verb: "packaging",
-      detail: "Preparing processed insight, overview, and status payloads.",
-    },
-    {
-      label: "Write insights",
-      verb: "committing",
-      detail: "Writing country and panel records to the repository.",
-    },
-    {
-      label: "Archive raw",
-      verb: "archiving",
-      detail: "Recording raw payload provenance for follow-up.",
-    },
-    {
-      label: "Seal run",
-      verb: "closing",
-      detail: "Finalizing the durable pipeline status contract.",
-    },
-  ],
-};
-
-function getStageActivities(stepName) {
+function prefersReducedMotion() {
   return (
-    STAGE_ACTIVITY_LOG[stepName] || [
-      {
-        label: "Processing",
-        verb: "processing",
-        detail: "Working through the current pipeline stage.",
-      },
-    ]
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
   );
 }
 
-function getActiveStageActivity(stepName, tick) {
-  const activities = getStageActivities(stepName);
-  return activities[tick % activities.length];
+function buildDemoStatus() {
+  return {
+    status: "idle",
+    steps: PIPELINE_STAGE_MODEL.map((stage) => ({
+      name: stage.name,
+      status: "pending",
+    })),
+  };
 }
 
-function StepSimulation({ stepName, isRunning, tick }) {
-  const activities = getStageActivities(stepName);
-  const activeActivity = getActiveStageActivity(stepName, tick);
+function getFocusableNodes(container) {
+  if (!container) return [];
+
+  return Array.from(
+    container.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
+
+function StepSimulation({ activityLabel, isRunning, stepName, tick }) {
+  const activities = getPipelineStageActivities(stepName);
+  const activeActivity = getActivePipelineStageActivity(stepName, tick);
 
   if (!isRunning) return null;
 
   return (
     <div className="execution-step-card__activity fade-in">
       <div className="execution-step-card__activity-row">
-        <span className="text-label">Live operation</span>
+        <span className="text-label">{activityLabel}</span>
         <span className="execution-step-card__verb">
           {activeActivity.verb}
           <span className="terminal-cursor" />
@@ -240,108 +89,505 @@ function StepSimulation({ stepName, isRunning, tick }) {
 }
 
 StepSimulation.propTypes = {
+  activityLabel: PropTypes.string.isRequired,
   isRunning: PropTypes.bool.isRequired,
   stepName: PropTypes.string.isRequired,
   tick: PropTypes.number.isRequired,
 };
 
 function getStatusTone(status) {
-  if (status === "complete") {
-    return "success";
-  }
-
-  if (status === "failed") {
-    return "critical";
-  }
-
-  if (status === "running") {
-    return "running";
-  }
-
+  if (status === "complete") return "success";
+  if (status === "failed") return "critical";
+  if (status === "running") return "running";
   return "neutral";
-}
-
-function formatDuration(status) {
-  if (!status?.started_at || !status?.completed_at) {
-    return "Awaiting completion";
-  }
-
-  const startedAt = new Date(status.started_at).getTime();
-  const completedAt = new Date(status.completed_at).getTime();
-  return `${((completedAt - startedAt) / 1000).toFixed(2)}s`;
-}
-
-function getExecutionCopy(step) {
-  const statusCopy = STEP_COPY[step.name]?.[step.status];
-
-  if (step.duration_ms && statusCopy) {
-    return `${statusCopy} Latest duration: ${step.duration_ms}ms.`;
-  }
-
-  if (statusCopy) {
-    return statusCopy;
-  }
-
-  return "Waiting for the next execution request.";
-}
-
-function buildTerminalLines(status, activeStageActivity) {
-  if (!status) {
-    return ["> Connecting to pipeline status..."];
-  }
-
-  const lines = [
-    "> TARGET SCOPE: 17-COUNTRY PANEL",
-    "> COUNTRY PAGE UNLOCKS AFTER COMPLETION",
-    `> STATUS: ${status.status.toUpperCase()}`,
-  ];
-
-  if (status.started_at) {
-    lines.push(`> STARTED AT: ${formatTimestamp(status.started_at)}`);
-  }
-
-  if (status.steps?.length) {
-    status.steps.forEach((step) => {
-      const duration = step.duration_ms ? ` ${step.duration_ms}ms` : "";
-      lines.push(
-        `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`,
-      );
-    });
-  }
-
-  if (status.status === "running" && activeStageActivity) {
-    lines.push(
-      `> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`,
-    );
-  }
-
-  if (status.completed_at) {
-    lines.push(`> COMPLETED AT: ${formatTimestamp(status.completed_at)}`);
-  }
-
-  if (status.error) {
-    lines.push(`> ERROR: ${status.error}`);
-  }
-
-  if (status.status === "idle") {
-    lines.push("> Awaiting pipeline execution...");
-  }
-
-  return lines;
 }
 
 function formatTimestamp(value) {
   return new Date(value).toLocaleString();
 }
 
+function buildStatusFreshness(mode, status) {
+  if (status?.completed_at) {
+    return `COMPLETED ${formatTimestamp(status.completed_at)}`;
+  }
+
+  if (status?.started_at) {
+    return `STARTED ${formatTimestamp(status.started_at)}`;
+  }
+
+  return mode === "real"
+    ? "AWAITING REAL RUN"
+    : "REPLAYABLE FRONTEND WALKTHROUGH";
+}
+
+function getExecutionCopy(step) {
+  const statusCopy = getPipelineStageStatusCopy(step.name, step.status);
+
+  if (step.duration_ms && statusCopy) {
+    return `${statusCopy} Latest duration: ${step.duration_ms}ms.`;
+  }
+
+  return statusCopy;
+}
+
+function buildTerminalLines(mode, status, executionSteps, activeStageActivity) {
+  const lines = [
+    `> MODE: ${mode === "real" ? "REAL RUN" : "DEMO WALKTHROUGH (SIMULATED)"}`,
+    mode === "real"
+      ? "> SOURCE: /PIPELINE/TRIGGER + /PIPELINE/STATUS"
+      : "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)",
+    `> STAGE MODEL: ${executionSteps
+      .map((step) => step.name.toUpperCase())
+      .join(" -> ")}`,
+    "> TARGET SCOPE: 17-COUNTRY PANEL",
+    `> STATUS: ${(status?.status || "idle").toUpperCase()}`,
+  ];
+
+  if (status?.started_at) {
+    lines.push(`> STARTED AT: ${formatTimestamp(status.started_at)}`);
+  }
+
+  executionSteps.forEach((step) => {
+    const duration = step.duration_ms ? ` ${step.duration_ms}ms` : "";
+    lines.push(
+      `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`,
+    );
+  });
+
+  if (status?.status === "running" && activeStageActivity) {
+    lines.push(
+      `> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`,
+    );
+  }
+
+  if (mode === "demo") {
+    lines.push("> COUNTRY PAGE STAYS LOCKED UNTIL A REAL RUN COMPLETES");
+  }
+
+  if (status?.completed_at) {
+    lines.push(`> COMPLETED AT: ${formatTimestamp(status.completed_at)}`);
+  }
+
+  if (status?.error) {
+    lines.push(`> ERROR: ${status.error}`);
+  }
+
+  if (!status || status.status === "idle") {
+    lines.push(
+      mode === "real"
+        ? "> Awaiting real pipeline execution..."
+        : "> Demo walkthrough will replay in the browser only.",
+    );
+  }
+
+  return lines;
+}
+
+function buildReplaySteps(activeStageIndex, isReplayComplete) {
+  return PIPELINE_STAGE_MODEL.map((stage, index) => {
+    let status = "pending";
+
+    if (isReplayComplete || index < activeStageIndex) {
+      status = "complete";
+    } else if (index === activeStageIndex) {
+      status = "running";
+    }
+
+    return {
+      ...stage,
+      status,
+    };
+  });
+}
+
+function buildReplayTerminalOutput(activeStep, replaySteps, isReplayComplete) {
+  const lines = [
+    "> MODE: DEMO WALKTHROUGH (SIMULATED)",
+    "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)",
+    `> STAGE MODEL: ${replaySteps
+      .map((step) => step.name.toUpperCase())
+      .join(" -> ")}`,
+    "> TARGET SCOPE: 17-COUNTRY PANEL",
+    `> STATUS: ${(isReplayComplete ? "complete" : "running").toUpperCase()}`,
+  ];
+
+  replaySteps.forEach((step) => {
+    lines.push(
+      `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}`,
+    );
+  });
+
+  if (activeStep) {
+    lines.push(`> ACTIVE STAGE: ${activeStep.title.toUpperCase()}`);
+    lines.push(`> OUTCOME: ${activeStep.outcome}`);
+  }
+
+  lines.push("> COUNTRY PAGE STAYS LOCKED UNTIL A REAL RUN COMPLETES");
+
+  return lines.join("\n");
+}
+
+function PipelineReplayModal({ isOpen, onClose, replayVersion }) {
+  const dialogRef = useRef(null);
+  const previousActiveElementRef = useRef(null);
+  const [activeStageIndex, setActiveStageIndex] = useState(0);
+  const [activityTick, setActivityTick] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [isReplayComplete, setIsReplayComplete] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setActiveStageIndex(0);
+    setActivityTick(0);
+    setIsAutoPlaying(!prefersReducedMotion());
+    setIsReplayComplete(false);
+  }, [isOpen, replayVersion]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    previousActiveElementRef.current = document.activeElement;
+    document.body.classList.add("dialog-open");
+
+    const frameId = window.requestAnimationFrame(() => {
+      getFocusableNodes(dialogRef.current)[0]?.focus();
+    });
+
+    return () => {
+      document.body.classList.remove("dialog-open");
+      window.cancelAnimationFrame(frameId);
+      previousActiveElementRef.current?.focus?.();
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusableNodes = getFocusableNodes(dialogRef.current);
+      if (!focusableNodes.length) return;
+
+      const firstNode = focusableNodes[0];
+      const lastNode = focusableNodes[focusableNodes.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstNode) {
+        event.preventDefault();
+        lastNode.focus();
+      } else if (!event.shiftKey && document.activeElement === lastNode) {
+        event.preventDefault();
+        firstNode.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || prefersReducedMotion()) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setActivityTick((currentTick) => currentTick + 1);
+    }, PIPELINE_REPLAY_ACTIVITY_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !isAutoPlaying || isReplayComplete) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setActiveStageIndex((currentIndex) => {
+        if (currentIndex >= PIPELINE_STAGE_MODEL.length - 1) {
+          setIsReplayComplete(true);
+          setIsAutoPlaying(false);
+          return currentIndex;
+        }
+
+        return currentIndex + 1;
+      });
+    }, PIPELINE_REPLAY_STAGE_ADVANCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeStageIndex, isAutoPlaying, isOpen, isReplayComplete]);
+
+  if (!isOpen) return null;
+
+  const replaySteps = buildReplaySteps(activeStageIndex, isReplayComplete);
+  const activeStep = replaySteps[activeStageIndex] ?? replaySteps[0];
+  const progressValue = isReplayComplete
+    ? 100
+    : ((activeStageIndex + 1) / replaySteps.length) * 100;
+  const modeLabel = isReplayComplete
+    ? "COMPLETE"
+    : isAutoPlaying
+      ? "AUTO-PLAY"
+      : "MANUAL";
+
+  function handleReplayReset() {
+    setActiveStageIndex(0);
+    setActivityTick(0);
+    setIsAutoPlaying(!prefersReducedMotion());
+    setIsReplayComplete(false);
+  }
+
+  function handleStepSelect(stepIndex) {
+    setActiveStageIndex(stepIndex);
+    setIsAutoPlaying(false);
+    setIsReplayComplete(false);
+  }
+
+  function handleBack() {
+    setIsAutoPlaying(false);
+    setIsReplayComplete(false);
+    setActiveStageIndex((currentIndex) => Math.max(currentIndex - 1, 0));
+  }
+
+  function handleNext() {
+    setIsAutoPlaying(false);
+    setIsReplayComplete(false);
+    setActiveStageIndex((currentIndex) =>
+      Math.min(currentIndex + 1, replaySteps.length - 1),
+    );
+  }
+
+  function handleToggleAutoplay() {
+    if (isReplayComplete) {
+      handleReplayReset();
+      return;
+    }
+
+    setIsAutoPlaying((currentValue) => !currentValue);
+  }
+
+  return createPortal(
+    <div className="pipeline-replay-modal__backdrop">
+      <div
+        aria-labelledby="pipeline-replay-title"
+        aria-modal="true"
+        className="pipeline-replay-modal"
+        ref={dialogRef}
+        role="dialog"
+      >
+        <div className="pipeline-replay-modal__header">
+          <div>
+            <p className="text-label">Browser-only replay</p>
+            <h2 className="text-headline mt-3" id="pipeline-replay-title">
+              Replay walkthrough
+            </h2>
+            <p className="text-body text-secondary mt-4">
+              Step through the shared stage model with slower, presentation-safe
+              pacing and no backend writes.
+            </p>
+          </div>
+          <div className="pipeline-replay-modal__header-actions">
+            <StatusPill tone={isReplayComplete ? "success" : "warning"}>
+              SIMULATED
+            </StatusPill>
+            <StatusPill tone={isAutoPlaying ? "warning" : "neutral"}>
+              {modeLabel}
+            </StatusPill>
+            <button
+              aria-label="Close walkthrough"
+              className="btn-ghost pipeline-replay-modal__close"
+              onClick={onClose}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="pipeline-replay-modal__progress mt-4">
+          <span className="text-label">
+            Stage {Math.min(activeStageIndex + 1, replaySteps.length)} of{" "}
+            {replaySteps.length}
+          </span>
+          <div
+            aria-hidden="true"
+            className="pipeline-replay-modal__progress-bar"
+          >
+            <span
+              className="pipeline-replay-modal__progress-fill"
+              style={{ width: `${progressValue}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="pipeline-replay-modal__grid mt-4">
+          <div className="pipeline-replay-modal__rail">
+            {replaySteps.map((step, index) => {
+              const isActive = index === activeStageIndex;
+
+              return (
+                <button
+                  className={`pipeline-replay-modal__rail-card pipeline-replay-modal__rail-card--${step.status}${
+                    isActive ? " pipeline-replay-modal__rail-card--active" : ""
+                  }`}
+                  key={step.name}
+                  onClick={() => handleStepSelect(index)}
+                  type="button"
+                >
+                  <span className="pipeline-replay-modal__rail-meta">
+                    Stage {String(index + 1).padStart(2, "0")}
+                    {" // "}
+                    {step.status}
+                  </span>
+                  <span className="pipeline-replay-modal__rail-title mt-3">
+                    {step.title}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pipeline-replay-modal__detail-stack">
+            <div className="card">
+              <div className="panel-header">
+                <div>
+                  <p className="text-label">Active stage</p>
+                  <h3 className="text-headline mt-3">{activeStep.title}</h3>
+                </div>
+                <StatusPill tone={getStatusTone(activeStep.status)}>
+                  {activeStep.status.toUpperCase()}
+                </StatusPill>
+              </div>
+              <p className="text-body text-secondary mt-4">
+                {activeStep.story}
+              </p>
+              <div className="execution-step-card__note mt-4">
+                <span className="text-label">Stage outcome</span>
+                <p className="text-body text-secondary mt-3">
+                  {activeStep.outcome}
+                </p>
+              </div>
+              <div className="execution-step-card__note mt-4">
+                <span className="text-label">Why this pace helps</span>
+                <p className="text-body text-secondary mt-3">
+                  {activeStep.latencyNote}
+                </p>
+              </div>
+              <StepSimulation
+                activityLabel="Replay activity"
+                isRunning={!isReplayComplete}
+                stepName={activeStep.name}
+                tick={activityTick}
+              />
+            </div>
+
+            <div className="terminal-panel">
+              <p className="text-label">Presentation feed</p>
+              <pre className="terminal-panel__output text-metric text-secondary mt-3">
+                {buildReplayTerminalOutput(
+                  activeStep,
+                  replaySteps,
+                  isReplayComplete,
+                )}
+                {!isReplayComplete ? (
+                  <span className="terminal-cursor" />
+                ) : null}
+              </pre>
+            </div>
+          </div>
+        </div>
+
+        <div className="button-row pipeline-replay-modal__footer mt-4">
+          <button
+            className="btn-ghost"
+            disabled={activeStageIndex === 0}
+            onClick={handleBack}
+            type="button"
+          >
+            Back
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={handleToggleAutoplay}
+            type="button"
+          >
+            {isAutoPlaying ? "Pause auto-play" : "Resume auto-play"}
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={handleReplayReset}
+            type="button"
+          >
+            Replay from start
+          </button>
+          <button
+            className="btn-primary"
+            disabled={activeStageIndex === replaySteps.length - 1}
+            onClick={handleNext}
+            type="button"
+          >
+            Next stage
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+PipelineReplayModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  replayVersion: PropTypes.number.isRequired,
+};
+
 export function PipelineTrigger() {
   const navigate = useNavigate();
+  const modeButtonRefs = useRef({});
+  const [mode, setMode] = useState("real");
   const [status, setStatus] = useState(null);
   const [requestError, setRequestError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [simulationTick, setSimulationTick] = useState(0);
+  const [activityTick, setActivityTick] = useState(0);
+  const [isReplayModalOpen, setIsReplayModalOpen] = useState(false);
+  const [demoReplayVersion, setDemoReplayVersion] = useState(0);
+
+  const modeData =
+    PIPELINE_TRIGGER_MODES.find((option) => option.key === mode) ||
+    PIPELINE_TRIGGER_MODES[0];
+  const demoStatus = buildDemoStatus();
+  const displayStatus = mode === "real" ? status : demoStatus;
+  const executionSteps = decoratePipelineSteps(
+    displayStatus?.steps?.length
+      ? displayStatus.steps
+      : buildDefaultPipelineSteps(),
+  );
+  const runningStep =
+    executionSteps.find((step) => step.status === "running") || null;
+  const activeStageActivity = runningStep
+    ? getActivePipelineStageActivity(runningStep.name, activityTick)
+    : null;
+  const terminalOutput = buildTerminalLines(
+    mode,
+    displayStatus,
+    executionSteps,
+    activeStageActivity,
+  ).join("\n");
+  const pipelineReady = mode === "real" && status?.status === "complete";
+  const completedSteps = executionSteps.filter(
+    (step) => step.status === "complete",
+  ).length;
 
   useEffect(() => {
+    if (mode !== "real") {
+      return undefined;
+    }
+
     let isActive = true;
 
     async function loadStatus() {
@@ -363,37 +609,56 @@ export function PipelineTrigger() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
-    if (status?.status !== "running") {
-      setSimulationTick(0);
+    if (mode !== "real" || status?.status !== "running") {
       return undefined;
     }
 
-    const simulationIntervalId = window.setInterval(() => {
-      setSimulationTick((currentTick) => currentTick + 1);
-    }, PIPELINE_ACTIVITY_INTERVAL_MS);
-
+    let isActive = true;
     const intervalId = window.setInterval(async () => {
       try {
         const nextStatus = await apiRequest("/pipeline/status");
+
+        if (!isActive) {
+          return;
+        }
+
         setStatus(nextStatus);
         setRequestError("");
+
         if (nextStatus.status !== "running") {
           window.clearInterval(intervalId);
         }
       } catch (error) {
-        setRequestError(error.message);
+        if (isActive) {
+          setRequestError(error.message);
+        }
         window.clearInterval(intervalId);
       }
     }, 750);
 
     return () => {
-      window.clearInterval(simulationIntervalId);
+      isActive = false;
       window.clearInterval(intervalId);
     };
-  }, [status?.status]);
+  }, [mode, status?.status]);
+
+  useEffect(() => {
+    if (mode !== "real" || displayStatus?.status !== "running") {
+      setActivityTick(0);
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActivityTick((currentTick) => currentTick + 1);
+    }, PIPELINE_ACTIVITY_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [displayStatus?.status, mode]);
 
   async function handleTrigger() {
     setIsSubmitting(true);
@@ -413,34 +678,132 @@ export function PipelineTrigger() {
     }
   }
 
-  const executionSteps = status?.steps?.length ? status.steps : DEFAULT_STEPS;
-  const runningStep =
-    executionSteps.find((step) => step.status === "running") || null;
-  const activeStageActivity = runningStep
-    ? getActiveStageActivity(runningStep.name, simulationTick)
-    : null;
-  const terminalOutput = buildTerminalLines(status, activeStageActivity).join(
-    "\n",
-  );
-  const pipelineReady = status?.status === "complete";
-  const completedSteps = executionSteps.filter(
-    (step) => step.status === "complete",
-  ).length;
+  function handleModeChange(nextMode) {
+    setMode(nextMode);
+    setRequestError("");
+    setIsReplayModalOpen(false);
+  }
+
+  function handleModeSwitchKeyDown(event, optionIndex) {
+    const lastIndex = PIPELINE_TRIGGER_MODES.length - 1;
+    let nextIndex = optionIndex;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = optionIndex === lastIndex ? 0 : optionIndex + 1;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = optionIndex === 0 ? lastIndex : optionIndex - 1;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = lastIndex;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    handleModeChange(PIPELINE_TRIGGER_MODES[nextIndex].key);
+    modeButtonRefs.current[PIPELINE_TRIGGER_MODES[nextIndex].key]?.focus();
+  }
+
+  function handleDemoReplay() {
+    setDemoReplayVersion((currentReplayId) => currentReplayId + 1);
+    setIsReplayModalOpen(true);
+  }
 
   return (
     <div className="page page--trigger container">
       <PageHeader
         actions={
-          <div className="button-row">
+          <div
+            aria-label="Pipeline mode"
+            className="pipeline-mode-switch"
+            role="radiogroup"
+          >
+            {PIPELINE_TRIGGER_MODES.map((option, index) => (
+              <button
+                aria-checked={mode === option.key}
+                className={`pipeline-mode-switch__button${
+                  mode === option.key
+                    ? " pipeline-mode-switch__button--active"
+                    : ""
+                }`}
+                key={option.key}
+                onKeyDown={(event) => handleModeSwitchKeyDown(event, index)}
+                onClick={() => handleModeChange(option.key)}
+                ref={(node) => {
+                  if (node) {
+                    modeButtonRefs.current[option.key] = node;
+                  }
+                }}
+                role="radio"
+                tabIndex={mode === option.key ? 0 : -1}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        }
+        description="Choose a truthful real run or a frontend-only demo walkthrough. Both use the same stage model and tell the same product story."
+        eyebrow="PIPELINE CONTROL"
+        meta="Shared stage model · truthful backend state · frontend-only demo"
+        title="Pipeline Trigger"
+      />
+
+      <section className="section-gap">
+        <div className="card trigger-hero">
+          <div className="panel-header">
+            <div>
+              <p className="text-label">{modeData.eyebrow}</p>
+              <h2 className="text-headline mt-3">{modeData.title}</h2>
+              <p className="text-body text-secondary mt-4">
+                {modeData.description}
+              </p>
+            </div>
+            <StatusPill
+              tone={
+                mode === "demo"
+                  ? "warning"
+                  : getStatusTone(displayStatus?.status)
+              }
+            >
+              {mode === "demo"
+                ? "SIMULATED"
+                : (displayStatus?.status || "idle").toUpperCase()}
+            </StatusPill>
+          </div>
+
+          <div
+            className={`pipeline-mode-note pipeline-mode-note--${mode} mt-4`}
+          >
+            <div>
+              <p className="text-label">{modeData.boundaryLabel}</p>
+              <p className="text-body text-secondary mt-3">
+                {modeData.boundaryDetail}
+              </p>
+            </div>
+            <StatusPill tone={modeData.tone}>
+              {mode === "real" ? "LIVE" : "SIMULATED"}
+            </StatusPill>
+          </div>
+
+          <div className="button-row mt-4">
             <button
               className="btn-primary"
               type="button"
-              onClick={handleTrigger}
-              disabled={isSubmitting || status?.status === "running"}
+              onClick={mode === "real" ? handleTrigger : handleDemoReplay}
+              disabled={
+                mode === "real" &&
+                (isSubmitting || displayStatus?.status === "running")
+              }
             >
-              {status?.status === "running"
-                ? "Pipeline running"
-                : "Run pipeline"}
+              {mode === "real"
+                ? displayStatus?.status === "running"
+                  ? modeData.replayLabel
+                  : isSubmitting
+                    ? "Starting real run"
+                    : modeData.actionLabel
+                : modeData.actionLabel}
             </button>
             <button
               className="btn-ghost"
@@ -451,69 +814,17 @@ export function PipelineTrigger() {
               Open country intelligence
             </button>
           </div>
-        }
-        description="Run the current World Bank Analyst pipeline and watch each stage complete in real time."
-        eyebrow="PIPELINE CONTROL"
-        meta="World Bank fetch · AI synthesis · live status polling"
-        title="Pipeline Trigger"
-      />
 
-      <section className="kpi-row section-gap">
-        <KpiCard
-          freshness={
-            status?.started_at
-              ? `STARTED ${formatTimestamp(status.started_at)}`
-              : "AWAITING TRIGGER"
-          }
-          label="Pipeline Status"
-          status={(status?.status || "idle").toUpperCase()}
-          statusTone={getStatusTone(status?.status)}
-          value={(status?.status || "idle").toUpperCase()}
-        />
-        <KpiCard
-          freshness={
-            status?.completed_at
-              ? `COMPLETED ${formatTimestamp(status.completed_at)}`
-              : "NO COMPLETED RUN YET"
-          }
-          label="Last Run Duration"
-          status={status?.completed_at ? "Available" : "Pending"}
-          statusTone={status?.completed_at ? "success" : "neutral"}
-          value={formatDuration(status)}
-        />
-        <KpiCard
-          freshness={`${executionSteps.length} TRACKED STAGES`}
-          label="Stages Completed"
-          status={`${completedSteps}/${executionSteps.length}`}
-          statusTone={completedSteps > 0 ? "success" : "neutral"}
-          value={completedSteps}
-        />
-        <KpiCard
-          freshness="17-COUNTRY PANEL ACTIVE"
-          label="Current Scope"
-          status="Live panel"
-          statusTone="success"
-          value="17 MARKETS"
-        />
-      </section>
-
-      <section className="section-gap">
-        <div className="card trigger-hero">
-          <div className="panel-header">
-            <div>
-              <p className="text-label">TARGET</p>
-              <h2 className="text-headline mt-3">
-                Run the active World Bank Analyst pipeline
-              </h2>
-              <p className="text-body text-secondary mt-4">
-                This flow fetches World Bank data, analyzes the signal, generates
-                country briefings, and stores them for the dashboard.
+          {mode === "demo" ? (
+            <div className="pipeline-replay-launch-note mt-3">
+              <p className="text-label">Replay surface</p>
+              <p className="text-body text-secondary mt-3">
+                Replay walkthrough opens as a modal wizard so the explanation
+                can move stage by stage without pretending the backend is
+                running.
               </p>
             </div>
-            <StatusPill tone={getStatusTone(status?.status)}>
-              {(status?.status || "idle").toUpperCase()}
-            </StatusPill>
-          </div>
+          ) : null}
 
           <div className="button-row mt-4">
             <Link className="shell-inline-link" to="/">
@@ -524,10 +835,45 @@ export function PipelineTrigger() {
             </Link>
           </div>
 
-          {requestError ? (
+          {mode === "real" && requestError ? (
             <p className="text-body text-critical mt-4">{requestError}</p>
           ) : null}
         </div>
+      </section>
+
+      <section className="kpi-row section-gap">
+        <KpiCard
+          freshness={
+            mode === "real" ? "TRUTHFUL BACKEND STATE" : "FRONTEND-ONLY REPLAY"
+          }
+          label="Run Mode"
+          status={mode === "real" ? "Live" : "Simulated"}
+          statusTone={modeData.tone}
+          value={modeData.label.toUpperCase()}
+        />
+        <KpiCard
+          freshness={buildStatusFreshness(mode, displayStatus)}
+          label="Execution Status"
+          status={mode === "real" ? "Current" : "Replay"}
+          statusTone={
+            mode === "demo" ? "warning" : getStatusTone(displayStatus?.status)
+          }
+          value={(displayStatus?.status || "idle").toUpperCase()}
+        />
+        <KpiCard
+          freshness={`${executionSteps.length} TRACKED STAGES`}
+          label="Stages Completed"
+          status={`${completedSteps}/${executionSteps.length}`}
+          statusTone={completedSteps > 0 ? "success" : "neutral"}
+          value={completedSteps}
+        />
+        <KpiCard
+          freshness="17-COUNTRY PANEL STORY"
+          label="Truth Boundary"
+          status={mode === "real" ? "Backend only" : "No backend writes"}
+          statusTone={modeData.tone}
+          value={mode === "real" ? "API ONLY" : "BROWSER ONLY"}
+        />
       </section>
 
       <section className="trigger-grid section-gap">
@@ -535,15 +881,14 @@ export function PipelineTrigger() {
           <div className="panel-header">
             <div>
               <p className="text-label">Execution sequence</p>
-              <h2 className="text-headline mt-3">Tracked pipeline stages</h2>
+              <h2 className="text-headline mt-3">Shared pipeline stages</h2>
             </div>
-            <StatusPill tone={getStatusTone(status?.status)}>
-              {completedSteps}/{executionSteps.length}
-            </StatusPill>
+            <StatusPill tone={modeData.tone}>{modeData.label}</StatusPill>
           </div>
           <div className="execution-step-list mt-4">
-            {executionSteps.map((step) => {
+            {executionSteps.map((step, index) => {
               const isRunning = step.status === "running";
+
               return (
                 <article
                   className={`execution-step-card execution-step-card--${getStatusTone(step.status)} ${isRunning ? "is-animating-border" : ""}`}
@@ -551,8 +896,13 @@ export function PipelineTrigger() {
                 >
                   <div className="panel-header">
                     <div>
-                      <p className="text-label">Stage</p>
-                      <h3 className="text-title mt-3">{step.name}</h3>
+                      <p className="text-label">
+                        Stage {String(index + 1).padStart(2, "0")}
+                      </p>
+                      <h3 className="text-title mt-3">{step.title}</h3>
+                      <p className="execution-step-card__stage-name mt-3">
+                        {step.name}
+                      </p>
                     </div>
                     <StatusPill tone={getStatusTone(step.status)}>
                       {isRunning ? (
@@ -567,10 +917,29 @@ export function PipelineTrigger() {
                   <p className="text-body text-secondary mt-4">
                     {getExecutionCopy(step)}
                   </p>
+                  <div className="execution-step-card__note mt-4">
+                    <span className="text-label">What changes here</span>
+                    <p className="text-body text-secondary mt-3">
+                      {step.story}
+                    </p>
+                  </div>
+                  {isRunning ? (
+                    <div className="execution-step-card__note mt-4">
+                      <span className="text-label">
+                        Why this stage can take time
+                      </span>
+                      <p className="text-body text-secondary mt-3">
+                        {step.latencyNote}
+                      </p>
+                    </div>
+                  ) : null}
                   <StepSimulation
-                    stepName={step.name}
+                    activityLabel={
+                      mode === "demo" ? "Demo activity" : "Live operation"
+                    }
                     isRunning={isRunning}
-                    tick={simulationTick}
+                    stepName={step.name}
+                    tick={activityTick}
                   />
                 </article>
               );
@@ -579,15 +948,21 @@ export function PipelineTrigger() {
         </div>
 
         <div className="terminal-panel">
-          <p className="text-label">Live status feed</p>
+          <p className="text-label">Execution feed</p>
           <pre className="terminal-panel__output text-metric text-secondary mt-3">
             {terminalOutput}
-            {status?.status === "running" && (
+            {displayStatus?.status === "running" && (
               <span className="terminal-cursor" />
             )}
           </pre>
         </div>
       </section>
+
+      <PipelineReplayModal
+        isOpen={mode === "demo" && isReplayModalOpen}
+        onClose={() => setIsReplayModalOpen(false)}
+        replayVersion={demoReplayVersion}
+      />
     </div>
   );
 }
