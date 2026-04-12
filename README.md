@@ -72,7 +72,7 @@ BigQuery is a data warehouse for analytical queries over large datasets. World B
 ## Quick Start
 
 Local development defaults to `PIPELINE_MODE=local`, `REPOSITORY_MODE=local`, and `WORLD_ANALYST_API_KEY=local-dev`. `WORLD_ANALYST_STORAGE_BACKEND` remains supported as a backward-compatible alias.
-The browser does not send that key directly. The Vite dev proxy injects it server-side, which matches the deployed same-origin proxy story.
+The browser does not send that key directly. The Vite dev proxy injects `local-dev` server-side by default (or `WORLD_ANALYST_DEV_PROXY_API_KEY` when a non-default local proxy key is needed), which matches the deployed same-origin proxy story.
 
 ```bash
 # Backend
@@ -95,9 +95,16 @@ For deployed runtimes, keep the code default local and set the cloud services ex
 
 | Surface | Required runtime/build configuration |
 | --- | --- |
-| API service | `WORLD_ANALYST_RUNTIME_ENV=production`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_API_KEY`, `WORLD_ANALYST_ALLOWED_ORIGINS`, optional `WORLD_ANALYST_FIRESTORE_COLLECTION` |
+| API service | `WORLD_ANALYST_RUNTIME_ENV=production`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_API_KEY`, `WORLD_ANALYST_ALLOWED_ORIGINS`, `WORLD_ANALYST_PIPELINE_DISPATCH_MODE=cloud`, `WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID`, `WORLD_ANALYST_PIPELINE_JOB_REGION`, `WORLD_ANALYST_PIPELINE_JOB_NAME`, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_PIPELINE_JOB_CONTAINER_NAME` |
 | Pipeline job | `PIPELINE_MODE=live`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_RAW_ARCHIVE_BUCKET`, `GEMINI_API_KEY` for the default Google path, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_AI_PROVIDER`, `WORLD_ANALYST_GEMINI_MODEL`, `WORLD_ANALYST_OPENAI_MODEL`, `WORLD_ANALYST_AI_MAX_ATTEMPTS` |
-| Frontend runtime | The frontend already defaults to `/api/v1`; Cloud Run must set `WORLD_ANALYST_API_UPSTREAM` and `WORLD_ANALYST_PROXY_API_KEY` for the nginx same-origin proxy |
+| Frontend runtime | The frontend already defaults to `/api/v1`; Cloud Run must set `WORLD_ANALYST_RUNTIME_ENV=production`, `WORLD_ANALYST_API_UPSTREAM`, and `WORLD_ANALYST_PROXY_API_KEY` for the nginx same-origin proxy, and the frontend service account must be able to read that secret at runtime |
+
+Example cloud configuration values for this repo:
+
+- `WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID=world-bank-analyst`
+- `WORLD_ANALYST_PIPELINE_JOB_REGION=europe-west1`
+- `WORLD_ANALYST_RAW_ARCHIVE_BUCKET=world-bank-analyst-raw-markus-euw1`
+- Secret names: `world-analyst-api-key` for the shared API key and `world-analyst-gemini-api-key` for the AI provider key
 
 Before the first cloud deployment, create or confirm:
 
@@ -105,16 +112,26 @@ Before the first cloud deployment, create or confirm:
 2. A Firestore Native database in `europe-west1` or the corresponding EU multi-region
 3. A GCS bucket for raw World Bank archives
 4. A Secret Manager secret for `WORLD_ANALYST_API_KEY`
-5. Cloud Run service accounts for the API service, pipeline job, and Cloud Scheduler trigger
-6. IAM bindings that give those identities only the roles they need for Firestore, GCS, Secret Manager, and Cloud Run job invocation
+5. Cloud Run service accounts for the API service, frontend service, pipeline job, and Cloud Scheduler trigger
+6. IAM bindings that give those identities the roles they need for Firestore, GCS, Secret Manager, and Cloud Run job execution
 
 See `.agents/workflows/deploy.md` for copy-pasteable service-account, secret-creation, IAM, deploy, and scheduler commands.
+
+Treat that workflow as the developer-facing deployment source of truth. It now documents both the commands and the rollout lessons that actually mattered in practice: repo-root image builds, override-based Cloud Run Job IAM, the scheduler OAuth scope, the frontend proxy runtime split, and the smoke gate that proves the deployment is real.
 
 Cloud rollout notes:
 
 - `frontend/nginx/default.conf.template` already proxies `/api/v1/` and injects `X-API-Key` server-side. Do not bake the API key into frontend assets.
+- `POST /api/v1/pipeline/trigger` stays on the deterministic local thread path unless `WORLD_ANALYST_PIPELINE_DISPATCH_MODE=cloud` is set explicitly.
+- Cloud dispatch requires explicit job coordinates: `WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID`, `WORLD_ANALYST_PIPELINE_JOB_REGION`, and `WORLD_ANALYST_PIPELINE_JOB_NAME`. The trigger passes `WORLD_ANALYST_PIPELINE_RUN_ID` and `WORLD_ANALYST_PIPELINE_COUNTRY_CODE` into the job execution as runtime overrides.
+- The frontend Cloud Run service should use its own service account with Secret Manager access because nginx reads `WORLD_ANALYST_PROXY_API_KEY` at runtime.
+- The frontend container keeps local-friendly proxy defaults only for explicit local runtimes. In Cloud Run, set `WORLD_ANALYST_RUNTIME_ENV=production` so startup fails fast if the upstream or proxy key is left on the local fallback.
+- The API service account needs `run.jobs.runWithOverrides` for the override-based trigger path; the built-in role used in the live rollout is `roles/run.developer`, not `roles/run.invoker`.
+- The Cloud Scheduler job creation command should include `--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform` when targeting the Cloud Run Jobs API.
 - Firestore mode requires the paired GCS bucket because stored records keep raw archive references alongside processed documents.
 - Live AI now runs through `pipeline/ai_client.py`. The default live baseline is Google GenAI `gemma-4-31b-it` with `GEMINI_API_KEY` supplied server-side; switch providers deliberately with `WORLD_ANALYST_AI_PROVIDER=openai` plus `OPENAI_API_KEY`.
+
+Container entry points for Cloud Run builds now live in `api/Dockerfile`, `pipeline/Dockerfile`, and `frontend/Dockerfile`. The API container now serves the Connexion app through Gunicorn via `api/wsgi.py` instead of the Flask development server.
 
 ## Development
 

@@ -5,9 +5,9 @@
 ### 1.1 Document title and version
 
 Frontend fidelity to design mockups
-Version: 0.1
-Date: 2026-04-10
-Status: Draft for approval
+Version: 1.0
+Date: 2026-04-12
+Status: Implemented and validated locally
 
 ### 1.2 Product summary
 
@@ -16,6 +16,19 @@ World Analyst already has the beginnings of a working frontend: the route struct
 This PRD turns the finalized design mockups into an implementation-ready frontend scope. The mockups are the visual source of truth for page composition, hierarchy, and interaction intent. The design system remains the hard implementation guardrail for tokens and rules: dark canvas, orange restraint, 8px radius, no shadows, no blur, Inter plus Commit Mono, and tonal depth only. Where the mockup HTML and the design system disagree, the design system wins.
 
 This PRD focuses on UX and UI. It covers all four pages, the shared application shell, page-level layout parity, reusable components, interaction fidelity, and bounded polish such as feedback states, tactile controls, and smoother loading behavior. It does not own live data, live AI, or cloud runtime truthfulness, but it must create the frontend structure that those later PRDs can plug into without redesigning the product. This work can begin after the landing-dashboard baseline and does not need durable storage, live data, or cloud deployment to be complete, but the resulting page structures must remain compatible with those later integrations. Before implementation starts, the mockup HTML must be audited for design-system conflicts such as non-token spacing, shadow usage, or radius drift so the implementation team does not discover those conflicts halfway through the build.
+
+### 1.3 Implementation outcome
+
+The frontend fidelity pass is now implemented behind one shared shell and one consistent component layer. The app ships the four intended pages, reusable shell and status components, a map-led Global Overview, a summary-first Country Intelligence page, a visually structured How It Works surface, and a Pipeline Trigger page with controlled running, complete, failed, and idle states.
+
+The final cleanup in this phase removed the main design-system drift that would have been easy to challenge in review: dead shadow CSS, token-bypassing inline styles, raw spacing literals inside the map popover, and stale How It Works copy that implied unfinished AI wiring. The page set now reads as one terminal rather than four separate slices, while still keeping deploy-only runtime claims labeled instead of pretending the cloud rollout is already live.
+
+Validation completed on 2026-04-12:
+
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run test:ui` passed (`5` files, `8` tests).
+- `cd frontend && npm run test:overview` passed (`3` assertions).
+- `cd frontend && npm run build` passed.
 
 ## 2. Goals
 

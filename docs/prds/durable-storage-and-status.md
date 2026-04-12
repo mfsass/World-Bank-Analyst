@@ -4,14 +4,19 @@
 
 ### 1.1 Document title and version
 Durable storage, status, and provenance
-Version: 0.1
-Date: 2026-04-09
-Status: Draft for approval
+Version: 1.0
+Date: 2026-04-12
+Status: Implemented
 
 ### 1.2 Product summary
 World Analyst already proves the local product loop: a user can trigger the pipeline, watch status progress, and open a country briefing. The remaining gap is that much of this behavior still depends on process-local state. That makes the system good enough for a local slice, but not strong enough for a durable product or a defensible cloud architecture.
 
 This PRD defines the storage hardening phase that follows the landing-dashboard baseline already established in the local slice. Firestore becomes the durable system of record for processed dashboard-facing records, GCS holds raw World Bank payload backups, and the pipeline writes enough provenance to explain where a result came from without turning the product into a full observability platform. The current trigger flow stays in place for now so this PRD remains focused on state contracts and persistence boundaries rather than cloud runtime wiring or job orchestration.
+
+### 1.3 Implementation outcome
+The durable-storage layer is now implemented behind the shared repository contract. Local and Firestore backends expose the same public API shapes, the pipeline persists current status plus processed indicator, country, and global overview records, and raw World Bank payloads are archived with stable run-scoped references.
+
+Closure for this PRD is based on durable behavior rather than diagram-level intent. The product now persists run identifiers, source provenance, and bounded AI provenance on stored records, survives restart once records have been written, and keeps the frontend contract stable while switching between local and Firestore-backed modes.
 
 ## 2. Goals
 

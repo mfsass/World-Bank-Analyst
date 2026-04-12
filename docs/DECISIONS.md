@@ -609,8 +609,6 @@
 
 **Date:** 2026-04-12
 
----
-
 ## ADR-043: Replace the Global Overview Raster Map With a Bundled Vector Geography
 
 **Context:** The Global Overview map had already moved away from percentage-based marker placement, but it still depended on a cropped raster basemap, custom projection math, and country-specific nudges to make the pins look approximately right. That made the UI more stable than the old CSS overlay, but it still was not geographically trustworthy enough for an analyst-facing surface.
@@ -693,5 +691,89 @@
 **Why:** This makes the gate measure the thing it claims to measure. A grounded output should pass because it cites the right figures and describes the move correctly, not because it happens to match a hidden risk heuristic. It also keeps the default gate deterministic, reproducible from the repo, and usable even when a live judge model is quota-constrained.
 
 **Trade-off:** The built-in gate is now narrower. It is strong at catching weak numeric anchoring and weak directionality, but it will not catch every subtle issue in risk framing or macro judgment. We accept that because PRD sign-off needs a stable approval gate for grounding and contract safety first, while richer judgment can stay in the optional live-judge path and human review.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-049: Keep Functional Looping Indicators Outside the 200ms Interaction Cap
+
+**Context:** The frontend-fidelity PRD caps hover, focus, active, and state transitions at 200ms to stop the UI from drifting into decorative motion. That rule works for discrete interactions, but it clashes with a small set of continuous indicators the terminal uses to show loading, selected focus, or active execution: the blinking terminal cursor, running-stage border pulse, selected map-marker ping, and skeleton shimmer.
+
+**Decision:** Keep the 200ms cap for discrete interaction transitions and allow longer looping animations only when they carry state. The allowed exception is narrow: the animation must explain a live condition, stay visually restrained, use transform, opacity, or background-position rather than layout properties, and respect `prefers-reduced-motion`.
+
+**Why:** Forcing these loops under 200ms would make them frantic and less readable. The longer cadence lets the terminal signal "running", "selected", or "loading" without turning the interface into decoration. It also keeps the rule easy to defend: short transitions for interaction polish, slower loops only when the UI is communicating state.
+
+**Trade-off:** This adds a small exception to an otherwise clean timing rule, so future motion work needs discipline. We accept that because the alternative is worse UX and a misleadingly strict interpretation of the PRD that would punish the few places where gentle motion is actually doing useful work.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-050: Runtime-Gated Trigger Dispatch with Firestore-Backed Run Claiming
+
+**Context:** The API trigger still started the pipeline on an in-process thread. That kept the local slice working, but it blocked the cloud topology because the deployed API could not truthfully claim it dispatched a separate Cloud Run Job. The trigger also needed an idempotent claim path that works across stateless API instances without changing the public status contract.
+
+**Decision:** Keep local trigger execution on the existing background-thread path by default, add an explicit `WORLD_ANALYST_PIPELINE_DISPATCH_MODE` gate, and make cloud dispatch opt-in. In cloud mode, the API claims the next run through the shared repository before dispatching a Cloud Run Job. When the Firestore repository is active, that claim uses a Firestore transaction on the current pipeline-status document.
+
+**Why:** This keeps local development deterministic and easy to run, while making the cloud path explicit instead of inferred from environment drift. Reusing the durable status record as the idempotency gate avoids a second coordination system and keeps the frontend polling contract unchanged.
+
+**Trade-off:** The trigger flow now carries extra runtime configuration and a little more orchestration code. We accept that because it is still smaller and easier to defend than duplicate job runs or an API process that pretends to be a job dispatcher without actually behaving like one.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-051: Build Cloud Run Images from Repo Root Through a Shared Cloud Build Config
+
+**Context:** The new API and pipeline containers both depend on sibling directories outside their own folders: the API image needs `pipeline/` and `shared/`, and the pipeline image needs `shared/`. That makes the simple `gcloud builds submit ./api --tag ...` shape dishonest, because those Dockerfiles cannot build correctly from a subdirectory-only context.
+
+**Decision:** Add a repo-root `cloudbuild.images.yaml` that builds all three deployable images from the repository root. The deploy workflow now uses that shared Cloud Build config instead of assuming a local Docker daemon or a subdirectory-only build context.
+
+**Why:** This keeps the build surface aligned with the real code layout and makes deployment work from more environments, including machines where Docker is installed but the daemon is unavailable. It also removes ambiguity for reviewers: the repo now contains one explicit image-build path that matches the Dockerfiles it ships.
+
+**Trade-off:** A shared build config is one more deployment asset to maintain, and all three images now build from the same root context instead of three isolated subdirectories. We accept that because correctness and repeatability matter more here than keeping the build instructions superficially shorter.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-052: Use the Built-In Run Developer Role for Override-Based API Dispatch
+
+**Context:** The deployed API dispatches manual pipeline runs through the Cloud Run Jobs API and passes run-scoped environment overrides such as `WORLD_ANALYST_PIPELINE_RUN_ID` and `WORLD_ANALYST_PIPELINE_COUNTRY_CODE`. The initial least-privilege assumption was `roles/run.invoker`, but the live rollout showed that override-based executions require `run.jobs.runWithOverrides`, which `roles/run.invoker` does not include.
+
+**Decision:** Grant the API service account `roles/run.developer` for the Cloud Run Job dispatch path instead of relying on `roles/run.invoker` alone.
+
+**Why:** This is the smallest built-in role that made the deployed manual trigger work truthfully with runtime overrides and without a custom IAM role. It keeps the deployment instructions reproducible from the repo and avoids a runbook that only works for non-override execution.
+
+**Trade-off:** `roles/run.developer` is broader than the exact single permission the API needs. We accept that for the challenge rollout because it stays within Cloud Run scope, avoids the maintenance overhead of a custom role, and keeps the live deployment path easy to reproduce and explain.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-053: Keep Frontend Proxy Fallbacks Local-Only and Fail Fast in Production
+
+**Context:** The frontend container needs two runtime values to uphold the browser-facing auth boundary: `WORLD_ANALYST_API_UPSTREAM` and `WORLD_ANALYST_PROXY_API_KEY`. The repo had local-friendly defaults in `frontend/Dockerfile`, which made container experiments easy but also meant a Cloud Run deployment could start with development placeholders unless the operator remembered to override them correctly.
+
+**Decision:** Keep the local-friendly frontend proxy defaults for explicit local runtimes, but require `WORLD_ANALYST_RUNTIME_ENV=production` on Cloud Run and fail container startup when either proxy variable is missing or still set to the local fallback.
+
+**Why:** This preserves lightweight local container experiments without letting the deployed runtime rely on implicit development values. It also makes the browser-facing auth boundary auditable from the repo: production must set the upstream and secret explicitly, and misconfiguration fails before the dashboard serves traffic.
+
+**Trade-off:** The frontend deployment command is slightly more explicit because it now sets `WORLD_ANALYST_RUNTIME_ENV=production`, and the image carries one small validation script. We accept that because the alternative is a brittle rollout that is only safe when every operator remembers to override local defaults perfectly.
+
+**Date:** 2026-04-12
+
+---
+
+## ADR-054: Store One Panel Overview Record but Keep Panel Metrics Deterministic
+
+**Context:** The Global Overview page was still reading like a lead-market screen because the frontend hero and signal pack were anchored to `overview.briefings[0]`, even though the page already fetched the full monitored set of country briefings. The product gap had two separate causes: the page lacked a true cross-country narrative record, and the UI model was incorrectly treating one country as the panel story.
+
+**Decision:** Add one stored `global_overview` record plus a spec-first `/overview` endpoint for the cross-country narrative, while deriving panel metrics and signal cards deterministically from the existing country and indicator payloads.
+
+**Why:** The monitored-set summary genuinely needs a separate narrative pass because it synthesises across all country briefings. The hero metrics, anomaly counts, and panel signal cards do not need another model call; they are stronger and more auditable when they are computed directly from the structured data the page already has.
+
+**Trade-off:** The pipeline and repository contract gain one more stored document type and one extra synthesis pass. We accept that because it sharply separates the truly global narrative from country drilldown content without inflating model usage for panel facts the frontend can already calculate itself.
 
 **Date:** 2026-04-12

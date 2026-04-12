@@ -4,14 +4,14 @@
 
 ### 1.1 Document title and version
 Security, testing, and hardening
-Version: 0.1
+Version: 0.2
 Date: 2026-04-10
-Status: Draft for approval
+Status: Implemented
 
 ### 1.2 Product summary
-World Analyst can already define its target architecture, data path, AI path, and frontend surface, but the final review bar is not met until the product proves that those parts are protected, validated, and believable as one system. The remaining gap is not broad enterprise security work. It is the bounded hardening needed to stop obvious trust failures: browser-visible secrets, weak release confidence, untested failure paths, and documentation that claims a safer deployment posture than the implementation actually enforces.
+World Analyst now has the bounded hardening layer required for the challenge demo rather than only describing it. The browser-facing app uses the same-origin `/api/v1` proxy without shipping the shared API key, the API and frontend both fail fast on missing production auth configuration, and the deployment runbook now includes a concrete release smoke gate instead of an implied checklist.
 
-This PRD defines the final hardening phase for the bounded World Analyst scope. It owns the browser-facing authentication boundary, secret hygiene, origin and request hardening, business-driven validation across the stack, and the minimum release-readiness checks that make the live demo defensible. It does not replace the earlier PRDs for storage, live data, live AI, cloud runtime, frontend fidelity, or architecture explanation. Instead, it closes those PRDs by deciding how the browser reaches the API safely enough for the challenge and by defining the proof that the system works end to end.
+This PRD defined the final hardening phase for the bounded World Analyst scope. It now closes with HTTP-level auth enforcement tests, explicit non-wildcard CORS in deployed mode, frontend failed-state coverage on the live trigger surface, durable-status and failure-path coverage in the API and pipeline suites, and a documented smoke sequence that proves the deployed frontend, API, and Cloud Run Job still behave as one review-ready system.
 
 The hardening posture in this PRD stays proportional to the product. The project still targets a 17-country exact-complete core panel ending at 2024, 6 indicators, one Cloud Run Job, one Firestore collection, and one live demo URL. That means the right outcome is a small set of real controls and real tests, not a large security program. The product should be simple enough to explain and strong enough that a reviewer cannot immediately find an avoidable trust gap.
 
@@ -199,54 +199,54 @@ This is a medium-sized closing PRD. The code changes should stay narrower than t
 - **ID**: US-1
 - **Description**: As an evaluator, I want the deployed browser to avoid carrying the shared API key so that the live product does not expose an obvious secret-management flaw.
 - **Acceptance criteria**:
-  - [ ] The deployed browser no longer sends the production `X-API-Key` header directly from client-side JavaScript.
-  - [ ] The production frontend calls the API through the same-origin `/api/v1` proxy path.
-  - [ ] The proxy layer injects the required API key server-side.
-  - [ ] The live dashboard still works from one public URL after this change.
-  - [ ] The proxy behavior is defined in a checked-in frontend runtime config artifact, such as an nginx config or template, rather than only through manual console steps.
+  - [x] The deployed browser no longer sends the production `X-API-Key` header directly from client-side JavaScript.
+  - [x] The production frontend calls the API through the same-origin `/api/v1` proxy path.
+  - [x] The proxy layer injects the required API key server-side.
+  - [x] The live dashboard still works from one public URL after this change.
+  - [x] The proxy behavior is defined in a checked-in frontend runtime config artifact, such as an nginx config or template, rather than only through manual console steps.
 
 ### 10.2 Reject unauthorized direct API access cleanly
 - **ID**: US-2
 - **Description**: As an engineer, I want protected endpoints to reject unauthenticated callers clearly so that the API boundary remains real after deployment.
 - **Acceptance criteria**:
-  - [ ] Protected endpoints return `401` for missing or invalid API keys.
-  - [ ] The health endpoint remains callable without auth.
-  - [ ] Unauthorized responses do not expose secret values or raw stack traces.
-  - [ ] Automated tests cover valid-key and invalid-key behavior.
+  - [x] Protected endpoints return `401` for missing or invalid API keys.
+  - [x] The health endpoint remains callable without auth.
+  - [x] Unauthorized responses do not expose secret values or raw stack traces.
+  - [x] Automated tests cover valid-key and invalid-key behavior.
 
 ### 10.3 Tighten deployed request boundaries
 - **ID**: US-3
 - **Description**: As a reviewer, I want the deployed API to avoid permissive request defaults so that the production posture is stronger than local development shortcuts.
 - **Acceptance criteria**:
-  - [ ] Deployed configuration does not allow wildcard CORS origins.
-  - [ ] Allowed origins, methods, and headers are explicitly configured for production.
-  - [ ] Local development can still run with a simpler configuration without changing the deployed contract.
-  - [ ] The repo documents the local-versus-production boundary clearly.
+  - [x] Deployed configuration does not allow wildcard CORS origins.
+  - [x] Allowed origins, methods, and headers are explicitly configured for production.
+  - [x] Local development can still run with a simpler configuration without changing the deployed contract.
+  - [x] The repo documents the local-versus-production boundary clearly.
 
 ### 10.4 Prove the core product flows through tests
 - **ID**: US-4
 - **Description**: As an engineer, I want automated tests to prove the product's critical flows so that release confidence does not depend on memory or manual optimism.
 - **Acceptance criteria**:
-  - [ ] The test suite covers auth enforcement on protected endpoints.
-  - [ ] The test suite covers at least one pipeline-status failure path and one duplicate-trigger protection path.
-  - [ ] The test suite covers one live-data or live-AI degraded outcome using the existing deterministic seams.
-  - [ ] Frontend or view-model tests cover intentional handling of ready and failed states for at least one key surface.
+  - [x] The test suite covers auth enforcement on protected endpoints.
+  - [x] The test suite covers at least one pipeline-status failure path and one duplicate-trigger protection path.
+  - [x] The test suite covers one live-data or live-AI degraded outcome using the existing deterministic seams.
+  - [x] Frontend or view-model tests cover intentional handling of ready and failed states for at least one key surface.
 
 ### 10.5 Define a short release smoke gate
 - **ID**: US-5
 - **Description**: As an operator, I want a short post-deploy validation checklist so that I can confirm the live system is still safe and usable before a demo.
 - **Acceptance criteria**:
-  - [ ] The repo documents a smoke sequence covering dashboard read, trigger start, status poll, and one failure or unauthorized probe.
-  - [ ] The smoke sequence includes a check that built frontend assets do not contain the production API key.
-  - [ ] The smoke sequence confirms browser requests use the same-origin proxy path without a client-side `X-API-Key` header.
-  - [ ] The smoke sequence is short enough to run before a review session.
-  - [ ] A failed smoke check is treated as a release blocker for demo use.
+  - [x] The repo documents a smoke sequence covering dashboard read, trigger start, status poll, and one failure or unauthorized probe.
+  - [x] The smoke sequence includes a check that built frontend assets do not contain the production API key.
+  - [x] The smoke sequence confirms browser requests use the same-origin proxy path without a client-side `X-API-Key` header.
+  - [x] The smoke sequence is short enough to run before a review session.
+  - [x] A failed smoke check is treated as a release blocker for demo use.
 
 ### 10.6 Fail fast on missing secrets and unsafe production config
 - **ID**: US-6
 - **Description**: As an engineer, I want production services to refuse unsafe startup conditions so that the system does not drift into a misleading partially configured state.
 - **Acceptance criteria**:
-  - [ ] Production services fail fast when required secret or runtime configuration is missing.
-  - [ ] Development defaults remain allowed only in explicit local-development modes.
-  - [ ] Service logs identify missing configuration by name without printing secret values.
-  - [ ] The operator documentation names the required configuration for each deployed service.
+  - [x] Production services fail fast when required secret or runtime configuration is missing.
+  - [x] Development defaults remain allowed only in explicit local-development modes.
+  - [x] Service logs identify missing configuration by name without printing secret values.
+  - [x] The operator documentation names the required configuration for each deployed service.

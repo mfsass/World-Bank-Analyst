@@ -5,9 +5,9 @@
 ### 1.1 Document title and version
 
 How It Works and architecture explainability
-Version: 0.1
-Date: 2026-04-10
-Status: Draft for approval
+Version: 1.0
+Date: 2026-04-12
+Status: Implemented and validated locally
 
 ### 1.2 Product summary
 
@@ -16,6 +16,12 @@ World Analyst needs one place where the technical argument is clear enough for a
 This PRD defines the explainability layer for World Analyst. Its main output is the How It Works page, supported by tightly bounded alignment with review-facing documentation where needed. The page should explain the current system honestly, show the intended target architecture where that target is already committed in adjacent PRDs, and make the reasoning behind key decisions easy to follow. It must not overcomplicate the product with a fake observability console or inflated technical claims. It should make the real system legible.
 
 This PRD follows a simple rule: every architecture claim shown on the page must either map to a real part of the codebase or be clearly presented as a planned target owned by another approved PRD. The page should help a reviewer understand what exists now, what comes next, and why the system is shaped this way.
+
+### 1.3 Implementation outcome
+
+The How It Works surface is now implemented as a real explanation layer instead of placeholder architecture copy. The page explains the push-based World Bank fetch, the deterministic statistical signal layer, the country synthesis step, the monitored-set overview synthesis step, and the Firestore plus GCS persistence boundary in language that matches the current codebase.
+
+Closure for this PRD is based on truthfulness, not ornament. The page now distinguishes operational stages clearly, reflects the approved 17-country bounded scope, and stays aligned with the project brief and deployed architecture without pretending unfinished platform work is already live.
 
 ## 2. Goals
 

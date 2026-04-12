@@ -4,14 +4,23 @@
 
 ### 1.1 Document title and version
 Cloud deployment, scheduling, and runtime topology
-Version: 0.1
-Date: 2026-04-10
-Status: Draft for approval
+Version: 0.3
+Date: 2026-04-12
+Status: Implemented
 
 ### 1.2 Product summary
-World Analyst now has a clearer product shape and a stronger storage story, but its runtime model still reflects the local slice. The API currently starts pipeline execution inside the same process, the frontend still assumes local API behavior, and the deployed topology described in the project brief is not yet the system that actually runs.
+World Analyst now runs on the target GCP topology rather than only describing it. The repo-side trigger path, container packaging, and Firestore-backed run claiming are live on Cloud Run, and the frontend, API, and pipeline job now operate as separate cloud resources with shared durable state.
 
-This PRD moves World Analyst from a local-first execution model to a real GCP runtime topology that matches the challenge brief. The target shape is a React frontend served from Cloud Run, a Connexion API on Cloud Run, and a separate Cloud Run Job that performs the push pipeline on a schedule through Cloud Scheduler or on demand through the trigger endpoint. Firestore and GCS remain the shared state and storage layer. Secret Manager provides runtime secrets. The outcome is not full production hardening yet; it is a truthful, deployable, review-ready cloud architecture with one live demo URL.
+This PRD moved World Analyst from a local-first execution model to a real GCP runtime topology that matches the challenge brief. The deployed shape is now a React frontend served from Cloud Run, a Connexion API on Cloud Run, and a separate Cloud Run Job that performs the push pipeline on a schedule through Cloud Scheduler or on demand through the trigger endpoint. Firestore and GCS remain the shared state and storage layer, Secret Manager provides runtime secrets, and the live smoke now proves the public frontend proxy can trigger a real run and read back the resulting persisted data.
+
+### 1.3 Repo implementation progress
+- Repo-side container packaging now exists for both `api/` and `pipeline/`.
+- A repo-root `cloudbuild.images.yaml` now builds the API, frontend, and pipeline images with the correct Docker context for the shared-code layout.
+- `POST /pipeline/trigger` now supports explicit runtime gating between local in-process execution and opt-in Cloud Run Job dispatch.
+- Trigger idempotency now claims the active run through the shared repository, with Firestore using a transaction on the current status document.
+- The API, frontend, and pipeline job are now deployed to Cloud Run in `europe-west1`, with the frontend proxy and API health paths serving successfully.
+- Cloud Scheduler now triggers the pipeline job on the documented monthly cadence, and the live command uses an explicit OAuth token scope for the Cloud Run Jobs API.
+- Live smoke validated the full path: manual trigger through the frontend proxy, Cloud Run Job execution, terminal pipeline status `complete`, and Firestore-backed country reads for the full 17-country panel.
 
 ## 2. Goals
 
@@ -217,49 +226,49 @@ This is a medium-to-large integration PRD. It touches deployment, runtime contro
 - **ID**: US-1
 - **Description**: As an ML6 reviewer, I want one live dashboard URL so that I can open the product and evaluate it without local setup.
 - **Acceptance criteria**:
-  - [ ] A public live URL serves the deployed frontend.
-  - [ ] The deployed frontend can successfully call the deployed API in its target environment.
-  - [ ] The route structure used by the current product remains reachable from the deployed frontend.
+  - [x] A public live URL serves the deployed frontend.
+  - [x] The deployed frontend can successfully call the deployed API in its target environment.
+  - [x] The route structure used by the current product remains reachable from the deployed frontend.
 
 ### 10.2 Run the pipeline as a real scheduled push job
 - **ID**: US-2
 - **Description**: As an evaluator, I want the pipeline to run on a cloud schedule so that the architecture matches the brief's push requirement.
 - **Acceptance criteria**:
-  - [ ] Cloud Scheduler can trigger the Cloud Run Job on a defined schedule.
-  - [ ] The scheduled run writes durable status and processed outputs without a frontend request.
-  - [ ] Scheduled execution can be explained and demonstrated through the deployed cloud resources.
+  - [x] Cloud Scheduler can trigger the Cloud Run Job on a defined schedule.
+  - [x] The scheduled run writes durable status and processed outputs without a frontend request.
+  - [x] Scheduled execution can be explained and demonstrated through the deployed cloud resources.
 
 ### 10.3 Dispatch manual runs without in-process API execution
 - **ID**: US-3
 - **Description**: As a user on the Pipeline Trigger page, I want a manual trigger to start a real cloud pipeline run so that the product demonstrates the actual runtime model rather than a local shortcut.
 - **Acceptance criteria**:
-  - [ ] In cloud mode, `POST /pipeline/trigger` dispatches a Cloud Run Job execution through the Cloud Run Jobs API rather than starting a background thread in the API service.
-  - [ ] Before dispatching, the API uses a Firestore transaction to enforce one active run at a time.
-  - [ ] If a run is already active, the trigger path returns `409 Conflict` with the current run identifier and start time.
-  - [ ] `GET /pipeline/status` continues to serve the latest durable status contract expected by the frontend.
+  - [x] In cloud mode, `POST /pipeline/trigger` dispatches a Cloud Run Job execution through the Cloud Run Jobs API rather than starting a background thread in the API service.
+  - [x] Before dispatching, the API uses a Firestore transaction to enforce one active run at a time when the Firestore repository backend is active.
+  - [x] If a run is already active, the trigger path returns `409 Conflict` with the current running-status contract instead of starting a second run.
+  - [x] `GET /pipeline/status` continues to serve the latest durable status contract expected by the frontend.
 
 ### 10.4 Keep configuration and secrets out of source code
 - **ID**: US-4
 - **Description**: As an engineer, I want deployment-time configuration and secret handling so that the live system is secure enough for review and does not depend on hardcoded credentials.
 - **Acceptance criteria**:
-  - [ ] Runtime configuration is supplied through environment variables or equivalent service configuration.
-  - [ ] The deployed frontend uses the same-origin `/api/v1` path by default, with Cloud Run supplying only the nginx upstream and shared proxy key at runtime.
-  - [ ] Sensitive values used by cloud services come from Secret Manager or an equivalent secure runtime path.
-  - [ ] No sensitive secret is required inside the built frontend bundle.
-  - [ ] API, job, and scheduler service accounts have only the minimum roles required for their work.
+  - [x] Runtime configuration is supplied through environment variables or equivalent service configuration.
+  - [x] The deployed frontend uses the same-origin `/api/v1` path by default, with Cloud Run supplying only the nginx upstream and shared proxy key at runtime.
+  - [x] Sensitive values used by cloud services come from Secret Manager or an equivalent secure runtime path.
+  - [x] No sensitive secret is required inside the built frontend bundle.
+  - [x] API, job, and scheduler service accounts have only the minimum roles required for their work.
 
 ### 10.5 Trace one run across cloud services
 - **ID**: US-5
 - **Description**: As an engineer or reviewer, I want one cloud run to be traceable across trigger, job execution, and storage so that failures can be explained.
 - **Acceptance criteria**:
-  - [ ] Manual and scheduled runs produce logs that include a stable run identifier.
-  - [ ] Cloud logs make it possible to connect API trigger activity, job execution, and terminal storage outcome.
-  - [ ] Failed runs surface a durable failed status instead of disappearing with a service restart.
+  - [x] Manual and scheduled runs produce logs that include a stable run identifier.
+  - [x] Cloud logs make it possible to connect API trigger activity, job execution, and terminal storage outcome.
+  - [x] Failed runs surface a durable failed status instead of disappearing with a service restart.
 
 ### 10.6 Keep deployment repeatable and reviewable
 - **ID**: US-6
 - **Description**: As an engineer, I want a documented deployment path so that the live system can be reproduced and reviewed without tribal knowledge.
 - **Acceptance criteria**:
-  - [ ] The repo documents copy-pasteable commands for building and deploying the frontend, API service, pipeline job, and scheduler.
-  - [ ] The deployment documentation names the required environment variables, regions, and IAM prerequisites.
-  - [ ] The documented flow remains manual but repeatable, without requiring a CI/CD platform.
+  - [x] The repo documents copy-pasteable commands for building and deploying the frontend, API service, pipeline job, and scheduler.
+  - [x] The deployment documentation names the required environment variables, regions, and IAM prerequisites.
+  - [x] The documented flow remains manual but repeatable, without requiring a CI/CD platform.
