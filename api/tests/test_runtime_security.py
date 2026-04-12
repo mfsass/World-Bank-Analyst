@@ -41,6 +41,22 @@ def test_create_app_rejects_wildcard_origins_outside_local(
         create_app()
 
 
+def test_create_app_accepts_explicit_production_runtime_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deployed API should boot once its explicit runtime settings are in place."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.setenv(
+        "WORLD_ANALYST_ALLOWED_ORIGINS",
+        "https://world-analyst.example, https://review.world-analyst.example",
+    )
+    monkeypatch.setenv("WORLD_ANALYST_API_KEY", "configured-secret")
+
+    connexion_app = create_app()
+
+    assert connexion_app is not None
+
+
 def test_validate_api_key_rejects_missing_non_local_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -49,3 +65,13 @@ def test_validate_api_key_rejects_missing_non_local_configuration(
     monkeypatch.delenv("WORLD_ANALYST_API_KEY", raising=False)
 
     assert validate_api_key("local-dev") is None
+
+
+def test_validate_api_key_accepts_configured_non_local_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deployed requests should authenticate once the shared runtime secret is configured."""
+    monkeypatch.setenv("WORLD_ANALYST_RUNTIME_ENV", "production")
+    monkeypatch.setenv("WORLD_ANALYST_API_KEY", "configured-secret")
+
+    assert validate_api_key("configured-secret") is not None
