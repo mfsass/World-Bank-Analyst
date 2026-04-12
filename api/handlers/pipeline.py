@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     # Keep the local slice runnable without packaging the repo as an installed module.
     sys.path.insert(0, str(REPO_ROOT))
 
+from pipeline.local_data import LOCAL_DEV_COUNTRY  # noqa: E402
 from pipeline.main import PipelineExecutionError, run_pipeline  # noqa: E402
 from pipeline.storage import get_raw_archive_store  # noqa: E402
 from shared.repository import build_pipeline_steps, get_repository, project_public_record  # noqa: E402
@@ -90,7 +91,12 @@ def _execute_local_pipeline(run_id: str) -> None:
     """Run the local pipeline asynchronously and update ephemeral status."""
     repository = get_repository()
     try:
-        run_pipeline(repository=repository, step_callback=_update_step_status, run_id=run_id)
+        run_pipeline(
+            country_code=LOCAL_DEV_COUNTRY,
+            repository=repository,
+            step_callback=_update_step_status,
+            run_id=run_id,
+        )
         status = repository.get_pipeline_status_record()
         status["status"] = "complete"
         status["completed_at"] = _utc_now()

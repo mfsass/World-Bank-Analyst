@@ -81,6 +81,14 @@ class InsightsRepository(Protocol):
     def get_pipeline_status(self) -> dict[str, Any]:
         """Return the latest pipeline status payload."""
 
+    def get_stored_record(
+        self,
+        *,
+        entity_type: str,
+        key: str,
+    ) -> dict[str, Any] | None:
+        """Return one full stored mixed document, including private provenance."""
+
 
 def build_pipeline_steps() -> list[dict[str, Any]]:
     """Create the default step list for pipeline status payloads.
@@ -244,3 +252,41 @@ def _project_fields(record: dict[str, Any], field_names: tuple[str, ...]) -> dic
         Copied subset of the stored record.
     """
     return {field_name: copy.deepcopy(record[field_name]) for field_name in field_names if field_name in record}
+
+
+def is_reusable_ai_record(
+    *,
+    record: dict[str, Any],
+    step_name: str,
+    input_fingerprint: str,
+) -> bool:
+    """Return whether one stored mixed document is eligible for exact-match AI reuse.
+
+    Reuse is intentionally conservative: the fingerprint must match exactly, the
+    stored record must belong to the requested AI step, and previously degraded
+    fallbacks are skipped so transient provider failures do not become sticky.
+
+    Args:
+        record: Stored mixed-document record.
+        step_name: Requested AI step name.
+        input_fingerprint: Exact-input fingerprint for the current request.
+
+    Returns:
+        True when the stored record can be reused safely.
+    """
+    ai_provenance = record.get("ai_provenance")
+    if not isinstance(ai_provenance, dict):
+        return False
+
+    lineage = ai_provenance.get("lineage")
+    if not isinstance(lineage, dict):
+        return False
+
+    if ai_provenance.get("step_name") != step_name:
+        return False
+    if lineage.get("input_fingerprint") != input_fingerprint:
+        return False
+    if ai_provenance.get("degraded") is True:
+        return False
+
+    return True

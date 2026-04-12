@@ -9,6 +9,14 @@ from typing import Any
 import pytest
 
 import pipeline.main as pipeline_main
+from pipeline.ai_client import (
+    STEP1_NAME,
+    STEP1_PROMPT_VERSION,
+    STEP2_NAME,
+    STEP2_PROMPT_VERSION,
+    build_input_fingerprint,
+)
+from pipeline.dev_ai_adapter import create_development_client
 from pipeline.fetcher import (
     INDICATORS,
     IndicatorFetchResult,
@@ -71,10 +79,96 @@ EXPECTED_MONITORED_COUNTRIES: dict[str, dict[str, str]] = {
 EXPECTED_MONITORED_COUNTRY_CODES = list(EXPECTED_MONITORED_COUNTRIES)
 LIVE_START_YEAR, LIVE_END_YEAR = [int(part) for part in LIVE_DATE_RANGE.split(":")]
 EXPECTED_LIVE_YEARS_PER_INDICATOR = LIVE_END_YEAR - LIVE_START_YEAR + 1
-EXPECTED_LIVE_ROWS_PER_INDICATOR = (
-    EXPECTED_LIVE_YEARS_PER_INDICATOR * len(EXPECTED_MONITORED_COUNTRY_CODES)
+EXPECTED_LIVE_ROWS_PER_INDICATOR = EXPECTED_LIVE_YEARS_PER_INDICATOR * len(
+    EXPECTED_MONITORED_COUNTRY_CODES
 )
 EXPECTED_LIVE_DATA_POINTS = EXPECTED_LIVE_ROWS_PER_INDICATOR * len(INDICATORS)
+
+
+class StubLiveAIClient:
+    """Use deterministic narratives while exercising the live AI wiring path."""
+
+    def __init__(self) -> None:
+        self._delegate = create_development_client()
+
+    def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
+        result = self._delegate.analyse_indicator(context)
+        result["ai_provenance"].update(
+            {
+                "provider": "stub-live-provider",
+                "model": "stub-live-model",
+            }
+        )
+        result["ai_provenance"]["lineage"]["input_fingerprint"] = build_input_fingerprint(
+            step_name=STEP1_NAME,
+            prompt_version=STEP1_PROMPT_VERSION,
+            prompt_input=_strip_private_fields(context),
+            provider="stub-live-provider",
+            model="stub-live-model",
+        )
+        return result
+
+    def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
+        result = self._delegate.synthesise_country(indicators)
+        result["ai_provenance"].update(
+            {
+                "provider": "stub-live-provider",
+                "model": "stub-live-model",
+            }
+        )
+        result["ai_provenance"]["lineage"]["input_fingerprint"] = build_input_fingerprint(
+            step_name=STEP2_NAME,
+            prompt_version=STEP2_PROMPT_VERSION,
+            prompt_input=_ordered_indicator_inputs(indicators),
+            provider="stub-live-provider",
+            model="stub-live-model",
+        )
+        return result
+
+    def get_provenance(self) -> dict[str, str]:
+        return {
+            "provider": "stub-live-provider",
+            "model": "stub-live-model",
+        }
+
+
+class CountingStubLiveAIClient(StubLiveAIClient):
+    """Count provider calls so exact-match reuse can be verified at business level."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.indicator_calls = 0
+        self.country_calls = 0
+
+    def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
+        self.indicator_calls += 1
+        return super().analyse_indicator(context)
+
+    def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
+        self.country_calls += 1
+        return super().synthesise_country(indicators)
+
+
+class DegradingStubLiveAIClient(StubLiveAIClient):
+    """Return one explicit degraded fallback so terminal status honesty can be tested."""
+
+    def __init__(self, degraded_indicator_code: str) -> None:
+        super().__init__()
+        self._degraded_indicator_code = degraded_indicator_code
+
+    def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
+        result = super().analyse_indicator(context)
+        if context["indicator_code"] != self._degraded_indicator_code:
+            return result
+
+        result["narrative"] = (
+            "Live AI analysis degraded after structured-output retries. "
+            f"{context['indicator_name']} should be reviewed directly."
+        )
+        result["confidence"] = "low"
+        result["ai_provenance"]["degraded"] = True
+        result["ai_provenance"]["degraded_reason"] = "Synthetic structured-output failure."
+        return result
 
 
 def test_live_fetch_normalizes_rows_and_filters_null_or_unusable_values(
@@ -279,21 +373,30 @@ def test_live_fetch_drops_stale_country_series_from_indicator_coverage(
         },
         [
             {
-                "indicator": {"id": "GC.DOD.TOTL.GD.ZS", "value": "Central government debt, total (% of GDP)"},
+                "indicator": {
+                    "id": "GC.DOD.TOTL.GD.ZS",
+                    "value": "Central government debt, total (% of GDP)",
+                },
                 "country": {"id": "ZA", "value": "South Africa"},
                 "countryiso3code": "ZAF",
                 "date": "2023",
                 "value": 79.4,
             },
             {
-                "indicator": {"id": "GC.DOD.TOTL.GD.ZS", "value": "Central government debt, total (% of GDP)"},
+                "indicator": {
+                    "id": "GC.DOD.TOTL.GD.ZS",
+                    "value": "Central government debt, total (% of GDP)",
+                },
                 "country": {"id": "AU", "value": "Australia"},
                 "countryiso3code": "AUS",
                 "date": "2023",
                 "value": 57.9,
             },
             {
-                "indicator": {"id": "GC.DOD.TOTL.GD.ZS", "value": "Central government debt, total (% of GDP)"},
+                "indicator": {
+                    "id": "GC.DOD.TOTL.GD.ZS",
+                    "value": "Central government debt, total (% of GDP)",
+                },
                 "country": {"id": "IN", "value": "India"},
                 "countryiso3code": "IND",
                 "date": "2021",
@@ -320,7 +423,10 @@ def test_live_fetch_drops_stale_country_series_from_indicator_coverage(
         run_id="live-run-002c",
     )
 
-    assert {data_point["country_code"] for data_point in result.data_points} == {"ZA", "AU"}
+    assert {data_point["country_code"] for data_point in result.data_points} == {
+        "ZA",
+        "AU",
+    }
     assert result.stale_country_codes == ("IN",)
 
 
@@ -341,17 +447,23 @@ def test_live_fetch_records_missing_country_coverage_inside_successful_indicator
         assert country_codes == requested_country_codes
         assert date_range == LIVE_DATE_RANGE
         assert retries == 3
-        missing_country_codes = ["UY"] if indicator_code == failing_indicator_code else []
+        missing_country_codes = (
+            ["UY"] if indicator_code == failing_indicator_code else []
+        )
         return _build_indicator_fetch_result(
             indicator_code=indicator_code,
             country_codes=country_codes or requested_country_codes,
             missing_country_codes=missing_country_codes,
         )
 
-    monkeypatch.setattr("pipeline.fetcher.fetch_indicator_result", fake_fetch_indicator_result)
+    monkeypatch.setattr(
+        "pipeline.fetcher.fetch_indicator_result", fake_fetch_indicator_result
+    )
     monkeypatch.setattr("pipeline.fetcher.time.sleep", lambda *_args, **_kwargs: None)
 
-    result = fetch_live_data(country_codes=requested_country_codes, run_id="live-run-003")
+    result = fetch_live_data(
+        country_codes=requested_country_codes, run_id="live-run-003"
+    )
 
     assert len(result.failures) == 1
     assert len(result.raw_payloads) == len(INDICATORS)
@@ -359,7 +471,10 @@ def test_live_fetch_records_missing_country_coverage_inside_successful_indicator
     assert failure.indicator_code == failing_indicator_code
     assert failure.country_codes == ["UY"]
     assert "missing countries: UY" in str(failure)
-    assert result.raw_payloads[failing_indicator_code]["country_codes"] == requested_country_codes
+    assert (
+        result.raw_payloads[failing_indicator_code]["country_codes"]
+        == requested_country_codes
+    )
     assert {
         point["country_code"]
         for point in result.data_points
@@ -387,7 +502,9 @@ def test_live_pipeline_treats_stale_indicator_series_as_incomplete_coverage(
         )
     ]
 
-    def fake_live_fetch(country_codes: list[str], run_id: str | None = None) -> LiveFetchResult:
+    def fake_live_fetch(
+        country_codes: list[str], run_id: str | None = None
+    ) -> LiveFetchResult:
         assert country_codes == EXPECTED_MONITORED_COUNTRY_CODES
         assert run_id == "5b3f7af0-c98c-4d7c-9308-bfd2a913fa6d"
         return LiveFetchResult(
@@ -409,6 +526,9 @@ def test_live_pipeline_treats_stale_indicator_series_as_incomplete_coverage(
 
     monkeypatch.setenv("PIPELINE_MODE", "live")
     monkeypatch.setattr(pipeline_main, "fetch_live_data", fake_live_fetch)
+    monkeypatch.setattr(
+        pipeline_main, "create_client", lambda provider=None: StubLiveAIClient()
+    )
 
     with pytest.raises(PipelineExecutionError) as exc_info:
         run_pipeline(repository=repository, run_id=run_id)
@@ -420,7 +540,10 @@ def test_live_pipeline_treats_stale_indicator_series_as_incomplete_coverage(
     colombia_detail = repository.get_country_detail("CO")
     assert colombia_detail is not None
     assert len(colombia_detail["indicators"]) == len(INDICATORS) - 1
-    assert "government debt data is unavailable in the live source" in colombia_detail["macro_synthesis"]
+    assert (
+        "government debt data is unavailable in the live source"
+        in colombia_detail["macro_synthesis"]
+    )
     assert any(
         "Government debt data is unavailable in the live source" in flag
         for flag in colombia_detail["risk_flags"]
@@ -437,20 +560,29 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
     run_id = "7b39d3ae-5cf2-4ff8-bf24-2f761935f9fb"
     live_fetch_result = _build_live_fetch_result(run_id=run_id)
 
-    def fake_live_fetch(country_codes: list[str], run_id: str | None = None) -> LiveFetchResult:
+    def fake_live_fetch(
+        country_codes: list[str], run_id: str | None = None
+    ) -> LiveFetchResult:
         assert country_codes == EXPECTED_MONITORED_COUNTRY_CODES
         assert run_id == "7b39d3ae-5cf2-4ff8-bf24-2f761935f9fb"
         return live_fetch_result
 
     monkeypatch.setenv("PIPELINE_MODE", "live")
     monkeypatch.setattr(pipeline_main, "fetch_live_data", fake_live_fetch)
+    monkeypatch.setattr(
+        pipeline_main, "create_client", lambda provider=None: StubLiveAIClient()
+    )
 
     summary = run_pipeline(repository=repository, run_id=run_id)
 
     assert summary["data_points_fetched"] == EXPECTED_LIVE_DATA_POINTS
-    assert summary["indicators_analysed"] == len(INDICATORS) * len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert summary["indicators_analysed"] == len(INDICATORS) * len(
+        EXPECTED_MONITORED_COUNTRY_CODES
+    )
     assert summary["countries_synthesised"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
-    assert summary["indicator_records"] == len(INDICATORS) * len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert summary["indicator_records"] == len(INDICATORS) * len(
+        EXPECTED_MONITORED_COUNTRY_CODES
+    )
     assert summary["country_records"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
     assert summary["raw_archives_written"] == 7
 
@@ -463,7 +595,15 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
         "source_id": "2",
     }
     assert country_record["source_provenance"]["source_name"] == WORLD_BANK_SOURCE_NAME
-    assert country_record["source_provenance"]["indicator_codes"] == sorted(list(INDICATORS))
+    assert country_record["source_provenance"]["indicator_codes"] == sorted(
+        list(INDICATORS)
+    )
+    assert indicator_record["ai_provenance"]["provider"] == "stub-live-provider"
+    assert indicator_record["ai_provenance"]["prompt_version"] == "step1.v1.0.0"
+    assert indicator_record["ai_provenance"]["degraded"] is False
+    assert country_record["ai_provenance"]["provider"] == "stub-live-provider"
+    assert country_record["ai_provenance"]["prompt_version"] == "step2.v1.0.0"
+    assert country_record["ai_provenance"]["degraded"] is False
 
     brazil_detail = repository.get_country_detail("BR")
     uruguay_detail = repository.get_country_detail("UY")
@@ -476,22 +616,149 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
     assert len(uruguay_detail["indicators"]) == len(INDICATORS)
 
     raw_archive_path = (
-        tmp_path
-        / "raw-archives"
-        / "runs"
-        / run_id
-        / "raw"
-        / "NY.GDP.MKTP.KD.ZG.json"
+        tmp_path / "raw-archives" / "runs" / run_id / "raw" / "NY.GDP.MKTP.KD.ZG.json"
     )
     archived_payload = json.loads(raw_archive_path.read_text(encoding="utf-8"))
 
     assert archived_payload["indicator_code"] == "NY.GDP.MKTP.KD.ZG"
     assert archived_payload["country_codes"] == EXPECTED_MONITORED_COUNTRY_CODES
     assert archived_payload["request"]["params"]["date"] == LIVE_DATE_RANGE
-    assert archived_payload["response_metadata"]["total"] == EXPECTED_LIVE_ROWS_PER_INDICATOR
+    assert (
+        archived_payload["response_metadata"]["total"]
+        == EXPECTED_LIVE_ROWS_PER_INDICATOR
+    )
     assert archived_payload["response_metadata"]["lastupdated"] == "2026-03-31"
     assert len(archived_payload["response_body"][1]) == EXPECTED_LIVE_ROWS_PER_INDICATOR
-    assert archived_payload["response_body"][1][0]["indicator"]["id"] == "NY.GDP.MKTP.KD.ZG"
+    assert (
+        archived_payload["response_body"][1][0]["indicator"]["id"]
+        == "NY.GDP.MKTP.KD.ZG"
+    )
+
+
+def test_live_pipeline_uses_the_live_ai_factory_instead_of_the_local_development_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live mode should route AI calls through the provider-backed factory seam."""
+
+    repository = get_repository()
+    run_id = "d27611eb-77c0-4ad8-8fa5-c6096853e609"
+    live_fetch_result = _build_live_fetch_result(run_id=run_id)
+    stub_live_ai = StubLiveAIClient()
+    live_factory_calls = {"count": 0}
+
+    monkeypatch.setenv("PIPELINE_MODE", "live")
+    monkeypatch.setattr(
+        pipeline_main,
+        "fetch_live_data",
+        lambda country_codes, run_id=None: live_fetch_result,
+    )
+
+    def create_stub_live_client(provider: str | None = None) -> StubLiveAIClient:
+        assert provider is None
+        live_factory_calls["count"] += 1
+        return stub_live_ai
+
+    monkeypatch.setattr(pipeline_main, "create_client", create_stub_live_client)
+    monkeypatch.setattr(
+        pipeline_main,
+        "create_development_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("Live mode should not use the development AI adapter.")
+        ),
+    )
+
+    summary = run_pipeline(repository=repository, run_id=run_id)
+
+    assert summary["countries_synthesised"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert live_factory_calls["count"] == 1
+
+
+def test_live_pipeline_reuses_exact_match_ai_results_from_persisted_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A repeated live run should skip duplicate provider calls for exact AI input matches."""
+    repository = get_repository()
+    live_ai = CountingStubLiveAIClient()
+    first_run_id = "2f1db276-09c2-4431-a02e-ef356fe8d9ef"
+    second_run_id = "22d52ed0-bd0f-4219-b510-c2d254aa53a8"
+    live_fetch_result = _build_live_fetch_result(run_id=first_run_id)
+
+    monkeypatch.setenv("PIPELINE_MODE", "live")
+    monkeypatch.setattr(
+        pipeline_main,
+        "fetch_live_data",
+        lambda country_codes, run_id=None: live_fetch_result,
+    )
+    monkeypatch.setattr(
+        pipeline_main,
+        "create_client",
+        lambda provider=None: live_ai,
+    )
+
+    first_summary = run_pipeline(repository=repository, run_id=first_run_id)
+
+    assert first_summary["indicators_analysed"] == len(INDICATORS) * len(
+        EXPECTED_MONITORED_COUNTRY_CODES
+    )
+    assert first_summary["countries_synthesised"] == len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert live_ai.indicator_calls == len(INDICATORS) * len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert live_ai.country_calls == len(EXPECTED_MONITORED_COUNTRY_CODES)
+
+    second_summary = run_pipeline(repository=repository, run_id=second_run_id)
+
+    assert second_summary["indicators_analysed"] == first_summary["indicators_analysed"]
+    assert second_summary["countries_synthesised"] == first_summary["countries_synthesised"]
+    assert live_ai.indicator_calls == len(INDICATORS) * len(EXPECTED_MONITORED_COUNTRY_CODES)
+    assert live_ai.country_calls == len(EXPECTED_MONITORED_COUNTRY_CODES)
+
+    reused_indicator_record = repository._records["indicator:BR:NY.GDP.MKTP.KD.ZG"]
+    reused_country_record = repository._records["country:BR"]
+    assert reused_indicator_record["run_id"] == second_run_id
+    assert reused_indicator_record["ai_provenance"]["lineage"]["reused_from"] == {
+        "document_id": "indicator:BR:NY.GDP.MKTP.KD.ZG",
+        "run_id": first_run_id,
+    }
+    assert reused_country_record["ai_provenance"]["lineage"]["reused_from"] == {
+        "document_id": "country:BR",
+        "run_id": first_run_id,
+    }
+    assert "usage" not in reused_indicator_record["ai_provenance"]
+
+
+def test_live_pipeline_marks_terminal_status_failed_when_ai_falls_back_to_degraded_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A degraded live AI fallback should keep stored output but fail the terminal run honestly."""
+    repository = get_repository()
+    run_id = "0dd8b6ef-93c9-45bd-90ab-196e4a569ce5"
+    degraded_indicator_code = "NY.GDP.MKTP.KD.ZG"
+    live_fetch_result = _build_live_fetch_result(run_id=run_id)
+
+    monkeypatch.setenv("PIPELINE_MODE", "live")
+    monkeypatch.setattr(
+        pipeline_main,
+        "fetch_live_data",
+        lambda country_codes, run_id=None: live_fetch_result,
+    )
+    monkeypatch.setattr(
+        pipeline_main,
+        "create_client",
+        lambda provider=None: DegradingStubLiveAIClient(degraded_indicator_code),
+    )
+
+    with pytest.raises(PipelineExecutionError) as exc_info:
+        run_pipeline(repository=repository, run_id=run_id)
+
+    assert exc_info.value.step_name == "synthesise"
+    assert "degraded coverage" in str(exc_info.value)
+    assert degraded_indicator_code in str(exc_info.value)
+
+    brazil_detail = repository.get_country_detail("BR")
+    assert brazil_detail is not None
+    assert brazil_detail["macro_synthesis"]
+    indicator_record = repository._records[f"indicator:BR:{degraded_indicator_code}"]
+    assert indicator_record["ai_provenance"]["degraded"] is True
+    assert indicator_record["ai_provenance"]["degraded_reason"] == "Synthetic structured-output failure."
 
 
 def test_live_pipeline_preserves_successful_outputs_when_indicator_coverage_is_incomplete(
@@ -509,13 +776,18 @@ def test_live_pipeline_preserves_successful_outputs_when_indicator_coverage_is_i
         },
     )
 
-    def fake_live_fetch(country_codes: list[str], run_id: str | None = None) -> LiveFetchResult:
+    def fake_live_fetch(
+        country_codes: list[str], run_id: str | None = None
+    ) -> LiveFetchResult:
         assert country_codes == EXPECTED_MONITORED_COUNTRY_CODES
         assert run_id == "41057c18-5d94-45c9-a8eb-d95f63d6d948"
         return live_fetch_result
 
     monkeypatch.setenv("PIPELINE_MODE", "live")
     monkeypatch.setattr(pipeline_main, "fetch_live_data", fake_live_fetch)
+    monkeypatch.setattr(
+        pipeline_main, "create_client", lambda provider=None: StubLiveAIClient()
+    )
 
     with pytest.raises(PipelineExecutionError) as exc_info:
         run_pipeline(repository=repository, run_id=run_id)
@@ -531,7 +803,10 @@ def test_live_pipeline_preserves_successful_outputs_when_indicator_coverage_is_i
     assert uruguay_detail["code"] == "UY"
     assert uruguay_detail["macro_synthesis"]
     assert "government debt to n/a" not in uruguay_detail["macro_synthesis"].lower()
-    assert "government debt data is unavailable in the live source" in uruguay_detail["macro_synthesis"]
+    assert (
+        "government debt data is unavailable in the live source"
+        in uruguay_detail["macro_synthesis"]
+    )
     assert any(
         "Government debt data is unavailable in the live source" in flag
         for flag in uruguay_detail["risk_flags"]
@@ -559,14 +834,18 @@ def _build_live_fetch_result(
     ]
     missing_country_codes_by_indicator = {
         indicator_code: [country_code.upper() for country_code in missing_country_codes]
-        for indicator_code, missing_country_codes in (missing_country_codes_by_indicator or {}).items()
+        for indicator_code, missing_country_codes in (
+            missing_country_codes_by_indicator or {}
+        ).items()
     }
 
     live_points: list[dict[str, Any]] = []
     raw_payloads: dict[str, dict[str, Any]] = {}
     failures: list[WorldBankFetchError] = []
     for indicator_code in INDICATORS:
-        missing_country_codes = missing_country_codes_by_indicator.get(indicator_code, [])
+        missing_country_codes = missing_country_codes_by_indicator.get(
+            indicator_code, []
+        )
         indicator_result = _build_indicator_fetch_result(
             indicator_code=indicator_code,
             country_codes=requested_country_codes,
@@ -598,6 +877,31 @@ def _build_live_fetch_result(
     )
 
 
+def _ordered_indicator_inputs(indicators: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mirror the runtime's deterministic Step 2 ordering for test doubles."""
+    return [
+        _strip_private_fields(indicator)
+        for indicator in sorted(
+            indicators,
+            key=lambda item: (
+                str(item.get("country_code", "")),
+                str(item.get("indicator_code", "")),
+                int(item.get("data_year", 0) or 0),
+            ),
+        )
+    ]
+
+
+def _strip_private_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove private fields before test fingerprint calculation."""
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {"ai_provenance", "source_provenance", "raw_backup_reference", "run_id"}
+    }
+
+
 def _build_indicator_fetch_result(
     indicator_code: str,
     country_codes: list[str],
@@ -607,8 +911,7 @@ def _build_indicator_fetch_result(
     indicator_name = INDICATORS[indicator_code]
     requested_country_codes = [country_code.upper() for country_code in country_codes]
     missing_country_code_set = {
-        country_code.upper()
-        for country_code in (missing_country_codes or [])
+        country_code.upper() for country_code in (missing_country_codes or [])
     }
 
     indicator_points: list[dict[str, Any]] = []
@@ -622,8 +925,7 @@ def _build_indicator_fetch_result(
         )
         indicator_points.extend(cloned_points)
         raw_rows.extend(
-            _build_world_bank_row(point, indicator_name)
-            for point in cloned_points
+            _build_world_bank_row(point, indicator_name) for point in cloned_points
         )
 
     metadata = {
@@ -634,7 +936,9 @@ def _build_indicator_fetch_result(
         "sourceid": "2",
         "lastupdated": "2026-03-31",
     }
-    country_path = ";".join(country_code.lower() for country_code in requested_country_codes)
+    country_path = ";".join(
+        country_code.lower() for country_code in requested_country_codes
+    )
     return IndicatorFetchResult(
         indicator_code=indicator_code,
         data_points=indicator_points,
@@ -666,7 +970,9 @@ def _build_indicator_fetch_result(
     )
 
 
-def _clone_local_indicator_points(indicator_code: str, country_code: str) -> list[dict[str, Any]]:
+def _clone_local_indicator_points(
+    indicator_code: str, country_code: str
+) -> list[dict[str, Any]]:
     """Expand the ZA fixture into one deterministic 2010:2024 live-country series."""
     country_fixture = EXPECTED_MONITORED_COUNTRIES[country_code]
     return [
@@ -694,10 +1000,7 @@ def _build_synthetic_live_indicator_points(indicator_code: str) -> list[dict[str
         ),
         key=lambda point: int(point["year"]),
     )
-    base_points_by_year = {
-        int(point["year"]): point
-        for point in base_points
-    }
+    base_points_by_year = {int(point["year"]): point for point in base_points}
     first_year = int(base_points[0]["year"])
     last_year = int(base_points[-1]["year"])
     first_value = float(base_points[0]["value"])
@@ -734,8 +1037,12 @@ def _synthetic_indicator_value(
     if year in base_points_by_year:
         return float(base_points_by_year[year]["value"])
     if year < first_year:
-        return float(base_points_by_year[first_year]["value"]) - annual_delta * (first_year - year)
-    return float(base_points_by_year[last_year]["value"]) + annual_delta * (year - last_year)
+        return float(base_points_by_year[first_year]["value"]) - annual_delta * (
+            first_year - year
+        )
+    return float(base_points_by_year[last_year]["value"]) + annual_delta * (
+        year - last_year
+    )
 
 
 def _build_world_bank_row(point: dict[str, Any], indicator_name: str) -> dict[str, Any]:

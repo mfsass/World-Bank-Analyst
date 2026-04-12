@@ -11,11 +11,7 @@ from threading import RLock
 from typing import Any
 
 from shared.country_catalog import MONITORED_COUNTRY_CATALOG
-from shared.repository import (
-    default_pipeline_status,
-    project_public_record,
-    require_fields,
-)
+from shared.repository import default_pipeline_status, project_public_record, require_fields
 
 
 class InMemoryInsightsRepository:
@@ -171,6 +167,31 @@ class InMemoryInsightsRepository:
         with self._lock:
             record = self._records.get(document_id, {"entity_type": "pipeline_status", **default_pipeline_status()})
         return project_public_record(record)
+
+    def get_stored_record(
+        self,
+        *,
+        entity_type: str,
+        key: str,
+    ) -> dict[str, Any] | None:
+        """Return one full stored mixed document, including private provenance.
+
+        Args:
+            entity_type: Logical record type.
+            key: Natural key portion of the mixed-document id.
+
+        Returns:
+            Deep-copied stored record annotated with its document id, else None.
+        """
+        document_id = self._document_id(entity_type, key)
+        with self._lock:
+            record = self._records.get(document_id)
+            if record is None:
+                return None
+            stored_record = copy.deepcopy(record)
+            stored_record["document_id"] = document_id
+            return stored_record
+        return None
 
     def _upsert(self, document_id: str, record: dict[str, Any]) -> None:
         """Write a record under a stable document identifier.

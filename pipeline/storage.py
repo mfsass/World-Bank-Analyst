@@ -63,7 +63,11 @@ class LocalRawArchiveStore:
             base_dir: Optional filesystem root for local archives.
         """
         configured_root = os.environ.get("WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR")
-        self._base_dir = Path(configured_root) if configured_root else (base_dir or DEFAULT_LOCAL_RAW_ARCHIVE_ROOT)
+        self._base_dir = (
+            Path(configured_root)
+            if configured_root
+            else (base_dir or DEFAULT_LOCAL_RAW_ARCHIVE_ROOT)
+        )
 
     def archive_json(self, relative_path: str, payload: Any) -> str:
         """Persist one JSON payload under a run-scoped relative path.
@@ -78,7 +82,9 @@ class LocalRawArchiveStore:
         normalized_path = relative_path.replace("\\", "/")
         file_path = self._base_dir / Path(normalized_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        file_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
         return f"local://{normalized_path}"
 
 
@@ -157,7 +163,9 @@ def store_slice(
             }
         )
 
-    archive_result = archive_raw_payloads(archivable_raw_payloads, run_id, raw_archive_store)
+    archive_result = archive_raw_payloads(
+        archivable_raw_payloads, run_id, raw_archive_store
+    )
     source_provenance_by_indicator = {
         indicator_code: _build_source_provenance(payload)
         for indicator_code, payload in archivable_raw_payloads.items()
@@ -182,18 +190,26 @@ def store_slice(
                 archive_result.manifest_reference,
             ),
         }
-        source_provenance = source_provenance_by_indicator.get(insight["indicator_code"])
+        source_provenance = source_provenance_by_indicator.get(
+            insight["indicator_code"]
+        )
         if source_provenance:
             indicator_record["source_provenance"] = source_provenance
-        if ai_provenance and insight.get("ai_analysis"):
-            indicator_record["ai_provenance"] = copy.deepcopy(ai_provenance)
+        record_ai_provenance = _resolve_record_ai_provenance(insight, ai_provenance)
+        if record_ai_provenance and insight.get("ai_analysis"):
+            indicator_record["ai_provenance"] = record_ai_provenance
+        structured_ai_output = _build_indicator_structured_output(insight)
+        if structured_ai_output:
+            indicator_record["ai_structured_output"] = structured_ai_output
 
         repo.upsert_indicator(indicator_record)
         indicator_writes += 1
 
     country_writes = 0
     for country_code, synthesis in country_syntheses.items():
-        country_metadata = _resolve_country_metadata(repo=repo, country_code=country_code)
+        country_metadata = _resolve_country_metadata(
+            repo=repo, country_code=country_code
+        )
 
         country_record = {
             **country_metadata,
@@ -211,8 +227,12 @@ def store_slice(
         )
         if country_source_provenance:
             country_record["source_provenance"] = country_source_provenance
-        if ai_provenance and synthesis.get("summary"):
-            country_record["ai_provenance"] = copy.deepcopy(ai_provenance)
+        record_ai_provenance = _resolve_record_ai_provenance(synthesis, ai_provenance)
+        if record_ai_provenance and synthesis.get("summary"):
+            country_record["ai_provenance"] = record_ai_provenance
+        structured_ai_output = _build_country_structured_output(synthesis)
+        if structured_ai_output:
+            country_record["ai_structured_output"] = structured_ai_output
 
         repo.upsert_country(country_record)
         country_writes += 1
@@ -299,7 +319,9 @@ def store_insights(insights: list[dict[str, Any]], project_id: str) -> int:
     return count
 
 
-def archive_raw_data(data: list[dict[str, Any]], project_id: str, bucket_name: str) -> str:
+def archive_raw_data(
+    data: list[dict[str, Any]], project_id: str, bucket_name: str
+) -> str:
     """Backward-compatible helper for archiving one raw payload to GCS.
 
     Args:
@@ -314,7 +336,9 @@ def archive_raw_data(data: list[dict[str, Any]], project_id: str, bucket_name: s
         f"runs/manual-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}/"
         "raw/raw-data.json"
     )
-    return GCSRawArchiveStore(project_id=project_id, bucket_name=bucket_name).archive_json(relative_path, data)
+    return GCSRawArchiveStore(
+        project_id=project_id, bucket_name=bucket_name
+    ).archive_json(relative_path, data)
 
 
 def archive_raw_payloads(
@@ -375,7 +399,9 @@ def get_raw_archive_store() -> RawArchiveStore:
             "so durable records point at GCS raw archives"
         )
 
-    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT_ID")
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get(
+        "GCP_PROJECT_ID"
+    )
     if not project_id:
         raise ValueError(
             "WORLD_ANALYST_RAW_ARCHIVE_BUCKET requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
@@ -419,6 +445,65 @@ def _build_country_source_provenance(
     country_provenance = {key: copy.deepcopy(value) for key, value in exemplar.items()}
     country_provenance["indicator_codes"] = indicator_codes
     return country_provenance
+
+
+def _resolve_record_ai_provenance(
+    record: dict[str, Any],
+    default_ai_provenance: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return record-specific AI provenance when available, else the shared fallback."""
+
+    record_ai_provenance = record.get("ai_provenance")
+    if isinstance(record_ai_provenance, dict) and record_ai_provenance:
+        return copy.deepcopy(record_ai_provenance)
+    if default_ai_provenance:
+        return copy.deepcopy(default_ai_provenance)
+    return None
+
+
+def _build_indicator_structured_output(
+    insight: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Persist the private Step 1 result fields needed for exact-match reuse.
+
+    Args:
+        insight: Enriched indicator insight prepared for storage.
+
+    Returns:
+        Private structured AI payload, else None when the required fields are absent.
+    """
+    required_fields = ("trend", "ai_analysis", "risk_level", "confidence")
+    if any(field_name not in insight for field_name in required_fields):
+        return None
+
+    return {
+        "trend": insight["trend"],
+        "narrative": insight["ai_analysis"],
+        "risk_level": insight["risk_level"],
+        "confidence": insight["confidence"],
+    }
+
+
+def _build_country_structured_output(
+    synthesis: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Persist the private Step 2 payload in one stable shape for reuse.
+
+    Args:
+        synthesis: Country synthesis prepared for storage.
+
+    Returns:
+        Private structured AI payload, else None when the required fields are absent.
+    """
+    required_fields = ("summary", "risk_flags", "outlook")
+    if any(field_name not in synthesis for field_name in required_fields):
+        return None
+
+    return {
+        "summary": synthesis["summary"],
+        "risk_flags": copy.deepcopy(synthesis["risk_flags"]),
+        "outlook": synthesis["outlook"],
+    }
 
 
 def _resolve_country_metadata(
@@ -465,14 +550,21 @@ def _build_source_provenance(raw_payload: Any) -> dict[str, Any]:
         return {}
 
     provenance: dict[str, Any] = {}
-    for field_name in ("source_name", "source_date_range", "source_last_updated", "source_id"):
+    for field_name in (
+        "source_name",
+        "source_date_range",
+        "source_last_updated",
+        "source_id",
+    ):
         field_value = exemplar.get(field_name)
         if field_value is not None:
             provenance[field_name] = field_value
     return provenance
 
 
-def _group_raw_payloads_by_indicator(raw_data_points: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def _group_raw_payloads_by_indicator(
+    raw_data_points: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
     """Group raw fetched data by indicator code for run-scoped archival.
 
     Args:
@@ -484,10 +576,14 @@ def _group_raw_payloads_by_indicator(raw_data_points: list[dict[str, Any]]) -> d
     grouped_payloads: dict[str, list[dict[str, Any]]] = {}
     for data_point in raw_data_points:
         indicator_code = data_point["indicator_code"]
-        grouped_payloads.setdefault(indicator_code, []).append(copy.deepcopy(data_point))
+        grouped_payloads.setdefault(indicator_code, []).append(
+            copy.deepcopy(data_point)
+        )
 
     for payload in grouped_payloads.values():
-        payload.sort(key=lambda item: (item.get("country_code", ""), item.get("year", 0)))
+        payload.sort(
+            key=lambda item: (item.get("country_code", ""), item.get("year", 0))
+        )
     return grouped_payloads
 
 

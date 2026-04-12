@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
+from pipeline.ai_client import (
+    AIClient,
+    STEP1_NAME,
+    STEP1_PROMPT_VERSION,
+    STEP2_NAME,
+    STEP2_PROMPT_VERSION,
+)
 
-class DeterministicDevelopmentAIClient:
+
+class DeterministicDevelopmentAIClient(AIClient):
     """Generate repeatable indicator and country narratives for local runs."""
 
     _PROVIDER_NAME = "deterministic-development"
@@ -31,7 +41,11 @@ class DeterministicDevelopmentAIClient:
 
         change_text = _format_change(percent_change)
         significance = _indicator_significance(indicator_code, latest_value)
-        anomaly_text = " The latest move is anomalous versus the recent history." if is_anomaly else ""
+        anomaly_text = (
+            " The latest move is anomalous versus the recent history."
+            if is_anomaly
+            else ""
+        )
 
         narrative = (
             f"{context['indicator_name']} printed {_format_value(indicator_code, latest_value)} in {context['data_year']}, "
@@ -43,6 +57,13 @@ class DeterministicDevelopmentAIClient:
             "narrative": narrative,
             "risk_level": risk_level,
             "confidence": confidence,
+            "ai_provenance": _build_ai_provenance(
+                step_name=STEP1_NAME,
+                prompt_version=STEP1_PROMPT_VERSION,
+                prompt_input=context,
+                provider=self._PROVIDER_NAME,
+                model=self._MODEL_NAME,
+            ),
         }
 
     def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
@@ -93,6 +114,13 @@ class DeterministicDevelopmentAIClient:
             "summary": summary,
             "risk_flags": risk_flags,
             "outlook": outlook,
+            "ai_provenance": _build_ai_provenance(
+                step_name=STEP2_NAME,
+                prompt_version=STEP2_PROMPT_VERSION,
+                prompt_input=indicators,
+                provider=self._PROVIDER_NAME,
+                model=self._MODEL_NAME,
+            ),
         }
 
     def get_provenance(self) -> dict[str, str]:
@@ -126,7 +154,9 @@ def _classify_trend(percent_change: float | None) -> str:
     return "stable"
 
 
-def _classify_risk(indicator_code: str, latest_value: float | None, is_anomaly: bool) -> str:
+def _classify_risk(
+    indicator_code: str, latest_value: float | None, is_anomaly: bool
+) -> str:
     if latest_value is None:
         return "moderate"
     if indicator_code == "NY.GDP.MKTP.KD.ZG" and latest_value < 1.0:
@@ -163,7 +193,9 @@ def _build_unemployment_summary(latest_value: float | None) -> str:
     return f"unemployment still elevated at {_format_value('SL.UEM.TOTL.ZS', latest_value)}"
 
 
-def _build_balance_summary(debt_value: float | None, current_account_value: float | None) -> str:
+def _build_balance_summary(
+    debt_value: float | None, current_account_value: float | None
+) -> str:
     """Build the fiscal and external balance clause for country synthesis."""
     if debt_value is None and current_account_value is None:
         return (
@@ -192,9 +224,7 @@ def _build_balance_summary(debt_value: float | None, current_account_value: floa
 def _build_growth_risk_flag(latest_value: float | None) -> str:
     """Build the growth-focused risk flag for country synthesis."""
     if latest_value is None:
-        return (
-            "Growth data is unavailable in the live source, so cyclical risk should be treated as incomplete."
-        )
+        return "Growth data is unavailable in the live source, so cyclical risk should be treated as incomplete."
     return (
         f"Growth is running at {_format_value('NY.GDP.MKTP.KD.ZG', latest_value)}, leaving little buffer "
         "against further supply or power shocks."
@@ -204,16 +234,16 @@ def _build_growth_risk_flag(latest_value: float | None) -> str:
 def _build_inflation_risk_flag(latest_value: float | None) -> str:
     """Build the inflation-focused risk flag for country synthesis."""
     if latest_value is None:
-        return (
-            "Inflation data is unavailable in the live source, so price-pressure risk should be treated as incomplete."
-        )
+        return "Inflation data is unavailable in the live source, so price-pressure risk should be treated as incomplete."
     return (
         f"Inflation remains sticky at {_format_value('FP.CPI.TOTL.ZG', latest_value)}, limiting room for an "
         "easier policy stance."
     )
 
 
-def _build_balance_risk_flag(debt_value: float | None, current_account_value: float | None) -> str:
+def _build_balance_risk_flag(
+    debt_value: float | None, current_account_value: float | None
+) -> str:
     """Build the fiscal and external risk flag for country synthesis."""
     if debt_value is None and current_account_value is None:
         return (
@@ -266,6 +296,51 @@ def _format_value(indicator_code: str, value: float | None) -> str:
         return "n/a"
     if indicator_code == "NY.GDP.MKTP.CD":
         return f"${value / 1_000_000_000:.1f}B"
-    if indicator_code in {"NY.GDP.MKTP.KD.ZG", "FP.CPI.TOTL.ZG", "SL.UEM.TOTL.ZS", "BN.CAB.XOKA.GD.ZS", "GC.DOD.TOTL.GD.ZS"}:
+    if indicator_code in {
+        "NY.GDP.MKTP.KD.ZG",
+        "FP.CPI.TOTL.ZG",
+        "SL.UEM.TOTL.ZS",
+        "BN.CAB.XOKA.GD.ZS",
+        "GC.DOD.TOTL.GD.ZS",
+    }:
         return f"{value:.1f}%"
     return f"{value:,.2f}"
+
+
+def _build_ai_provenance(
+    *,
+    step_name: str,
+    prompt_version: str,
+    prompt_input: Any,
+    provider: str,
+    model: str,
+) -> dict[str, Any]:
+    """Build the private AI provenance payload for deterministic local runs."""
+
+    normalized_input = json.dumps(
+        {
+            "step_name": step_name,
+            "prompt_version": prompt_version,
+            "provider": provider,
+            "model": model,
+            "prompt_input": prompt_input,
+        },
+        default=str,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return {
+        "provider": provider,
+        "model": model,
+        "step_name": step_name,
+        "prompt_version": prompt_version,
+        "degraded": False,
+        "retry_count": 0,
+        "repair_applied": False,
+        "lineage": {
+            "input_fingerprint": hashlib.sha256(
+                normalized_input.encode("utf-8")
+            ).hexdigest(),
+            "reused_from": None,
+        },
+    }

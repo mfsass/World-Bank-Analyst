@@ -6,8 +6,9 @@ import copy
 
 import pytest
 
+import shared.firestore_repository as firestore_repository_module
 from shared.firestore_repository import FirestoreInsightsRepository
-from shared.repository import get_repository_backend, reset_repository_cache
+from shared.repository import get_repository, get_repository_backend, reset_repository_cache
 
 
 class FakeDocumentSnapshot:
@@ -21,6 +22,11 @@ class FakeDocumentSnapshot:
     @property
     def exists(self) -> bool:
         return self._document_id in self._store
+
+    @property
+    def id(self) -> str:
+        """Mirror Firestore snapshot.id for adapter parity."""
+        return self._document_id
 
     def to_dict(self) -> dict:
         return copy.deepcopy(self._store[self._document_id])
@@ -216,6 +222,71 @@ def test_repository_backend_alias_remains_backward_compatible(monkeypatch: pytes
     assert get_repository_backend() == "local"
 
 
+def test_repository_backend_defaults_to_local_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repository selection should stay deterministic when no backend env vars are set."""
+    monkeypatch.delenv("REPOSITORY_MODE", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_STORAGE_BACKEND", raising=False)
+    reset_repository_cache()
+
+    assert get_repository_backend() == "local"
+
+
+def test_get_repository_requires_project_id_in_firestore_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Firestore mode should fail fast until a Cloud Run project is configured."""
+    monkeypatch.setenv("REPOSITORY_MODE", "firestore")
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    reset_repository_cache()
+
+    with pytest.raises(
+        ValueError,
+        match=r"REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID",
+    ):
+        get_repository()
+
+
+def test_get_repository_uses_explicit_firestore_collection_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Firestore mode should honor the configured collection name when cloud env vars are set."""
+    captured: dict[str, str | None] = {}
+
+    class StubFirestoreRepository:
+        """Minimal stand-in used to capture Firestore constructor arguments."""
+
+        def __init__(
+            self,
+            project_id: str,
+            collection_name: str = "insights",
+            client=None,
+        ) -> None:
+            del client
+            captured["project_id"] = project_id
+            captured["collection_name"] = collection_name
+
+    monkeypatch.setenv("REPOSITORY_MODE", "firestore")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "world-analyst-demo")
+    monkeypatch.setenv("WORLD_ANALYST_FIRESTORE_COLLECTION", "world-analyst-prod")
+    monkeypatch.setattr(
+        firestore_repository_module,
+        "FirestoreInsightsRepository",
+        StubFirestoreRepository,
+    )
+    reset_repository_cache()
+
+    repository = get_repository()
+
+    assert isinstance(repository, StubFirestoreRepository)
+    assert captured == {
+        "project_id": "world-analyst-demo",
+        "collection_name": "world-analyst-prod",
+    }
+
+
 def test_firestore_status_write_clears_stale_failure_fields() -> None:
     """A successful status rewrite should remove stale failure detail in Firestore mode."""
     client = FakeFirestoreClient()
@@ -252,3 +323,43 @@ def test_firestore_status_write_clears_stale_failure_fields() -> None:
     assert stored_status["status"] == "complete"
     assert "error" not in stored_status
     assert "failure_summary" not in stored_status
+
+
+def test_firestore_repository_can_load_private_stored_record_for_ai_reuse() -> None:
+    """The Firestore adapter should return the full stored record with document id."""
+    client = FakeFirestoreClient()
+    repository = FirestoreInsightsRepository(project_id="test-project", client=client)
+
+    repository.upsert_indicator(
+        {
+            "indicator_code": "NY.GDP.MKTP.KD.ZG",
+            "indicator_name": "GDP growth (annual %)",
+            "country_code": "za",
+            "latest_value": 0.6,
+            "data_year": 2024,
+            "ai_analysis": "Growth has slowed materially.",
+            "ai_structured_output": {
+                "trend": "declining",
+                "narrative": "Growth has slowed materially.",
+                "risk_level": "high",
+                "confidence": "high",
+            },
+            "ai_provenance": {
+                "provider": "google-genai",
+                "model": "gemma-4-31b-it",
+                "step_name": "indicator_analysis",
+                "lineage": {"input_fingerprint": "abc123", "reused_from": None},
+                "degraded": False,
+            },
+        }
+    )
+
+    stored_record = repository.get_stored_record(
+        entity_type="indicator",
+        key="ZA:NY.GDP.MKTP.KD.ZG",
+    )
+
+    assert stored_record is not None
+    assert stored_record["document_id"] == "indicator:ZA:NY.GDP.MKTP.KD.ZG"
+    assert stored_record["ai_structured_output"]["trend"] == "declining"
+    assert stored_record["ai_provenance"]["lineage"]["input_fingerprint"] == "abc123"

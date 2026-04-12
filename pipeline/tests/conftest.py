@@ -22,13 +22,19 @@ def reset_repository(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Reset the shared repository between tests."""
     monkeypatch.setenv("WORLD_ANALYST_LOCAL_RAW_ARCHIVE_DIR", str(tmp_path / "raw-archives"))
     # Default all pipeline unit tests to local mode. Live tests override this explicitly
-    # via monkeypatch.setenv("PIPELINE_MODE", "live") in each test body. The runtime
-    # default is "live" so this fixture ensures tests never accidentally hit the real API.
+    # via monkeypatch.setenv("PIPELINE_MODE", "live") in each test body.
     monkeypatch.setenv("PIPELINE_MODE", "local")
     monkeypatch.delenv("WORLD_ANALYST_WORLD_BANK_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("REPOSITORY_MODE", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_STORAGE_BACKEND", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_RAW_ARCHIVE_BUCKET", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_AI_MAX_ATTEMPTS", raising=False)
     reset_repository_cache()
     repository = get_repository()
     repository.reset()

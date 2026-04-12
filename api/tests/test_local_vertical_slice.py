@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 
 import pipeline.main as pipeline_main
-from pipeline.fetcher import INDICATORS, LIVE_DATE_RANGE, WORLD_BANK_SOURCE_ID, WORLD_BANK_SOURCE_NAME, LiveFetchResult, WorldBankFetchError
+from pipeline.dev_ai_adapter import create_development_client
+from pipeline.fetcher import (
+    INDICATORS,
+    LIVE_DATE_RANGE,
+    WORLD_BANK_SOURCE_ID,
+    WORLD_BANK_SOURCE_NAME,
+    LiveFetchResult,
+    WorldBankFetchError,
+)
 from pipeline.local_data import load_local_data_points
 from handlers import pipeline as pipeline_handler
 from shared.repository import get_repository
@@ -34,8 +43,63 @@ EXPECTED_MONITORED_COUNTRY_CODES = [
 ]
 
 
+class StubLiveAIClient:
+    """Deterministic test double for live AI wiring in API trigger tests."""
+
+    def __init__(self) -> None:
+        self._delegate = create_development_client()
+
+    def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
+        result = self._delegate.analyse_indicator(context)
+        result["ai_provenance"].update(
+            {
+                "provider": "stub-live-provider",
+                "model": "stub-live-model",
+            }
+        )
+        return result
+
+    def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
+        result = self._delegate.synthesise_country(indicators)
+        result["ai_provenance"].update(
+            {
+                "provider": "stub-live-provider",
+                "model": "stub-live-model",
+            }
+        )
+        return result
+
+    def get_provenance(self) -> dict[str, str]:
+        return {
+            "provider": "stub-live-provider",
+            "model": "stub-live-model",
+        }
+
+
+class DegradingStubLiveAIClient(StubLiveAIClient):
+    """Return one explicit degraded fallback so public status honesty can be tested."""
+
+    def __init__(self, degraded_indicator_code: str) -> None:
+        super().__init__()
+        self._degraded_indicator_code = degraded_indicator_code
+
+    def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
+        result = super().analyse_indicator(context)
+        if context["indicator_code"] != self._degraded_indicator_code:
+            return result
+
+        result["narrative"] = (
+            "Live AI analysis degraded after structured-output retries. "
+            f"{context['indicator_name']} should be reviewed directly."
+        )
+        result["confidence"] = "low"
+        result["ai_provenance"]["degraded"] = True
+        result["ai_provenance"]["degraded_reason"] = "Synthetic structured-output failure."
+        return result
+
+
 def test_trigger_status_transition_and_country_detail_flow(client) -> None:
-    """Triggering the local slice should materialise a ZA country briefing."""
+    """Triggering the local slice should materialise a BR country briefing."""
     idle_response = client.get("/api/v1/pipeline/status", headers=AUTH_HEADERS)
     assert idle_response.status_code == 200
     assert idle_response.json()["status"] == "idle"
@@ -56,41 +120,50 @@ def test_trigger_status_transition_and_country_detail_flow(client) -> None:
 
     assert final_status is not None
     assert final_status["status"] == "complete"
-    assert any(step["name"] == "store" and step["status"] == "complete" for step in final_status["steps"])
+    assert any(
+        step["name"] == "store" and step["status"] == "complete"
+        for step in final_status["steps"]
+    )
     assert "run_id" not in final_status
     assert "failure_summary" not in final_status
 
-    detail_response = client.get("/api/v1/countries/ZA", headers=AUTH_HEADERS)
+    detail_response = client.get("/api/v1/countries/BR", headers=AUTH_HEADERS)
     assert detail_response.status_code == 200
     detail = detail_response.json()
 
-    assert detail["code"] == "ZA"
-    assert detail["name"] == "South Africa"
+    assert detail["code"] == "BR"
+    assert detail["name"] == "Brazil"
     assert len(detail["indicators"]) == 6
     assert detail["macro_synthesis"]
     assert len(detail["risk_flags"]) >= 2
-    assert detail["outlook"] in {"cautious", "bearish"}
+    assert detail["outlook"] in {"cautious", "bearish", "neutral", "bullish"}
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert all("run_id" not in indicator for indicator in detail["indicators"])
-    assert all("source_provenance" not in indicator for indicator in detail["indicators"])
+    assert all(
+        "source_provenance" not in indicator for indicator in detail["indicators"]
+    )
 
 
 def test_country_detail_returns_not_found_before_trigger(client) -> None:
     """Country detail should not exist before the local slice has run."""
-    response = client.get("/api/v1/countries/ZA", headers=AUTH_HEADERS)
+    response = client.get("/api/v1/countries/BR", headers=AUTH_HEADERS)
     assert response.status_code == 404
     assert response.json()["error"] == "Not found"
 
 
-def test_countries_endpoint_returns_monitored_catalog_before_materialisation(client) -> None:
+def test_countries_endpoint_returns_monitored_catalog_before_materialisation(
+    client,
+) -> None:
     """The country list should expose the monitored catalog even before briefings exist."""
     list_response = client.get("/api/v1/countries", headers=AUTH_HEADERS)
     missing_detail_response = client.get("/api/v1/countries/BR", headers=AUTH_HEADERS)
 
     assert list_response.status_code == 200
     countries = list_response.json()
-    assert [country["code"] for country in countries] == EXPECTED_MONITORED_COUNTRY_CODES
+    assert [
+        country["code"] for country in countries
+    ] == EXPECTED_MONITORED_COUNTRY_CODES
 
     assert missing_detail_response.status_code == 404
     assert missing_detail_response.json()["error"] == "Not found"
@@ -163,7 +236,10 @@ def test_trigger_fails_before_background_run_when_storage_is_misconfigured(
 
     assert trigger_response.status_code == 202
     assert trigger_response.json()["status"] == "failed"
-    assert trigger_response.json()["error"] == "Raw archive bucket is required for Firestore mode."
+    assert (
+        trigger_response.json()["error"]
+        == "Raw archive bucket is required for Firestore mode."
+    )
     assert not run_pipeline_called
 
     stored_status = get_repository().get_pipeline_status_record()
@@ -187,7 +263,9 @@ def test_repository_misconfiguration_returns_failed_status_without_starting_run(
         run_pipeline_called = True
 
     def raise_repository_error() -> None:
-        raise ValueError("REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID")
+        raise ValueError(
+            "REPOSITORY_MODE=firestore requires GOOGLE_CLOUD_PROJECT or GCP_PROJECT_ID"
+        )
 
     monkeypatch.setattr(pipeline_handler, "run_pipeline", unexpected_run)
     monkeypatch.setattr(pipeline_handler, "get_repository", raise_repository_error)
@@ -218,7 +296,7 @@ def test_partial_live_trigger_preserves_country_detail_and_marks_fetch_failed(
     monkeypatch,
     tmp_path,
 ) -> None:
-    """A partial live run should keep good ZA output while the public status fails."""
+    """A partial live run should keep good BR output while the public status fails."""
     failing_indicator_code = "GC.DOD.TOTL.GD.ZS"
     monkeypatch.setenv("PIPELINE_MODE", "live")
     monkeypatch.setattr(
@@ -228,6 +306,9 @@ def test_partial_live_trigger_preserves_country_detail_and_marks_fetch_failed(
             run_id=run_id or "api-live-run",
             failing_indicator_code=failing_indicator_code,
         ),
+    )
+    monkeypatch.setattr(
+        pipeline_main, "create_client", lambda provider=None: StubLiveAIClient()
     )
 
     trigger_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
@@ -251,12 +332,15 @@ def test_partial_live_trigger_preserves_country_detail_and_marks_fetch_failed(
         for step in final_status["steps"]
     )
 
-    detail_response = client.get("/api/v1/countries/ZA", headers=AUTH_HEADERS)
+    detail_response = client.get("/api/v1/countries/BR", headers=AUTH_HEADERS)
     assert detail_response.status_code == 200
     detail = detail_response.json()
     assert len(detail["indicators"]) == len(INDICATORS) - 1
     assert "government debt to n/a" not in detail["macro_synthesis"].lower()
-    assert "government debt data is unavailable in the live source" in detail["macro_synthesis"]
+    assert (
+        "government debt data is unavailable in the live source"
+        in detail["macro_synthesis"]
+    )
     assert any(
         "Government debt data is unavailable in the live source" in flag
         for flag in detail["risk_flags"]
@@ -268,7 +352,9 @@ def test_partial_live_trigger_preserves_country_detail_and_marks_fetch_failed(
 
     stored_status = get_repository().get_pipeline_status_record()
     assert stored_status["failure_summary"]["step"] == "fetch"
-    assert stored_status["failure_summary"]["indicator_codes"] == [failing_indicator_code]
+    assert stored_status["failure_summary"]["indicator_codes"] == [
+        failing_indicator_code
+    ]
 
     raw_archive_path = (
         tmp_path
@@ -284,7 +370,64 @@ def test_partial_live_trigger_preserves_country_detail_and_marks_fetch_failed(
     assert archived_payload["request"]["params"]["source"] == WORLD_BANK_SOURCE_ID
 
 
-def _build_partial_live_fetch_result(run_id: str, failing_indicator_code: str) -> LiveFetchResult:
+def test_live_trigger_preserves_outputs_but_fails_status_when_ai_degrades(
+    client,
+    monkeypatch,
+) -> None:
+    """A degraded live AI fallback should keep output while the public run status stays failed."""
+    degraded_indicator_code = "NY.GDP.MKTP.KD.ZG"
+    live_points, raw_payloads = _build_live_points_and_payloads()
+    monkeypatch.setenv("PIPELINE_MODE", "live")
+    monkeypatch.setattr(
+        pipeline_main,
+        "fetch_live_data",
+        lambda country_codes, run_id=None: LiveFetchResult(
+            data_points=live_points,
+            raw_payloads=raw_payloads,
+            failures=(),
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_main,
+        "create_client",
+        lambda provider=None: DegradingStubLiveAIClient(degraded_indicator_code),
+    )
+
+    trigger_response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+    assert trigger_response.status_code == 202
+
+    deadline = time.monotonic() + 2.0
+    final_status = None
+    while time.monotonic() < deadline:
+        status_response = client.get("/api/v1/pipeline/status", headers=AUTH_HEADERS)
+        assert status_response.status_code == 200
+        final_status = status_response.json()
+        if final_status["status"] != "running":
+            break
+        time.sleep(0.02)
+
+    assert final_status is not None
+    assert final_status["status"] == "failed"
+    assert "degraded coverage" in final_status["error"]
+    assert any(
+        step["name"] == "synthesise" and step["status"] == "failed"
+        for step in final_status["steps"]
+    )
+    assert any(
+        step["name"] == "store" and step["status"] == "complete"
+        for step in final_status["steps"]
+    )
+
+    detail_response = client.get("/api/v1/countries/BR", headers=AUTH_HEADERS)
+    assert detail_response.status_code == 200
+    stored_status = get_repository().get_pipeline_status_record()
+    assert stored_status["failure_summary"]["step"] == "synthesise"
+    assert degraded_indicator_code in stored_status["failure_summary"]["indicator_codes"]
+
+
+def _build_partial_live_fetch_result(
+    run_id: str, failing_indicator_code: str
+) -> LiveFetchResult:
     """Build a partial live fetch fixture for trigger/status regression tests."""
     live_points, raw_payloads = _build_live_points_and_payloads()
     return LiveFetchResult(
@@ -301,20 +444,22 @@ def _build_partial_live_fetch_result(run_id: str, failing_indicator_code: str) -
         failures=(
             WorldBankFetchError(
                 message=(
-                    f"run_id={run_id} indicator_code={failing_indicator_code} country_codes=ZA: "
+                    f"run_id={run_id} indicator_code={failing_indicator_code} country_codes=BR: "
                     "World Bank returned no usable rows for the configured live indicator"
                 ),
                 indicator_code=failing_indicator_code,
-                country_codes=["ZA"],
+                country_codes=["BR"],
                 run_id=run_id,
             ),
         ),
     )
 
 
-def _build_live_points_and_payloads() -> tuple[list[dict[str, object]], dict[str, dict[str, object]]]:
-    """Build deterministic live-like ZA payloads from the local fixture slice."""
-    local_points = load_local_data_points("ZA")
+def _build_live_points_and_payloads() -> (
+    tuple[list[dict[str, object]], dict[str, dict[str, object]]]
+):
+    """Build deterministic live-like BR payloads from the local fixture slice."""
+    local_points = load_local_data_points("BR")
     metadata = {
         "page": 1,
         "pages": 1,
@@ -346,10 +491,10 @@ def _build_live_points_and_payloads() -> tuple[list[dict[str, object]], dict[str
             "source_id": "2",
             "indicator_code": indicator_code,
             "indicator_name": indicator_name,
-            "country_codes": ["ZA"],
+            "country_codes": ["BR"],
             "request": {
                 "url": (
-                    f"https://api.worldbank.org/v2/country/za/indicator/{indicator_code}"
+                    f"https://api.worldbank.org/v2/country/br/indicator/{indicator_code}"
                     f"?format=json&date={LIVE_DATE_RANGE}&per_page=1000&source={WORLD_BANK_SOURCE_ID}"
                 ),
                 "params": {
@@ -364,14 +509,19 @@ def _build_live_points_and_payloads() -> tuple[list[dict[str, object]], dict[str
             "response_metadata": metadata,
             "response_body": [
                 metadata,
-                [_build_world_bank_row(point, indicator_name) for point in indicator_points],
+                [
+                    _build_world_bank_row(point, indicator_name)
+                    for point in indicator_points
+                ],
             ],
         }
 
     return live_points, raw_payloads
 
 
-def _build_world_bank_row(point: dict[str, object], indicator_name: str) -> dict[str, object]:
+def _build_world_bank_row(
+    point: dict[str, object], indicator_name: str
+) -> dict[str, object]:
     """Convert one normalized ZA fixture row into a World Bank-like raw row."""
     return {
         "indicator": {

@@ -194,6 +194,28 @@ class FirestoreInsightsRepository:
             return default_pipeline_status()
         return project_public_record(snapshot.to_dict() or {})
 
+    def get_stored_record(
+        self,
+        *,
+        entity_type: str,
+        key: str,
+    ) -> dict[str, Any] | None:
+        """Return one full stored mixed document, including private provenance.
+
+        Args:
+            entity_type: Logical record type.
+            key: Natural key portion of the mixed-document id.
+
+        Returns:
+            Stored record annotated with its document id, else None.
+        """
+        snapshot = self._collection.document(self._document_id(entity_type, key)).get()
+        if not snapshot.exists:
+            return None
+        stored_record = copy.deepcopy(snapshot.to_dict() or {})
+        stored_record["document_id"] = snapshot.id
+        return stored_record
+
     @staticmethod
     def _document_id(entity_type: str, key: str) -> str:
         """Build a mixed-document identifier.

@@ -1,42 +1,43 @@
-"""LLM abstraction layer for the two-step agentic analysis chain.
+"""LLM abstraction layer for the two-step analysis chain.
 
 Why this exists:
-    The pipeline needs to swap between Gemini and OpenAI without changing
-    business logic. This module provides a single `create_client()` factory
-    that returns a provider-specific client, both implementing the same
-    interface: `analyse_indicator()` and `synthesise_country()`.
+    The pipeline needs one provider-facing seam for live AI while keeping the
+    caller contract stable: `analyse_indicator()` and `synthesise_country()`.
 
-Why two steps:
-    Step 1 (per-indicator) is I/O-parallel — one call per country-indicator pair.
-    Step 2 (macro synthesis) is sequential — it needs all Step 1 outputs for a
-    country before it can reason across indicators. Splitting them avoids
-    context collapse and keeps per-call token budgets low.
-
-Why schema-constrained output:
-    Prompting the LLM to "return JSON" is unreliable across runs — it works 90%
-    of the time, then silently breaks in production. Both Gemini and OpenAI now
-    support schema-constrained output at the token level, which makes invalid
-    JSON structurally impossible. We define the output shape once in Pydantic
-    and both providers enforce it.
+Why it is hardened:
+    Real provider output can still fail around the edges even with structured
+    generation. Gemma 4 proved viable for this repo, but only after lowering
+    variance, stripping bounded stray Markdown fences, retrying a small number
+    of times, and falling back explicitly when validation still fails.
 """
 
+from __future__ import annotations
+
+import hashlib
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
-from typing import Literal
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_AI_PROVIDER = "gemini"
+DEFAULT_GEMINI_MODEL = "gemma-4-31b-it"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_MAX_ATTEMPTS = 2
+STEP1_NAME = "indicator_analysis"
+STEP2_NAME = "macro_synthesis"
+STEP1_PROMPT_VERSION = "step1.v1.0.0"
+STEP2_PROMPT_VERSION = "step2.v1.0.0"
+
 
 # ---------------------------------------------------------------------------
-# Output Schemas — shared across providers
+# Output Schemas
 # ---------------------------------------------------------------------------
-# These Pydantic models define the *contract* between the AI and the rest of
-# the pipeline. They are the single source of truth for what the LLM must
-# return. Field descriptions act as embedded prompt engineering.
+
 
 class IndicatorInsight(BaseModel):
     """Step 1 output: analysis of a single indicator for a single country."""
@@ -70,10 +71,8 @@ class MacroSynthesis(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Prompt Templates — stable across providers, cacheable
+# Prompt Templates
 # ---------------------------------------------------------------------------
-# System instructions are long-lived and identical across calls.
-# User prompts are templated with per-call data.
 
 STEP1_SYSTEM = """You are an economic data analyst producing structured insights
 for a global intelligence dashboard. You receive pre-computed statistics from
@@ -101,14 +100,8 @@ acknowledge the tension. Be specific — cite exact figures."""
 
 
 def _build_step1_prompt(context: dict[str, Any]) -> str:
-    """Build the user prompt for per-indicator analysis.
+    """Build the Step 1 user prompt."""
 
-    Args:
-        context: Dict with indicator data from the analyser.
-
-    Returns:
-        Formatted user prompt string.
-    """
     return f"""Analyse this economic indicator:
 
 Country: {context['country_name']} ({context['country_code']})
@@ -121,15 +114,12 @@ Data Year: {context['data_year']}"""
 
 
 def _build_step2_prompt(indicators: list[dict[str, Any]]) -> str:
-    """Build the user prompt for macro country synthesis.
+    """Build the Step 2 user prompt."""
 
-    Args:
-        indicators: List of per-indicator context dicts with AI analysis.
-
-    Returns:
-        Formatted user prompt string.
-    """
-    indicator_summary = json.dumps(indicators, indent=2, default=str)
+    ordered_indicators = _ordered_indicator_inputs(indicators)
+    indicator_summary = json.dumps(
+        ordered_indicators, indent=2, default=str, sort_keys=True
+    )
     return f"""Synthesise these indicator analyses into a country-level assessment:
 
 {indicator_summary}"""
@@ -139,199 +129,687 @@ def _build_step2_prompt(indicators: list[dict[str, Any]]) -> str:
 # Abstract Base
 # ---------------------------------------------------------------------------
 
-class AIClient(ABC):
-    """Interface for LLM providers.
 
-    Both Gemini and OpenAI implement this. The pipeline only sees this
-    interface — it never knows which provider is running.
-    """
+class AIClient(ABC):
+    """Interface for live and deterministic AI clients."""
 
     @abstractmethod
     def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Generate per-indicator analysis.
-
-        Args:
-            context: Structured dict from the analyser.
-
-        Returns:
-            Dict matching IndicatorInsight schema.
-        """
+        """Generate per-indicator analysis."""
         ...
 
     @abstractmethod
     def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
-        """Generate macro-level country synthesis.
-
-        Args:
-            indicators: List of per-indicator analysis results.
-
-        Returns:
-            Dict matching MacroSynthesis schema.
-        """
+        """Generate macro-level country synthesis."""
         ...
 
     @abstractmethod
-    def get_provenance(self) -> dict[str, str]:
-        """Return the provider and model metadata for persisted provenance."""
+    def get_provenance(self) -> dict[str, Any]:
+        """Return provider and model metadata for persisted provenance."""
         ...
 
 
 # ---------------------------------------------------------------------------
-# Gemini Client — Primary provider
+# Gemini Client
 # ---------------------------------------------------------------------------
+
 
 class GeminiClient(AIClient):
-    """Google Gemini via the google-genai SDK.
+    """Google GenAI client hardened for the repo's structured-output needs."""
 
-    Uses schema-constrained structured output — the model physically cannot
-    return invalid JSON because the schema is enforced at the token level.
-    """
+    _PROVIDER_NAME = "google-genai"
 
-    def __init__(self, model_name: str = "gemini-2.0-flash") -> None:
-        """Initialise Gemini client.
+    def __init__(
+        self,
+        model_name: str = DEFAULT_GEMINI_MODEL,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        client: Any | None = None,
+    ) -> None:
+        """Initialise the Gemini client.
 
         Args:
-            model_name: Gemini model identifier from Vertex AI.
+            model_name: Google model identifier.
+            max_attempts: Maximum bounded attempts before degraded fallback.
+            client: Optional injected SDK client for tests.
         """
-        from google import genai
+        if client is None:
+            from google import genai
 
-        self._client = genai.Client()
+            api_key = os.environ.get("GEMINI_API_KEY")
+            client = genai.Client(api_key=api_key) if api_key else genai.Client()
+
+        self._client = client
         self._model_name = model_name
-        logger.info("Initialised Gemini client: %s", model_name)
+        self._max_attempts = max(1, max_attempts)
+        logger.info(
+            "Initialised Gemini client: model=%s max_attempts=%d",
+            model_name,
+            self._max_attempts,
+        )
 
     def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Generate per-indicator analysis with schema-constrained output."""
-        response = self._client.models.generate_content(
-            model=self._model_name,
+        """Generate per-indicator analysis with bounded repair and fallback."""
+
+        normalized_input = _normalise_indicator_input(context)
+        return self._generate_structured_result(
+            step_name=STEP1_NAME,
+            prompt_version=STEP1_PROMPT_VERSION,
+            prompt_input=normalized_input,
             contents=_build_step1_prompt(context),
-            config={
-                "system_instruction": STEP1_SYSTEM,
-                "response_mime_type": "application/json",
-                "response_json_schema": IndicatorInsight.model_json_schema(),
-            },
+            system_instruction=STEP1_SYSTEM,
+            response_model=IndicatorInsight,
+            fallback_payload=_build_indicator_fallback(context),
+            max_output_tokens=280,
         )
-        insight = IndicatorInsight.model_validate_json(response.text)
-        return insight.model_dump()
 
     def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
-        """Generate macro synthesis with schema-constrained output."""
-        response = self._client.models.generate_content(
-            model=self._model_name,
-            contents=_build_step2_prompt(indicators),
-            config={
-                "system_instruction": STEP2_SYSTEM,
-                "response_mime_type": "application/json",
-                "response_json_schema": MacroSynthesis.model_json_schema(),
-            },
-        )
-        synthesis = MacroSynthesis.model_validate_json(response.text)
-        return synthesis.model_dump()
+        """Generate macro synthesis with bounded repair and fallback."""
 
-    def get_provenance(self) -> dict[str, str]:
-        """Return the provider and model metadata for persisted provenance."""
+        ordered_indicators = _ordered_indicator_inputs(indicators)
+        return self._generate_structured_result(
+            step_name=STEP2_NAME,
+            prompt_version=STEP2_PROMPT_VERSION,
+            prompt_input=ordered_indicators,
+            contents=_build_step2_prompt(ordered_indicators),
+            system_instruction=STEP2_SYSTEM,
+            response_model=MacroSynthesis,
+            fallback_payload=_build_macro_fallback(ordered_indicators),
+            max_output_tokens=420,
+        )
+
+    def get_provenance(self) -> dict[str, Any]:
+        """Return provider and model metadata."""
+
         return {
-            "provider": "google-genai",
+            "provider": self._PROVIDER_NAME,
             "model": self._model_name,
         }
 
+    def _generate_structured_result(
+        self,
+        *,
+        step_name: str,
+        prompt_version: str,
+        prompt_input: Any,
+        contents: str,
+        system_instruction: str,
+        response_model: type[BaseModel],
+        fallback_payload: dict[str, Any],
+        max_output_tokens: int,
+    ) -> dict[str, Any]:
+        """Call Gemini with bounded retries and degraded fallback."""
+
+        input_fingerprint = build_input_fingerprint(
+            step_name=step_name,
+            prompt_version=prompt_version,
+            prompt_input=prompt_input,
+            provider=self._PROVIDER_NAME,
+            model=self._model_name,
+        )
+        last_error = "No response returned."
+        repair_applied = False
+        last_usage: dict[str, Any] | None = None
+        provider_model_version: str | None = None
+
+        from google.genai.errors import APIError, ClientError
+
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                response = self._client.models.generate_content(
+                    model=self._model_name,
+                    contents=contents,
+                    config={
+                        "system_instruction": system_instruction,
+                        "response_mime_type": "application/json",
+                        "response_json_schema": response_model.model_json_schema(),
+                        # Gemma 4 proved more reliable on this repo at temperature 0.
+                        "temperature": 0,
+                        "max_output_tokens": max_output_tokens,
+                    },
+                )
+                last_usage = _extract_gemini_usage_metadata(response)
+                provider_model_version = getattr(response, "model_version", None)
+                response_text = (getattr(response, "text", None) or "").strip()
+                if not response_text:
+                    raise ValueError("Empty structured response.")
+
+                repaired_text, repaired = repair_markdown_fences(response_text)
+                repair_applied = repair_applied or repaired
+                parsed = response_model.model_validate_json(repaired_text)
+                result = parsed.model_dump()
+                result["ai_provenance"] = _build_ai_provenance(
+                    provider=self._PROVIDER_NAME,
+                    model=self._model_name,
+                    step_name=step_name,
+                    prompt_version=prompt_version,
+                    input_fingerprint=input_fingerprint,
+                    degraded=False,
+                    retry_count=attempt - 1,
+                    repair_applied=repair_applied,
+                    usage=last_usage,
+                    provider_model_version=provider_model_version,
+                )
+                return result
+            except (ValidationError, ValueError, TypeError) as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "Gemini structured output validation failed for %s on attempt %d/%d: %s",
+                    step_name,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                )
+            except APIError as exc:  # pragma: no cover - exercised by live-provider runs
+                last_error = str(exc)
+                logger.warning(
+                    "Gemini request failed for %s on attempt %d/%d: %s",
+                    step_name,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                )
+                if isinstance(exc, ClientError) and getattr(exc, "status", None) not in {408, 429}:
+                    break
+
+        fallback_result = dict(fallback_payload)
+        fallback_result["ai_provenance"] = _build_ai_provenance(
+            provider=self._PROVIDER_NAME,
+            model=self._model_name,
+            step_name=step_name,
+            prompt_version=prompt_version,
+            input_fingerprint=input_fingerprint,
+            degraded=True,
+            retry_count=max(0, self._max_attempts - 1),
+            repair_applied=repair_applied,
+            degraded_reason=last_error,
+            usage=last_usage,
+            provider_model_version=provider_model_version,
+        )
+        return fallback_result
+
 
 # ---------------------------------------------------------------------------
-# OpenAI Client — Fallback provider
+# OpenAI Client
 # ---------------------------------------------------------------------------
+
 
 class OpenAIClient(AIClient):
-    """OpenAI GPT via the openai SDK.
+    """OpenAI fallback provider with the same bounded fallback behaviour."""
 
-    Uses Strict Mode structured output — `response_format` with `strict: true`
-    to enforce the JSON schema server-side.
-    """
+    _PROVIDER_NAME = "openai"
 
-    def __init__(self, model_name: str = "gpt-4o-mini") -> None:
-        """Initialise OpenAI client.
+    def __init__(
+        self,
+        model_name: str = DEFAULT_OPENAI_MODEL,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        client: Any | None = None,
+    ) -> None:
+        """Initialise the OpenAI client."""
 
-        Args:
-            model_name: OpenAI model identifier.
-        """
-        from openai import OpenAI
+        if client is None:
+            from openai import OpenAI
 
-        self._client = OpenAI()
+            client = OpenAI()
+
+        self._client = client
         self._model_name = model_name
-        logger.info("Initialised OpenAI client: %s", model_name)
+        self._max_attempts = max(1, max_attempts)
+        logger.info(
+            "Initialised OpenAI client: model=%s max_attempts=%d",
+            model_name,
+            self._max_attempts,
+        )
 
     def analyse_indicator(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Generate per-indicator analysis with strict structured output."""
-        response = self._client.beta.chat.completions.parse(
-            model=self._model_name,
+        """Generate per-indicator analysis."""
+
+        normalized_input = _normalise_indicator_input(context)
+        return self._generate_structured_result(
+            step_name=STEP1_NAME,
+            prompt_version=STEP1_PROMPT_VERSION,
+            prompt_input=normalized_input,
             messages=[
                 {"role": "system", "content": STEP1_SYSTEM},
                 {"role": "user", "content": _build_step1_prompt(context)},
             ],
-            response_format=IndicatorInsight,
+            response_model=IndicatorInsight,
+            fallback_payload=_build_indicator_fallback(context),
         )
-        if response.choices[0].message.refusal:
-            logger.warning("OpenAI refused Step 1: %s", response.choices[0].message.refusal)
-            return IndicatorInsight(
-                trend="stable", narrative="Analysis unavailable — model refusal.",
-                risk_level="low", confidence="low",
-            ).model_dump()
-
-        return response.choices[0].message.parsed.model_dump()
 
     def synthesise_country(self, indicators: list[dict[str, Any]]) -> dict[str, Any]:
-        """Generate macro synthesis with strict structured output."""
-        response = self._client.beta.chat.completions.parse(
-            model=self._model_name,
+        """Generate macro synthesis."""
+
+        ordered_indicators = _ordered_indicator_inputs(indicators)
+        return self._generate_structured_result(
+            step_name=STEP2_NAME,
+            prompt_version=STEP2_PROMPT_VERSION,
+            prompt_input=ordered_indicators,
             messages=[
                 {"role": "system", "content": STEP2_SYSTEM},
-                {"role": "user", "content": _build_step2_prompt(indicators)},
+                {"role": "user", "content": _build_step2_prompt(ordered_indicators)},
             ],
-            response_format=MacroSynthesis,
+            response_model=MacroSynthesis,
+            fallback_payload=_build_macro_fallback(ordered_indicators),
         )
-        if response.choices[0].message.refusal:
-            logger.warning("OpenAI refused Step 2: %s", response.choices[0].message.refusal)
-            return MacroSynthesis(
-                summary="Synthesis unavailable — model refusal.",
-                risk_flags=[], outlook="cautious",
-            ).model_dump()
 
-        return response.choices[0].message.parsed.model_dump()
+    def get_provenance(self) -> dict[str, Any]:
+        """Return provider and model metadata."""
 
-    def get_provenance(self) -> dict[str, str]:
-        """Return the provider and model metadata for persisted provenance."""
         return {
-            "provider": "openai",
+            "provider": self._PROVIDER_NAME,
             "model": self._model_name,
         }
+
+    def _generate_structured_result(
+        self,
+        *,
+        step_name: str,
+        prompt_version: str,
+        prompt_input: Any,
+        messages: list[dict[str, str]],
+        response_model: type[BaseModel],
+        fallback_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call OpenAI with bounded retries and degraded fallback."""
+
+        input_fingerprint = build_input_fingerprint(
+            step_name=step_name,
+            prompt_version=prompt_version,
+            prompt_input=prompt_input,
+            provider=self._PROVIDER_NAME,
+            model=self._model_name,
+        )
+        last_error = "No response returned."
+        last_usage: dict[str, Any] | None = None
+
+        from openai import APIConnectionError, APIError, APIStatusError, APITimeoutError
+
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                response = self._client.beta.chat.completions.parse(
+                    model=self._model_name,
+                    messages=messages,
+                    response_format=response_model,
+                    temperature=0,
+                )
+                last_usage = _extract_openai_usage(response)
+                message = response.choices[0].message
+                if message.refusal:
+                    raise ValueError(f"Model refusal: {message.refusal}")
+                if message.parsed is None:
+                    raise ValueError("OpenAI returned no parsed structured output.")
+
+                result = message.parsed.model_dump()
+                result["ai_provenance"] = _build_ai_provenance(
+                    provider=self._PROVIDER_NAME,
+                    model=self._model_name,
+                    step_name=step_name,
+                    prompt_version=prompt_version,
+                    input_fingerprint=input_fingerprint,
+                    degraded=False,
+                    retry_count=attempt - 1,
+                    repair_applied=False,
+                    usage=last_usage,
+                )
+                return result
+            except ValueError as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "OpenAI structured output validation failed for %s on attempt %d/%d: %s",
+                    step_name,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                )
+            except (APIConnectionError, APITimeoutError) as exc:  # pragma: no cover - fallback provider
+                last_error = str(exc)
+                logger.warning(
+                    "OpenAI request failed for %s on attempt %d/%d: %s",
+                    step_name,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                )
+            except APIStatusError as exc:  # pragma: no cover - fallback provider
+                last_error = str(exc)
+                logger.warning(
+                    "OpenAI structured output failed for %s on attempt %d/%d: %s",
+                    step_name,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                )
+                if getattr(exc, "status_code", None) not in {408, 429, 500, 502, 503, 504}:
+                    break
+            except APIError as exc:  # pragma: no cover - fallback provider
+                last_error = str(exc)
+                logger.warning(
+                    "OpenAI request failed for %s on attempt %d/%d: %s",
+                    step_name,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                )
+                break
+
+        fallback_result = dict(fallback_payload)
+        fallback_result["ai_provenance"] = _build_ai_provenance(
+            provider=self._PROVIDER_NAME,
+            model=self._model_name,
+            step_name=step_name,
+            prompt_version=prompt_version,
+            input_fingerprint=input_fingerprint,
+            degraded=True,
+            retry_count=max(0, self._max_attempts - 1),
+            repair_applied=False,
+            degraded_reason=last_error,
+            usage=last_usage,
+        )
+        return fallback_result
 
 
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
-def create_client(provider: str = "gemini") -> AIClient:
-    """Create the appropriate AI client.
 
-    Why a factory:
-        The pipeline calls `create_client()` once at startup. Everything
-        downstream uses the AIClient interface. To switch providers, change
-        the AI_PROVIDER env var — no code changes needed.
+def create_client(provider: str | None = None) -> AIClient:
+    """Create the configured live AI client."""
 
-    Args:
-        provider: Either 'gemini' or 'openai'.
+    selected_provider = (
+        provider
+        or os.environ.get("WORLD_ANALYST_AI_PROVIDER")
+        or os.environ.get("AI_PROVIDER")
+        or DEFAULT_AI_PROVIDER
+    ).lower()
+    max_attempts = _get_max_attempts()
 
-    Returns:
-        Configured AIClient instance.
-
-    Raises:
-        ValueError: If provider is not recognised.
-    """
-    providers = {
-        "gemini": GeminiClient,
-        "openai": OpenAIClient,
-    }
-    if provider not in providers:
-        raise ValueError(
-            f"Unknown AI provider: '{provider}'. "
-            f"Supported: {', '.join(providers.keys())}"
+    if selected_provider == "gemini":
+        return GeminiClient(
+            model_name=(
+                os.environ.get("WORLD_ANALYST_GEMINI_MODEL")
+                or os.environ.get("GEMINI_MODEL")
+                or DEFAULT_GEMINI_MODEL
+            ),
+            max_attempts=max_attempts,
         )
-    return providers[provider]()
+
+    if selected_provider == "openai":
+        return OpenAIClient(
+            model_name=(
+                os.environ.get("WORLD_ANALYST_OPENAI_MODEL")
+                or os.environ.get("OPENAI_MODEL")
+                or DEFAULT_OPENAI_MODEL
+            ),
+            max_attempts=max_attempts,
+        )
+
+    raise ValueError(
+        f"Unknown AI provider: '{selected_provider}'. Supported: gemini, openai"
+    )
+
+
+def build_input_fingerprint(
+    *,
+    step_name: str,
+    prompt_version: str,
+    prompt_input: Any,
+    provider: str,
+    model: str,
+) -> str:
+    """Build the exact-input fingerprint used for later AI reuse lineage."""
+
+    normalized_payload = json.dumps(
+        {
+            "step_name": step_name,
+            "prompt_version": prompt_version,
+            "provider": provider,
+            "model": model,
+            "prompt_input": prompt_input,
+        },
+        default=str,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(normalized_payload.encode("utf-8")).hexdigest()
+
+
+def repair_markdown_fences(raw_text: str) -> tuple[str, bool]:
+    """Strip one leading and/or trailing Markdown fence around JSON output.
+
+    The repair is intentionally bounded so the client does not silently reshape
+    arbitrary model text before validation.
+    """
+
+    candidate = raw_text.strip()
+    repaired = False
+
+    if candidate.startswith("```json"):
+        candidate = candidate[len("```json") :].lstrip()
+        repaired = True
+    elif candidate.startswith("```"):
+        candidate = candidate[3:].lstrip()
+        repaired = True
+
+    if candidate.endswith("```"):
+        candidate = candidate[:-3].rstrip()
+        repaired = True
+
+    trailing_fence_index = candidate.rfind("\n```")
+    if trailing_fence_index != -1 and candidate[trailing_fence_index:].strip() == "```":
+        candidate = candidate[:trailing_fence_index].rstrip()
+        repaired = True
+
+    return candidate, repaired
+
+
+def _build_ai_provenance(
+    *,
+    provider: str,
+    model: str,
+    step_name: str,
+    prompt_version: str,
+    input_fingerprint: str,
+    degraded: bool,
+    retry_count: int,
+    repair_applied: bool,
+    degraded_reason: str | None = None,
+    usage: dict[str, Any] | None = None,
+    provider_model_version: str | None = None,
+) -> dict[str, Any]:
+    """Build the private AI provenance envelope persisted with records."""
+
+    provenance = {
+        "provider": provider,
+        "model": model,
+        "step_name": step_name,
+        "prompt_version": prompt_version,
+        "degraded": degraded,
+        "retry_count": retry_count,
+        "repair_applied": repair_applied,
+        "lineage": {
+            "input_fingerprint": input_fingerprint,
+            "reused_from": None,
+        },
+    }
+    if degraded_reason:
+        provenance["degraded_reason"] = degraded_reason
+    if usage:
+        provenance["usage"] = usage
+    if provider_model_version:
+        provenance["provider_model_version"] = provider_model_version
+    return provenance
+
+
+def _extract_gemini_usage_metadata(response: Any) -> dict[str, Any] | None:
+    """Return the stable subset of Gemini usage metadata worth persisting privately."""
+
+    usage_metadata = getattr(response, "usage_metadata", None)
+    if usage_metadata is None:
+        return None
+
+    usage = {
+        field_name: field_value
+        for field_name in (
+            "prompt_token_count",
+            "candidates_token_count",
+            "thoughts_token_count",
+            "total_token_count",
+            "traffic_type",
+        )
+        if (field_value := getattr(usage_metadata, field_name, None)) is not None
+    }
+    return usage or None
+
+
+def _extract_openai_usage(response: Any) -> dict[str, Any] | None:
+    """Return the stable subset of OpenAI usage metadata worth persisting privately."""
+
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+
+    if hasattr(usage, "model_dump"):
+        usage_payload = usage.model_dump()
+    elif isinstance(usage, dict):
+        usage_payload = usage
+    else:
+        return None
+
+    compact_usage = {
+        key: value
+        for key, value in usage_payload.items()
+        if value is not None
+    }
+    return compact_usage or None
+
+
+def _ordered_indicator_inputs(indicators: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return Step 2 inputs in a deterministic order for prompt and lineage stability."""
+
+    return [
+        _strip_private_fields(indicator)
+        for indicator in sorted(
+            indicators,
+            key=lambda item: (
+                str(item.get("country_code", "")),
+                str(item.get("indicator_code", "")),
+                int(item.get("data_year", 0) or 0),
+            ),
+        )
+    ]
+
+
+def _normalise_indicator_input(context: dict[str, Any]) -> dict[str, Any]:
+    """Return the Step 1 input content used for lineage fingerprinting."""
+
+    return _strip_private_fields(context)
+
+
+def _strip_private_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove private AI provenance fields from prompt lineage input."""
+
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {"ai_provenance", "source_provenance", "raw_backup_reference", "run_id"}
+    }
+
+
+def _build_indicator_fallback(context: dict[str, Any]) -> dict[str, Any]:
+    """Create an explicit degraded Step 1 payload when structured output fails."""
+
+    trend = _classify_trend(context.get("percent_change"))
+    risk_level = "high" if context.get("is_anomaly") else "moderate"
+    latest_value = context.get("latest_value")
+    narrative = (
+        "Live AI analysis degraded after structured-output retries. "
+        f"{context['indicator_name']} stood at {_format_value(latest_value)} in {context['data_year']}; "
+        "review the validated pipeline metrics directly."
+    )
+    return {
+        "trend": trend,
+        "narrative": narrative,
+        "risk_level": risk_level,
+        "confidence": "low",
+    }
+
+
+def _build_macro_fallback(indicators: list[dict[str, Any]]) -> dict[str, Any]:
+    """Create an explicit degraded Step 2 payload when structured output fails."""
+
+    country_name = (
+        indicators[0].get("country_name", "This country")
+        if indicators
+        else "This country"
+    )
+    high_risk_indicators = [
+        indicator
+        for indicator in indicators
+        if indicator.get("risk_level") == "high" or indicator.get("is_anomaly")
+    ]
+    summary = (
+        "Live AI synthesis degraded after structured-output retries. "
+        f"{country_name} still has {len(high_risk_indicators)} high-risk or anomalous signals in the validated "
+        "indicator set; review the indicator narratives directly."
+    )
+    risk_flags = [
+        (
+            f"{indicator['indicator_name']} remains a flagged pressure point at "
+            f"{_format_value(indicator.get('latest_value'))}."
+        )
+        for indicator in high_risk_indicators[:3]
+    ]
+    if not risk_flags:
+        risk_flags = [
+            "Indicator-level narratives should be reviewed directly because the live synthesis degraded."
+        ]
+
+    return {
+        "summary": summary,
+        "risk_flags": risk_flags,
+        "outlook": "bearish" if len(high_risk_indicators) >= 3 else "cautious",
+    }
+
+
+def _classify_trend(
+    percent_change: float | None,
+) -> Literal["improving", "stable", "declining"]:
+    """Map a year-over-year change into the public trend contract."""
+
+    if percent_change is None:
+        return "stable"
+    if percent_change > 1.0:
+        return "improving"
+    if percent_change < -1.0:
+        return "declining"
+    return "stable"
+
+
+def _format_value(value: Any) -> str:
+    """Format a scalar value for degraded fallback copy."""
+
+    if value is None:
+        return "n/a"
+    if isinstance(value, (int, float)):
+        return f"{value:.1f}"
+    return str(value)
+
+
+def _get_max_attempts() -> int:
+    """Return the configured bounded retry count for live AI calls."""
+
+    configured_value = os.environ.get("WORLD_ANALYST_AI_MAX_ATTEMPTS")
+    if configured_value is None:
+        return DEFAULT_MAX_ATTEMPTS
+
+    try:
+        return max(1, int(configured_value))
+    except ValueError:
+        logger.warning(
+            "Invalid WORLD_ANALYST_AI_MAX_ATTEMPTS=%s; falling back to %d",
+            configured_value,
+            DEFAULT_MAX_ATTEMPTS,
+        )
+        return DEFAULT_MAX_ATTEMPTS
