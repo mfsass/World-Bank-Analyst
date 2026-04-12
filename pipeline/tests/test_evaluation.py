@@ -90,6 +90,22 @@ class EvaluatedStubAIClient:
         )
         return delegate
 
+    def synthesise_global_overview(
+        self, country_briefings: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        delegate = create_development_client().synthesise_global_overview(country_briefings)
+        delegate["ai_provenance"].update(
+            {
+                "provider": "stub-provider",
+                "model": "stub-model",
+                "usage": {
+                    "prompt_token_count": 3_000,
+                    "candidates_token_count": 1_500,
+                },
+            }
+        )
+        return delegate
+
 
 def test_evaluation_harness_applies_documented_gate_thresholds() -> None:
     """The evaluation gate should pass only when the documented thresholds are satisfied."""
@@ -116,6 +132,14 @@ def test_evaluation_harness_applies_documented_gate_thresholds() -> None:
         )
 
     def judge(_judge_input: dict[str, Any], _result: dict[str, Any]) -> dict[str, Any]:
+        # Return appropriate scores based on the step being judged
+        if "country_briefings" in _judge_input:
+            return {
+                "groundedness": 0.85,
+                "cross_regional_coverage": 1.0,
+                "no_single_country_anchoring": 1.0,
+                "data_year_citation": 1.0,
+            }
         return {"groundedness": 0.9, "coherence": 0.92}
 
     report = evaluate_live_baseline(

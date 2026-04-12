@@ -924,10 +924,10 @@ def _build_panel_overview_fallback(
         1 for briefing in country_briefings if briefing.get("outlook") == "cautious"
     )
     summary = (
-        "Live AI panel synthesis degraded after structured-output retries. "
-        f"The monitored set still contains {country_count} materialised country briefings, "
+        "Global AI synthesis is temporarily unavailable after structured-output retries. "
+        f"The tracked dataset still contains {country_count} country briefings, "
         f"including {bearish_count} bearish and {cautious_count} cautious outlooks; "
-        "review the stored country briefings directly."
+        "review the individual country pages directly."
     )
 
     risk_flags = [
@@ -937,7 +937,7 @@ def _build_panel_overview_fallback(
     ][:3]
     if not risk_flags:
         risk_flags = [
-            "Review the country drilldown cards directly for the current monitored-set pressures."
+            "Review the individual country pages directly for the current risk picture."
         ]
 
     if bearish_count > 0:

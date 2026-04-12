@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from statistics import median
 from time import perf_counter
@@ -40,6 +41,12 @@ EVALUATION_GATE_THRESHOLDS = {
     "max_indicator_p95_latency_ms": 8000,
     "max_synthesis_p95_latency_ms": 15000,
     "max_full_run_cost_usd": 5.0,
+    "min_overview_groundedness": 0.7,
+    "min_overview_cross_regional_coverage": 0.9,
+    "min_overview_no_single_country_anchoring": 1.0,
+    "min_overview_data_year_citation": 1.0,
+    "max_overview_degraded_rate": 0.0,
+    "max_overview_p95_latency_ms": 30000,
 }
 DEFAULT_PRICING_BY_MODEL = {
     "google-genai:gemma-4-31b-it": {
@@ -87,10 +94,40 @@ class SynthesisJudgeResult(BaseModel):
     )
 
 
+class GlobalOverviewJudgeResult(BaseModel):
+    """Judge output for Step 3 global overview scoring."""
+
+    groundedness: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Claims in the summary trace to the supplied country briefings.",
+    )
+    cross_regional_coverage: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Summary references at least three distinct geographic regions.",
+    )
+    no_single_country_anchoring: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Summary does not open with or anchor to a single country.",
+    )
+    data_year_citation: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Summary references the data year when citing trends.",
+    )
+    reasoning: str = Field(
+        description="Short explanation of scores."
+    )
+
+
 def create_builtin_evaluation_judge() -> StepEvaluator:
     """Return the deterministic rubric used when no live judge model is configured."""
 
     def judge(judge_input: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+        if "country_briefings" in judge_input:
+            return _score_builtin_global_overview(judge_input, result)
         if "summary" in result:
             return _score_builtin_synthesis(judge_input, result)
         return _score_builtin_indicator(judge_input, result)
@@ -115,8 +152,20 @@ def create_google_evaluation_judge(model_name: str) -> StepEvaluator:
     client = genai.Client(api_key=api_key) if api_key else genai.Client()
 
     def judge(judge_input: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-        if "summary" in result:
-            response_model: type[BaseModel] = SynthesisJudgeResult
+        if "country_briefings" in judge_input:
+            response_model: type[BaseModel] = GlobalOverviewJudgeResult
+            system_instruction = (
+                "You are a strict evaluator for a global economic intelligence summary. "
+                "Score on four dimensions, each normalized 0.0 to 1.0. "
+                "Groundedness: do the summary and risk flags trace back to the supplied country briefings? "
+                "Cross-regional coverage: does the summary reference at least three distinct geographic regions by name? "
+                "No single-country anchoring: does the summary avoid opening with or centering on one country's story? "
+                "Data year citation: does the summary cite the data year when discussing trends? "
+                "Return JSON only."
+            )
+            contents = _build_global_overview_judge_prompt(judge_input, result)
+        elif "summary" in result:
+            response_model = SynthesisJudgeResult
             system_instruction = (
                 "You are a strict evaluator for World Analyst country syntheses. "
                 "Score groundedness and coherence on a normalized 0.0 to 1.0 scale. "
@@ -218,6 +267,7 @@ def evaluate_live_baseline(
     for context in llm_contexts:
         country_groups.setdefault(context["country_code"], []).append(context)
 
+    global_overview_inputs: list[dict[str, Any]] = []
     synthesis_case_results: list[dict[str, Any]] = []
     for country_code, indicators in country_groups.items():
         started_at = perf_counter()
@@ -234,13 +284,43 @@ def evaluate_live_baseline(
                 judge_input={"indicators": indicators},
             )
         )
+        # Accumulate briefings for Step 3 evaluation
+        global_overview_inputs.append({
+            "code": country_code,
+            "name": indicators[0].get("country_name", country_code) if indicators else country_code,
+            "region": indicators[0].get("region") if indicators else None,
+            "data_year": max((int(ctx.get("data_year", 0) or 0) for ctx in indicators), default=0) or None,
+            "summary": result.get("summary"),
+            "risk_flags": result.get("risk_flags", []),
+            "outlook": result.get("outlook"),
+        })
+
+    # Step 3: Global overview evaluation
+    global_overview_case_results: list[dict[str, Any]] = []
+    if global_overview_inputs:
+        started_at = perf_counter()
+        overview_result = evaluation_client.synthesise_global_overview(global_overview_inputs)
+        latency_ms = int((perf_counter() - started_at) * 1000)
+        global_overview_case_results.append(
+            _build_case_result(
+                step_name="global_overview",
+                scope={},
+                result=overview_result,
+                response_model=MacroSynthesis,
+                latency_ms=latency_ms,
+                judge=judge,
+                judge_input={"country_briefings": global_overview_inputs},
+            )
+        )
 
     indicator_metrics = _aggregate_case_results(indicator_case_results, pricing_by_model)
     synthesis_metrics = _aggregate_case_results(synthesis_case_results, pricing_by_model)
+    global_overview_metrics = _aggregate_case_results(global_overview_case_results, pricing_by_model)
     gate = _build_gate_summary(
         fetch_result=fetch_result,
         indicator_metrics=indicator_metrics,
         synthesis_metrics=synthesis_metrics,
+        global_overview_metrics=global_overview_metrics,
         judge_enabled=judge is not None,
         approved_scope_complete=approved_scope_complete,
     )
@@ -261,6 +341,7 @@ def evaluate_live_baseline(
         "steps": {
             "indicator_analysis": indicator_metrics,
             "macro_synthesis": synthesis_metrics,
+            "global_overview": global_overview_metrics,
         },
         "judge": {
             "enabled": judge is not None,
@@ -467,6 +548,7 @@ def _build_gate_summary(
     approved_scope_complete: bool,
     indicator_metrics: dict[str, Any],
     synthesis_metrics: dict[str, Any],
+    global_overview_metrics: dict[str, Any],
     judge_enabled: bool,
 ) -> dict[str, Any]:
     """Build an honest gate summary for PRD sign-off discussion."""
@@ -517,6 +599,17 @@ def _build_gate_summary(
         > EVALUATION_GATE_THRESHOLDS["max_synthesis_p95_latency_ms"]
     ):
         failures.append("Synthesis p95 latency exceeded the 15s threshold.")
+    # Step 3 global overview gate checks
+    if (
+        global_overview_metrics["degraded_rate"]
+        > EVALUATION_GATE_THRESHOLDS["max_overview_degraded_rate"]
+    ):
+        failures.append("Global overview degraded-fallback rate exceeded 0%.")
+    if (
+        global_overview_metrics["latency_ms"]["p95"]
+        > EVALUATION_GATE_THRESHOLDS["max_overview_p95_latency_ms"]
+    ):
+        failures.append("Global overview p95 latency exceeded the 30s threshold.")
     if not judge_enabled:
         failures.append("Groundedness and coherence scoring was not configured for this run.")
     else:
@@ -530,10 +623,32 @@ def _build_gate_summary(
             < EVALUATION_GATE_THRESHOLDS["min_synthesis_coherence"]
         ):
             failures.append("Synthesis coherence missed the 0.80 threshold.")
+        # Step 3 judge score checks
+        if (
+            global_overview_metrics["judge_scores"].get("groundedness", 0.0)
+            < EVALUATION_GATE_THRESHOLDS["min_overview_groundedness"]
+        ):
+            failures.append("Global overview groundedness missed the 0.70 threshold.")
+        if (
+            global_overview_metrics["judge_scores"].get("cross_regional_coverage", 0.0)
+            < EVALUATION_GATE_THRESHOLDS["min_overview_cross_regional_coverage"]
+        ):
+            failures.append("Global overview cross-regional coverage missed the 0.90 threshold.")
+        if (
+            global_overview_metrics["judge_scores"].get("no_single_country_anchoring", 0.0)
+            < EVALUATION_GATE_THRESHOLDS["min_overview_no_single_country_anchoring"]
+        ):
+            failures.append("Global overview anchored on a single country.")
+        if (
+            global_overview_metrics["judge_scores"].get("data_year_citation", 0.0)
+            < EVALUATION_GATE_THRESHOLDS["min_overview_data_year_citation"]
+        ):
+            failures.append("Global overview did not cite the data year.")
 
     full_run_cost = _combine_estimated_costs(
         indicator_metrics["estimated_cost_usd"],
         synthesis_metrics["estimated_cost_usd"],
+        global_overview_metrics["estimated_cost_usd"],
     )
     if not full_run_cost["configured"]:
         failures.append("Estimated full-run cost was not configured.")
@@ -561,22 +676,25 @@ def _build_gate_summary(
 def _combine_estimated_costs(
     indicator_cost: dict[str, Any],
     synthesis_cost: dict[str, Any],
+    global_overview_cost: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Combine step-level estimated costs into one full-run estimate."""
-    if not indicator_cost.get("configured") or not synthesis_cost.get("configured"):
-        return {"configured": False, "reason": "One or both step cost estimates were unavailable."}
+    costs = [indicator_cost, synthesis_cost]
+    if global_overview_cost is not None:
+        costs.append(global_overview_cost)
+
+    if not all(cost.get("configured") for cost in costs):
+        return {"configured": False, "reason": "One or more step cost estimates were unavailable."}
 
     total_cost_usd = round(
-        float(indicator_cost["total_cost_usd"]) + float(synthesis_cost["total_cost_usd"]),
+        sum(float(cost["total_cost_usd"]) for cost in costs),
         6,
     )
+    provider_models = [cost.get("provider_model") for cost in costs]
     return {
         "configured": True,
         "total_cost_usd": total_cost_usd,
-        "provider_models": [
-            indicator_cost.get("provider_model"),
-            synthesis_cost.get("provider_model"),
-        ],
+        "provider_models": provider_models,
     }
 
 
@@ -676,6 +794,67 @@ def _score_builtin_synthesis(
         "groundedness": round(min(1.0, groundedness), 3),
         "coherence": round(min(1.0, coherence), 3),
         "reasoning": "; ".join(reasoning) or "rubric found no strong synthesis signals",
+    }
+
+
+def _score_builtin_global_overview(
+    judge_input: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Score Step 3 global overview with a deterministic rubric."""
+    briefings = judge_input.get("country_briefings", [])
+    summary = str(result.get("summary", "")).lower()
+    risk_flags_text = " ".join(str(f) for f in result.get("risk_flags", [])).lower()
+    combined_text = f"{summary} {risk_flags_text}"
+    reasoning: list[str] = []
+
+    # Groundedness: risk flags cite country codes or country names from briefings
+    country_codes = {str(b.get("code", "")).lower() for b in briefings}
+    country_names = {str(b.get("name", "")).lower() for b in briefings}
+    cited = sum(1 for code in country_codes if code and code in combined_text)
+    cited += sum(1 for name in country_names if len(name) > 3 and name in combined_text)
+    groundedness = min(1.0, cited / max(1, len(briefings)) * 3)  # normalised
+    if cited >= 2:
+        reasoning.append(f"output referenced {cited} country identifiers from the briefings")
+
+    # Cross-regional coverage: at least 3 distinct region keywords
+    region_keywords = [
+        ("europe", "european"),
+        ("asia", "pacific", "asian"),
+        ("latin america", "south america", "caribbean"),
+        ("africa", "african"),
+        ("north america", "united states", "canada"),
+        ("middle east", "mena"),
+        ("south asia", "india", "pakistan"),
+    ]
+    regions_covered = sum(
+        1 for keywords in region_keywords
+        if any(kw in combined_text for kw in keywords)
+    )
+    cross_regional = min(1.0, regions_covered / 3)
+    if regions_covered >= 3:
+        reasoning.append(f"summary covered {regions_covered} distinct regions")
+
+    # No single-country anchoring: first 80 chars should not be a country name/code
+    first_words = summary[:80]
+    top_country_codes = ["br", "brazil", "us", "usa", "united states", "china", "cn"]
+    anchored = any(code in first_words for code in top_country_codes)
+    no_anchoring = 0.0 if anchored else 1.0
+    if not anchored:
+        reasoning.append("summary did not open with a single-country anchor")
+
+    # Data year citation: any 4-digit year in the range 2020-2026
+    years_cited = re.findall(r"\b20(2[0-6])\b", combined_text)
+    data_year_citation = 1.0 if years_cited else 0.0
+    if years_cited:
+        reasoning.append(f"summary cited year 20{years_cited[0]}")
+
+    return {
+        "groundedness": round(groundedness, 3),
+        "cross_regional_coverage": round(cross_regional, 3),
+        "no_single_country_anchoring": round(no_anchoring, 3),
+        "data_year_citation": round(data_year_citation, 3),
+        "reasoning": "; ".join(reasoning) or "rubric found no strong global overview signals",
     }
 
 
@@ -815,6 +994,23 @@ def _build_synthesis_judge_prompt(
         "</model_output>\n\n"
         "Evaluate whether the country synthesis is grounded in the supplied indicators and whether the "
         "macro narrative is coherent."
+    )
+
+
+def _build_global_overview_judge_prompt(
+    judge_input: dict[str, Any],
+    result: dict[str, Any],
+) -> str:
+    """Return the Step 3 evaluation prompt."""
+    return (
+        "<country_briefings>\n"
+        f"{json.dumps(judge_input.get('country_briefings', []), indent=2, sort_keys=True, default=str)}\n"
+        "</country_briefings>\n\n"
+        "<model_output>\n"
+        f"{json.dumps(result, indent=2, sort_keys=True, default=str)}\n"
+        "</model_output>\n\n"
+        "Evaluate whether the global overview is grounded in the supplied country briefings, "
+        "covers multiple regions, avoids single-country anchoring, and cites the data year."
     )
 
 
