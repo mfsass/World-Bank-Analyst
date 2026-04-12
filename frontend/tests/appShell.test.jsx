@@ -46,10 +46,14 @@ describe("AppShell", () => {
 
   it("uses product chrome instead of implementation scaffolding labels", () => {
     renderShell(["/"]);
+    const expectedBuildModeCopy = import.meta.env.DEV
+      ? "Development"
+      : "Production";
 
     expect(screen.queryByText("Shared Shell")).not.toBeInTheDocument();
     expect(screen.queryByText("Representative Chrome")).not.toBeInTheDocument();
-    expect(screen.getByText("Current slice")).toBeInTheDocument();
+    expect(screen.getByText("Build")).toBeInTheDocument();
+    expect(screen.getByText(expectedBuildModeCopy)).toBeInTheDocument();
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     expect(
       screen.queryByRole("button", { name: "Notifications" }),

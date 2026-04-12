@@ -267,9 +267,9 @@ export function PipelineTrigger() {
     <div className="page page--trigger container">
       <PageHeader
         actions={
-          <div className="shell-command-row">
+          <div className="button-row">
             <button
-              className="shell-command-link shell-command-link--accent"
+              className="btn-primary"
               type="button"
               onClick={handleTrigger}
               disabled={isSubmitting || status?.status === "running"}
@@ -279,7 +279,7 @@ export function PipelineTrigger() {
                 : "Run pipeline"}
             </button>
             <button
-              className="shell-command-link"
+              className="btn-ghost"
               type="button"
               onClick={() =>
                 navigate(`/country/${TARGET_COUNTRY.toLowerCase()}`)

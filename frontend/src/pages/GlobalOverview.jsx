@@ -1,6 +1,14 @@
 import Flag from "react-world-flags";
-import { useEffect, useState } from "react";
+import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  useMapContext,
+} from "react-simple-maps";
 import { Link } from "react-router-dom";
+import worldGeography from "world-atlas/countries-110m.json";
 
 import { AIInsightPanel } from "../components/AIInsightPanel";
 import { KpiCard } from "../components/KpiCard";
@@ -23,23 +31,45 @@ import {
   getStepTone,
 } from "./globalOverviewModel";
 
-// These positions are tuned to the shipped raster map rather than generic lat/lng.
-const MARKER_POSITIONS = {
-  za: { top: 63, left: 51.5 },
-  ng: { top: 48, left: 42 },
-  ke: { top: 52, left: 58 },
-  eg: { top: 35, left: 52 },
-  gh: { top: 48, left: 39 },
-  et: { top: 46, left: 58 },
-  ma: { top: 32, left: 38 },
-  de: { top: 24, left: 48 },
-  fr: { top: 27, left: 45 },
-  br: { top: 60, left: 30 },
-  in: { top: 40, left: 72 },
-  cn: { top: 32, left: 78 },
-  us: { top: 32, left: 20 },
-  gb: { top: 23, left: 44 },
-  jp: { top: 32, left: 86 },
+const MAP_DIMENSIONS = {
+  width: 800,
+  height: 420,
+};
+
+const MAP_POPOVER = {
+  width: 204,
+  height: 100,
+  gap: 14,
+  edgePadding: 12,
+};
+
+const MAP_POPOVER_ID = "overview-map-popover";
+
+// 165 fills continents into the canvas with less dead ocean at the poles and edges
+const MAP_PROJECTION_CONFIG = {
+  scale: 165,
+};
+
+// Keep the overview map honest to the active 17-country core panel rather than
+// carrying legacy marker positions from superseded country examples.
+const COUNTRY_COORDINATES = {
+  br: { lat: -15.793889, lon: -47.882778 },
+  ca: { lat: 45.4215, lon: -75.6972 },
+  gb: { lat: 51.5072, lon: -0.1276 },
+  us: { lat: 38.9072, lon: -77.0369 },
+  bs: { lat: 25.047984, lon: -77.355413 },
+  co: { lat: 4.711, lon: -74.0721 },
+  sv: { lat: 13.6929, lon: -89.2182 },
+  ge: { lat: 41.6938, lon: 44.8015 },
+  hu: { lat: 47.4979, lon: 19.0402 },
+  my: { lat: 3.139, lon: 101.6869 },
+  nz: { lat: -41.2865, lon: 174.7762 },
+  ru: { lat: 55.7558, lon: 37.6173 },
+  sg: { lat: 1.3521, lon: 103.8198 },
+  es: { lat: 40.4168, lon: -3.7038 },
+  ch: { lat: 46.948, lon: 7.4474 },
+  tr: { lat: 39.9334, lon: 32.8597 },
+  uy: { lat: -34.9011, lon: -56.1645 },
 };
 
 const DETAIL_SIGNAL_CODES = [
@@ -98,12 +128,16 @@ function getIndicatorValue(briefing, indicatorCode) {
   );
 }
 
-function getMarkerToneClass(briefing) {
+function getMarkerToneClass(briefing, isSelected) {
+  if (isSelected) {
+    return "overview-map-marker__dot--selected-core";
+  }
+
   if (!briefing) {
     return "overview-map-marker__dot--pending";
   }
 
-  return `overview-map-marker__dot--${getOutlookTone(briefing.outlook)}`;
+  return "overview-map-marker__dot--materialised";
 }
 
 function buildMarketMetrics(briefing) {
@@ -112,19 +146,140 @@ function buildMarketMetrics(briefing) {
   ).filter(Boolean);
 }
 
-function getMapPopoverTransform(position) {
-  const anchorRight = position.left >= 72;
-  const anchorLeft = position.left <= 28;
-  const openBelow = position.top <= 28;
-  const horizontalShift = anchorRight ? "-100%" : anchorLeft ? "0%" : "-50%";
-  const horizontalOffset = anchorRight ? "-16px" : anchorLeft ? "16px" : "0px";
-  const verticalShift = openBelow ? "0%" : "-100%";
-  const verticalOffset = openBelow ? "16px" : "-16px";
-
-  return `translate(${horizontalShift}, ${verticalShift}) translate(${horizontalOffset}, ${verticalOffset})`;
+function getCountryCoordinates(countryCode) {
+  return COUNTRY_COORDINATES[countryCode?.toLowerCase()] || null;
 }
 
+function getMapPopoverPosition(point, bounds) {
+  const [x, y] = point;
+    const preferredLeft = x - MAP_POPOVER.width / 2;
+  const maximumLeft = Math.max(
+      MAP_POPOVER.edgePadding,
+      bounds.width - MAP_POPOVER.width - MAP_POPOVER.edgePadding,
+  );
+  const clampedLeft = Math.min(
+    maximumLeft,
+      Math.max(MAP_POPOVER.edgePadding, preferredLeft),
+  );
+    const availableAbove = y - MAP_POPOVER.gap - MAP_POPOVER.edgePadding;
+  const availableBelow =
+      bounds.height - y - MAP_POPOVER.gap - MAP_POPOVER.edgePadding;
+  const openBelow =
+      availableBelow >= MAP_POPOVER.height || availableBelow >= availableAbove;
+  const preferredTop = openBelow
+      ? y + MAP_POPOVER.gap
+      : y - (MAP_POPOVER.height + MAP_POPOVER.gap);
+  const maximumTop = Math.max(
+      MAP_POPOVER.edgePadding,
+      bounds.height - MAP_POPOVER.height - MAP_POPOVER.edgePadding,
+  );
+  const clampedTop = Math.min(
+    maximumTop,
+      Math.max(MAP_POPOVER.edgePadding, preferredTop),
+  );
+
+  return {
+    left: clampedLeft,
+    top: clampedTop,
+  };
+}
+
+function OverviewMapLayer({
+  countries,
+  briefings,
+  selectedMapCountry,
+  highlightedMarketCode,
+  onToggleMapFocus,
+}) {
+  const { projection } = useMapContext();
+
+  return (
+    <g className="overview-map-surface__interaction-layer">
+      {countries.map((country) => {
+        const coordinates = getCountryCoordinates(country.code);
+        if (!coordinates) {
+          return null;
+        }
+
+        const [x, y] = projection([coordinates.lon, coordinates.lat]);
+        const briefing = briefings.find((item) => item.code === country.code);
+
+        return (
+          <g key={country.code} transform={`translate(${x} ${y})`}>
+            <foreignObject
+              className="overview-map-marker__foreign"
+              height="28"
+              width="28"
+              x="-14"
+              y="-14"
+            >
+              <div
+                className="overview-map-marker__shell"
+                xmlns="http://www.w3.org/1999/xhtml"
+              >
+                <button
+                  aria-controls={
+                    country.code === selectedMapCountry ? MAP_POPOVER_ID : undefined
+                  }
+                  aria-expanded={country.code === selectedMapCountry}
+                  aria-label={`Focus ${country.name} market on world map`}
+                  className="overview-map-marker"
+                  onClick={(e) => onToggleMapFocus(country.code, e.currentTarget)}
+                  type="button"
+                >
+                  {country.code === selectedMapCountry ? (
+                    <span className="overview-map-marker__pulse" aria-hidden="true" />
+                  ) : null}
+                  <span
+                    className={`overview-map-marker__dot${
+                      country.code === highlightedMarketCode
+                        ? " overview-map-marker__dot--selected"
+                        : ""
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <span
+                      className={`overview-map-marker__dot-core ${getMarkerToneClass(
+                        briefing,
+                        country.code === highlightedMarketCode,
+                      )}`}
+                    />
+                  </span>
+                </button>
+              </div>
+            </foreignObject>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+// MapPopoverProjection removed — popover position is now computed via DOM
+// getBoundingClientRect() on the clicked marker button, which eliminates all
+// projection coordinate conversion and DPR scaling issues.
+
+OverviewMapLayer.propTypes = {
+  countries: PropTypes.arrayOf(
+    PropTypes.shape({
+      code: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+    }),
+  ).isRequired,
+  briefings: PropTypes.arrayOf(
+    PropTypes.shape({
+      code: PropTypes.string.isRequired,
+      macro_synthesis: PropTypes.string,
+      outlook: PropTypes.string,
+    }),
+  ).isRequired,
+  selectedMapCountry: PropTypes.string,
+  highlightedMarketCode: PropTypes.string,
+  onToggleMapFocus: PropTypes.func.isRequired,
+};
+
 export function GlobalOverview() {
+  const mapCanvasRef = useRef(null);
   const [overview, setOverview] = useState({
     status: null,
     countries: [],
@@ -134,6 +289,11 @@ export function GlobalOverview() {
   const [viewState, setViewState] = useState("loading");
   const [requestError, setRequestError] = useState("");
   const [selectedMapCountry, setSelectedMapCountry] = useState(null);
+  // selectedMarkerRef holds the button element for the active marker so popover
+  // position can be computed from real DOM bounds rather than projection math.
+  const [selectedMarkerRef, setSelectedMarkerRef] = useState(null);
+  const [popoverPosition, setPopoverPosition] = useState(null);
+  const [mapBounds, setMapBounds] = useState(MAP_DIMENSIONS);
 
   useEffect(() => {
     let isActive = true;
@@ -209,6 +369,35 @@ export function GlobalOverview() {
     };
   }, [overview.status?.status]);
 
+  useEffect(() => {
+    const canvasElement = mapCanvasRef.current;
+    if (!canvasElement) {
+      return undefined;
+    }
+
+    function updateBounds() {
+      const { width, height } = canvasElement.getBoundingClientRect();
+      if (width > 0 && height > 0) {
+        setMapBounds({ width, height });
+      }
+    }
+
+    updateBounds();
+
+    if (typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateBounds();
+    });
+    resizeObserver.observe(canvasElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   const {
     anomalyCount,
     featuredCountry,
@@ -243,9 +432,6 @@ export function GlobalOverview() {
   );
   const highlightedMetrics = buildMarketMetrics(highlightedBriefing);
   const marketOpenHref = highlightedMarket?.href || "/trigger";
-  const highlightedPosition = highlightedMarketCode
-    ? MARKER_POSITIONS[highlightedMarketCode.toLowerCase()]
-    : null;
   const highlightedStatusTone = highlightedBriefing?.outlook
     ? getOutlookTone(highlightedBriefing.outlook)
     : highlightedMarket?.tone || getOutlookTone(featuredCountry?.outlook);
@@ -261,21 +447,42 @@ export function GlobalOverview() {
         : "Loading the current slice so the landing surface reflects live monitored coverage rather than placeholder content.";
 
   const sharedActions = (
-    <div className="shell-command-row">
-      <Link className="shell-command-link shell-command-link--accent" to="/trigger">
+    <div className="button-row">
+      <Link className="btn-primary" to="/trigger">
         {pipelineStatus === "running" ? "Monitor pipeline" : "Open pipeline"}
       </Link>
-      <Link className="shell-command-link" to={marketOpenHref}>
+      <Link className="btn-ghost" to={marketOpenHref}>
         {selectedMapCountry ? "Open selected market" : "Open lead market"}
       </Link>
     </div>
   );
 
-  function toggleMapFocus(countryCode) {
-    setSelectedMapCountry((currentCountryCode) =>
-      currentCountryCode === countryCode ? null : countryCode,
-    );
+  function toggleMapFocus(countryCode, element) {
+    const isDeselect = countryCode === selectedMapCountry;
+    setSelectedMapCountry(isDeselect ? null : countryCode);
+    setSelectedMarkerRef(isDeselect ? null : (element || null));
   }
+
+  // Derive popover position from the marker button's actual DOM bounds.
+  // mapBounds is used as a resize trigger — when the canvas resizes, this effect
+  // re-fires and reads fresh getBoundingClientRect() values so placement stays
+  // accurate at any container width without any projection math.
+  useEffect(() => {
+    if (!selectedMarkerRef || !mapCanvasRef.current) {
+      setPopoverPosition(null);
+      return;
+    }
+    const canvasRect = mapCanvasRef.current.getBoundingClientRect();
+    const markerRect = selectedMarkerRef.getBoundingClientRect();
+    const cx = markerRect.left + markerRect.width / 2 - canvasRect.left;
+    const cy = markerRect.top + markerRect.height / 2 - canvasRect.top;
+    setPopoverPosition(
+      getMapPopoverPosition([cx, cy], {
+        width: canvasRect.width,
+        height: canvasRect.height,
+      }),
+    );
+  }, [selectedMarkerRef, mapBounds]);
 
   if (viewState === "loading") {
     return (
@@ -358,28 +565,37 @@ export function GlobalOverview() {
               headerNarrative}
           </p>
           <div className="overview-hero-grid mt-4">
-            <article className="card overview-hero-stat">
+            {/* Coverage — success tone when data is flowing */}
+            <article
+              className={`card overview-hero-stat${materialisedCountries > 0 ? " overview-hero-stat--success" : ""}`}
+            >
               <span className="text-label">Coverage</span>
-              <span className="text-metric mt-3">
+              <span className="overview-hero-stat__value">
                 {materialisedCountries}/{monitoredCountries}
               </span>
-              <p className="text-body text-secondary mt-3">
+              <p className="overview-hero-stat__desc text-body text-secondary">
                 Live briefings confirmed in the active monitored set.
               </p>
             </article>
-            <article className="card overview-hero-stat">
+            {/* Signal pressure — critical tone signals active risk elevation */}
+            <article
+              className={`card overview-hero-stat${anomalyCount > 0 ? " overview-hero-stat--critical" : " overview-hero-stat--success"}`}
+            >
               <span className="text-label">Signal pressure</span>
-              <span className="text-metric mt-3">{anomalyCount}</span>
-              <p className="text-body text-secondary mt-3">
+              <span className="overview-hero-stat__value">{anomalyCount}</span>
+              <p className="overview-hero-stat__desc text-body text-secondary">
                 Indicator anomalies flagged in the latest pool.
               </p>
             </article>
-            <article className="card overview-hero-stat">
+            {/* Lead market — success when a focal market is resolved */}
+            <article
+              className={`card overview-hero-stat${highlightedMarket ? " overview-hero-stat--success" : ""}`}
+            >
               <span className="text-label">Lead market</span>
-              <span className="text-metric mt-3">
-                {highlightedMarket?.code || "Pending"}
+              <span className="overview-hero-stat__value">
+                {highlightedMarket?.code || "—"}
               </span>
-              <p className="text-body text-secondary mt-3">
+              <p className="overview-hero-stat__desc text-body text-secondary">
                 {highlightedMarket
                   ? `${highlightedMarket.name} is the current focal market on this surface.`
                   : "A lead market will appear once a briefing is materialised."}
@@ -462,95 +678,79 @@ export function GlobalOverview() {
             <StatusPill tone="neutral">Current slice</StatusPill>
           </div>
           <div className="overview-map-surface mt-4">
-            <img
-              alt="World coverage map"
-              className="overview-map-surface__image"
-              src="/map-dark.png"
-            />
-            <div className="overview-map-surface__markers">
-              {overview.countries.map((country) => {
-                const position = MARKER_POSITIONS[country.code.toLowerCase()];
-                const briefing = overview.briefings.find(
-                  (item) => item.code === country.code,
-                );
+            <div
+              aria-label="World coverage map"
+              className="overview-map-surface__canvas"
+              ref={mapCanvasRef}
+              role="group"
+            >
+              <ComposableMap
+                className="overview-map-surface__svg"
+                height={MAP_DIMENSIONS.height}
+                projection="geoEqualEarth"
+                projectionConfig={MAP_PROJECTION_CONFIG}
+                width={MAP_DIMENSIONS.width}
+              >
+                <Geographies geography={worldGeography}>
+                  {({ geographies }) =>
+                    geographies.map((geography) => (
+                      <Geography
+                        className="overview-map-surface__land"
+                        geography={geography}
+                        key={geography.rsmKey}
+                        tabIndex={-1}
+                      />
+                    ))
+                  }
+                </Geographies>
+                <OverviewMapLayer
+                  briefings={overview.briefings}
+                  countries={overview.countries}
+                  highlightedMarketCode={highlightedMarketCode}
+                  onToggleMapFocus={toggleMapFocus}
+                  selectedMapCountry={selectedMapCountry}
+                />
+              </ComposableMap>
 
-                if (!position) {
-                  return null;
-                }
-
-                return (
-                  <div
-                    className="overview-map-marker"
-                    key={country.code}
-                    style={{ top: `${position.top}%`, left: `${position.left}%` }}
-                  >
-                    <button
-                      className="map-marker-btn"
-                      aria-label={`Focus ${country.name} market on world map`}
-                      aria-pressed={country.code === selectedMapCountry}
-                      onClick={() => toggleMapFocus(country.code)}
-                      title={`View ${country.name}`}
-                      type="button"
-                    >
-                      <span
-                        className={`overview-map-marker__dot${
-                            country.code === highlightedMarketCode
-                              ? " overview-map-marker__dot--selected"
-                              : ""
-                        }`}
-                          aria-hidden="true"
-                        >
-                          <span
-                            className={`overview-map-marker__dot-core ${getMarkerToneClass(
-                              briefing,
-                            )}`}
-                          />
-                        </span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {selectedMapCountry && highlightedMarket && highlightedPosition ? (
+              {selectedMapCountry && highlightedMarket && popoverPosition ? (
                 <div
-                  aria-live="polite"
-                  className="overview-map-popover"
+                  className="overview-map-popover-anchor"
                   style={{
-                    top: `${highlightedPosition.top}%`,
-                    left: `${highlightedPosition.left}%`,
-                    transform: getMapPopoverTransform(highlightedPosition),
+                    left: `${popoverPosition.left}px`,
+                    top: `${popoverPosition.top}px`,
                   }}
                 >
-                  <div className="overview-map-popover__header">
-                    <div>
-                      <p className="text-label">Map focus</p>
-                      <div className="overview-map-popover__market mt-3">
-                        <span className="flag-frame flag-frame--sm">
-                          <Flag code={highlightedMarket.code} height="100%" />
+                  <div
+                    aria-label={`${highlightedMarket.name} market actions`}
+                    aria-live="polite"
+                    className="overview-map-popover"
+                    id={MAP_POPOVER_ID}
+                    role="region"
+                  >
+                    <div className="overview-map-popover__topbar">
+                      <span className="flag-frame flag-frame--sm overview-map-popover__flag">
+                        <Flag code={highlightedMarket.code} height="100%" />
+                      </span>
+                      <span className="overview-map-popover__status">
+                        {highlightedBriefing?.outlook
+                          ? highlightedBriefing.outlook.toUpperCase()
+                          : highlightedMarket.statusLabel}
+                      </span>
+                    </div>
+
+                    <div className="overview-map-popover__body">
+                      <div className="overview-map-popover__title">
+                        <span className="overview-map-popover__name">
+                          {highlightedMarket.name}
                         </span>
-                        <div>
-                          <h3 className="text-title">{highlightedMarket.name}</h3>
-                          <p className="text-body text-secondary mt-3">
-                            {highlightedMarket.region}
-                          </p>
-                        </div>
+                        <span className="text-label text-secondary">
+                          {highlightedMarket.region}
+                        </span>
                       </div>
                     </div>
-                    <StatusPill tone={highlightedStatusTone}>
-                      {highlightedBriefing?.outlook
-                        ? highlightedBriefing.outlook.toUpperCase()
-                        : highlightedMarket.statusLabel}
-                    </StatusPill>
-                  </div>
 
-                  <p className="text-body text-secondary mt-4">
-                    {highlightedBriefing?.macro_synthesis || highlightedMarket.summary}
-                  </p>
-
-                  <div className="overview-map-popover__actions mt-4">
-                    <Link className="shell-command-link shell-command-link--accent" to={marketOpenHref}>
-                      Open country intelligence
+                    <Link className="btn-ghost overview-map-popover__link" to={marketOpenHref}>
+                      Open intelligence
                     </Link>
                   </div>
                 </div>
@@ -577,148 +777,147 @@ export function GlobalOverview() {
               ))}
             </div>
           </div>
+        </div>
 
-          <div className="panel-stack">
-            <div className="card overview-panel">
-              <div className="panel-header">
-                <div>
-                  <p className="text-label">Selected market</p>
-                  <h2 className="text-headline mt-3">Market detail</h2>
-                </div>
-                <StatusPill tone={highlightedMarket?.tone || "neutral"}>
-                  {highlightedMarket?.statusLabel || "Pending"}
-                </StatusPill>
+        <div className="panel-stack">
+          <div className="card overview-panel">
+            <div className="panel-header">
+              <div>
+                <p className="text-label">Selected market</p>
+                <h2 className="text-headline mt-3">Market detail</h2>
               </div>
-              {highlightedMarket ? (
-                <>
-                  <div className="overview-context-market mt-4" aria-live="polite">
-                    <span className="flag-frame flag-frame--md">
-                      <Flag code={highlightedMarket.code} height="100%" />
-                    </span>
-                    <div>
-                      <p className="text-label">
-                        {selectedMapCountry ? "Focused market" : "Lead market"}
-                      </p>
-                      <h3 className="text-title mt-3">{highlightedMarket.name}</h3>
-                      <p className="text-body text-secondary mt-3">
-                        {highlightedMarket.region}
-                      </p>
-                    </div>
-                    <StatusPill tone={highlightedStatusTone}>
-                      {highlightedBriefing?.outlook
-                        ? highlightedBriefing.outlook.toUpperCase()
-                        : "PENDING"}
+              <StatusPill tone={highlightedMarket?.tone || "neutral"}>
+                {highlightedMarket?.statusLabel || "Pending"}
+              </StatusPill>
+            </div>
+            {highlightedMarket ? (
+              <>
+                <div className="overview-context-market mt-4" aria-live="polite">
+                  <span className="flag-frame flag-frame--md">
+                    <Flag code={highlightedMarket.code} height="100%" />
+                  </span>
+                  <div>
+                    <p className="text-label">
+                      {selectedMapCountry ? "Focused market" : "Lead market"}
+                    </p>
+                    <h3 className="text-title mt-3">{highlightedMarket.name}</h3>
+                    <p className="text-body text-secondary mt-3">
+                      {highlightedMarket.region}
+                    </p>
+                  </div>
+                  <StatusPill tone={highlightedStatusTone}>
+                    {highlightedBriefing?.outlook
+                      ? highlightedBriefing.outlook.toUpperCase()
+                      : "PENDING"}
+                  </StatusPill>
+                </div>
+
+                <p className="text-body text-secondary mt-4 overview-market-summary">
+                  {highlightedBriefing?.macro_synthesis || highlightedMarket.summary}
+                </p>
+
+                {highlightedMetrics.length ? (
+                  <div className="overview-market-metrics mt-4">
+                    {highlightedMetrics.map((indicator) => (
+                      <article className="overview-market-metric" key={indicator.indicator_code}>
+                        <span className="text-label">{indicator.indicator_name}</span>
+                        <span className="text-metric mt-3">
+                          {formatMetricValue(
+                            indicator.indicator_code,
+                            indicator.latest_value,
+                          )}
+                        </span>
+                        <span
+                          className={`text-label mt-3 ${getSignalTone(
+                            indicator.indicator_code,
+                            indicator.percent_change,
+                          )}`}
+                        >
+                          {formatChange(indicator.percent_change)}
+                        </span>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-body text-secondary mt-4">
+                    No live signal pack is materialised for this market yet.
+                  </p>
+                )}
+
+                <div className="button-row mt-4">
+                  <Link className="btn-ghost" to={marketOpenHref}>
+                    Open market
+                  </Link>
+                  {selectedMapCountry ? (
+                    <button
+                      className="shell-command-link"
+                      onClick={() => {
+                        setSelectedMapCountry(null);
+                        setSelectedMarkerRef(null);
+                      }}
+                      type="button"
+                    >
+                      Reset focus
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div className="card overview-panel">
+            <div className="panel-header">
+              <div>
+                <p className="text-label">Current slice</p>
+                <h2 className="text-headline mt-3">Pipeline state</h2>
+              </div>
+              <StatusPill tone={getPipelineTone(pipelineStatus)}>
+                {pipelineStatus.toUpperCase()}
+              </StatusPill>
+            </div>
+            <div className="overview-step-list mt-4">
+              {pipelineSteps.map((step) => (
+                <article className="overview-step-card" key={step.name}>
+                  <div className="panel-header">
+                    <span className="text-label">{step.name}</span>
+                    <StatusPill tone={getStepTone(step.status)}>
+                      {step.status.toUpperCase()}
                     </StatusPill>
                   </div>
-
-                  <p className="text-body text-secondary mt-4 overview-market-summary">
-                    {highlightedBriefing?.macro_synthesis || highlightedMarket.summary}
+                  <p className="text-body text-secondary mt-3">
+                    {getStepSummary(step)}
                   </p>
-
-                  {highlightedMetrics.length ? (
-                    <div className="overview-market-metrics mt-4">
-                      {highlightedMetrics.map((indicator) => (
-                        <article className="overview-market-metric" key={indicator.indicator_code}>
-                          <span className="text-label">{indicator.indicator_name}</span>
-                          <span className="text-metric mt-3">
-                            {formatMetricValue(
-                              indicator.indicator_code,
-                              indicator.latest_value,
-                            )}
-                          </span>
-                          <span
-                            className={`text-label mt-3 ${getSignalTone(
-                              indicator.indicator_code,
-                              indicator.percent_change,
-                            )}`}
-                          >
-                            {formatChange(indicator.percent_change)}
-                          </span>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-body text-secondary mt-4">
-                      No live signal pack is materialised for this market yet.
-                    </p>
-                  )}
-
-                  <div className="shell-command-row mt-4">
-                    <Link
-                      className="shell-command-link shell-command-link--accent"
-                      to={marketOpenHref}
-                    >
-                      Open market
-                    </Link>
-                    {selectedMapCountry ? (
-                      <button
-                        className="shell-command-link"
-                        onClick={() => setSelectedMapCountry(null)}
-                        type="button"
-                      >
-                        Reset focus
-                      </button>
-                    ) : null}
-                  </div>
-                </>
-              ) : null}
-            </div>
-
-            <div className="card overview-panel">
-              <div className="panel-header">
-                <div>
-                  <p className="text-label">Current slice</p>
-                  <h2 className="text-headline mt-3">Pipeline state</h2>
-                </div>
-                <StatusPill tone={getPipelineTone(pipelineStatus)}>
-                  {pipelineStatus.toUpperCase()}
-                </StatusPill>
-              </div>
-              <div className="overview-step-list mt-4">
-                {pipelineSteps.map((step) => (
-                  <article className="overview-step-card" key={step.name}>
-                    <div className="panel-header">
-                      <span className="text-label">{step.name}</span>
-                      <StatusPill tone={getStepTone(step.status)}>
-                        {step.status.toUpperCase()}
-                      </StatusPill>
-                    </div>
-                    <p className="text-body text-secondary mt-3">
-                      {getStepSummary(step)}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div className="card overview-panel">
-              <div className="panel-header">
-                <div>
-                  <p className="text-label">Regional breakdown</p>
-                  <h2 className="text-headline mt-3">Coverage by region</h2>
-                </div>
-                <StatusPill tone="neutral">Live coverage</StatusPill>
-              </div>
-              <div className="overview-region-list mt-4">
-                {regionalBreakdown.map((region) => (
-                  <article className="overview-region-card" key={region.region}>
-                    <div className="panel-header">
-                      <div>
-                        <h3 className="text-title">{region.region}</h3>
-                        <p className="text-body text-secondary mt-3">
-                          {region.summary}
-                        </p>
-                      </div>
-                      <StatusPill tone={region.tone}>
-                        {region.materialisedCount > 0 ? "Live" : "Pending"}
-                      </StatusPill>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                </article>
+              ))}
             </div>
           </div>
-        </section>
+
+          <div className="card overview-panel">
+            <div className="panel-header">
+              <div>
+                <p className="text-label">Regional breakdown</p>
+                <h2 className="text-headline mt-3">Coverage by region</h2>
+              </div>
+              <StatusPill tone="neutral">Live coverage</StatusPill>
+            </div>
+            <div className="overview-region-list mt-4">
+              {regionalBreakdown.map((region) => (
+                <article className="overview-region-card" key={region.region}>
+                  <div className="panel-header">
+                    <div>
+                      <h3 className="text-title">{region.region}</h3>
+                      <p className="text-body text-secondary mt-3">{region.summary}</p>
+                    </div>
+                    <StatusPill tone={region.tone}>
+                      {region.materialisedCount > 0 ? "Live" : "Pending"}
+                    </StatusPill>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
         <section className="section-gap">
           <div className="panel-header">

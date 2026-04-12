@@ -114,14 +114,14 @@ export function getOverviewNarrative(
   }
 
   if (status === "complete") {
-    return `The landing page reflects the current materialised local coverage universe. ${materialisedCountries} of ${monitoredCountries} monitored countries now have a live briefing.`;
+    return `The landing page reflects the current materialised coverage universe. ${materialisedCountries} of ${monitoredCountries} monitored countries now have a live briefing.`;
   }
 
   if (status === "failed") {
-    return "The latest local run failed. Any previously materialised briefing remains visible below, while the status feed preserves the failure state for follow-up.";
+    return "The latest run failed. Any previously materialised briefing remains visible below, while the status feed preserves the failure state for follow-up.";
   }
 
-  return `The landing page is wired to the live local/API slice. ${monitoredCountries} ${monitoredCountryLabel} ${monitoredCountries === 1 ? "is" : "are"} currently configured, with ${materialisedCountries} confirmed briefing${materialisedCountries === 1 ? "" : "s"} until the pipeline runs.`;
+  return `The landing page is wired to the current API/repository slice. ${monitoredCountries} ${monitoredCountryLabel} ${monitoredCountries === 1 ? "is" : "are"} currently configured, with ${materialisedCountries} confirmed briefing${materialisedCountries === 1 ? "" : "s"} until the pipeline runs.`;
 }
 
 export function getEmptyStateHeading(status) {
@@ -138,7 +138,7 @@ export function getEmptyStateHeading(status) {
 
 export function getEmptyStateBody(status) {
   if (status === "running") {
-    return "The current slice is fetching, analysing, synthesising, and storing monitored market data in-process. This page will refresh once the status feed leaves the running state.";
+    return "The current slice is fetching, analysing, synthesising, and storing monitored market data in the active runtime. This page will refresh once the status feed leaves the running state.";
   }
 
   if (status === "failed") {
@@ -181,11 +181,11 @@ export function getStepTone(status) {
 
 export function getStepSummary(step) {
   if (step.duration_ms) {
-    return `${step.duration_ms}ms elapsed in the local process.`;
+    return `${step.duration_ms}ms elapsed in the active runtime.`;
   }
 
   if (step.status === "running") {
-    return "Currently executing inside the API process.";
+    return "Currently executing in the active runtime.";
   }
 
   if (step.status === "failed") {
@@ -193,7 +193,7 @@ export function getStepSummary(step) {
   }
 
   if (step.status === "complete") {
-    return "Step completed for the latest local slice.";
+    return "Step completed for the latest materialised slice.";
   }
 
   return "Awaiting pipeline execution.";

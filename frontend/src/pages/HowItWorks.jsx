@@ -8,24 +8,24 @@ import { StatusPill } from "../components/StatusPill";
 const TELEMETRY_CARDS = [
   {
     label: "Current delivery slice",
-    value: "LOCAL + DURABLE",
+    value: "LOCAL DEFAULTS",
     status: "Current",
     tone: "success",
-    freshness: "API, trigger, and stored briefings are already wired",
+    freshness: "Deterministic local mode stays default; cloud services opt in explicitly",
   },
   {
-    label: "AI chain",
+    label: "Narrative chain",
     value: "2-STEP",
-    status: "Approved",
+    status: "Current",
     tone: "success",
-    freshness: "Per-indicator analysis followed by macro synthesis",
+    freshness: "Two-stage synthesis contract; provider wiring remains a later phase",
   },
   {
-    label: "Source scope",
-    value: "15 x 6",
-    status: "Target",
-    tone: "warning",
-    freshness: "Fifteen countries and six approved indicators",
+    label: "Live monitored panel",
+    value: "17 x 6",
+    status: "Validated",
+    tone: "success",
+    freshness: "Seventeen approved countries and six indicators validated against the World Bank API",
   },
   {
     label: "API contract",
@@ -40,16 +40,17 @@ const ARCHITECTURE_NODES = [
   { label: "World Bank API", state: "current" },
   { label: "Pipeline Orchestrator", state: "current" },
   { label: "Pandas Analysis", state: "current" },
-  { label: "AI Chain", state: "current" },
+  { label: "Two-step synthesis", state: "current" },
   { label: "Firestore + GCS", state: "target" },
   { label: "Connexion API", state: "current" },
-  { label: "React Terminal", state: "current" },
+  { label: "React Dashboard", state: "current" },
 ];
 
 const TECH_STRIP = [
-  ["Execution", "Cloud Run job target // local trigger path today"],
-  ["Storage", "Firestore + GCS target // local mode remains supported"],
+  ["Execution", "Local by default // Cloud Run job via explicit envs"],
+  ["Storage", "REPOSITORY_MODE=local by default // Cloud Run sets Firestore + GCS"],
   ["Frontend", "React 18 + Vite + vanilla CSS tokens"],
+  ["Proxy", "nginx serves the SPA and injects X-API-Key on same-origin /api/v1/ calls"],
   ["Contract", "OpenAPI-first via Connexion"],
 ];
 
@@ -58,18 +59,18 @@ export function HowItWorks() {
     <div className="page page--how-it-works container">
       <PageHeader
         actions={
-          <div className="shell-command-row">
-            <Link className="shell-command-link shell-command-link--accent" to="/trigger">
+          <div className="button-row">
+            <Link className="btn-primary" to="/trigger">
               Open trigger page
             </Link>
-            <Link className="shell-command-link" to="/">
+            <Link className="btn-ghost" to="/">
               Return to overview
             </Link>
           </div>
         }
-        description="How World Bank Analyst turns World Bank indicators into analyst-ready country briefings. Live components and target architecture are labeled separately."
+        description="How World Analyst turns World Bank indicators into analyst-ready country briefings. Local defaults and cloud deployment settings are labeled separately."
         eyebrow="SYSTEM FLOW"
-        meta="World Bank source · Two-step LLM chain · Spec-first delivery"
+        meta="World Bank source · Two-step synthesis contract · Spec-first delivery"
         title="How It Works"
       />
 
@@ -81,7 +82,7 @@ export function HowItWorks() {
               Trigger the same World Bank Analyst flow the dashboard reads
             </h2>
             <p className="text-body text-secondary mt-4">
-              The trigger page runs the current pipeline flow end to end. This page explains each stage, what is already live, and what remains a target runtime decision.
+              The trigger page runs the current pipeline flow end to end. This page explains which parts are already live, which settings stay local by default, and which cloud choices are activated explicitly at deploy time.
             </p>
           </div>
           <StatusPill tone="warning">Current + target</StatusPill>
@@ -171,14 +172,14 @@ export function HowItWorks() {
           <p className="text-label">Step 1</p>
           <h2 className="text-headline mt-3">Per-indicator analysis</h2>
           <p className="text-body text-secondary mt-4">
-            Pandas calculates deltas, trend shifts, and anomaly flags first. The first model call then writes a short analyst note for one indicator at a time, which keeps the prompt narrow and the result auditable.
+            Pandas calculates deltas, trend shifts, and anomaly flags first. The first synthesis stage then writes a short analyst note for one indicator at a time, which keeps the contract narrow and the result auditable.
           </p>
         </div>
         <div className="card architecture-step-card">
           <p className="text-label">Step 2</p>
           <h2 className="text-headline mt-3">Macro synthesis</h2>
           <p className="text-body text-secondary mt-4">
-            The second model call receives only the structured indicator notes. It synthesizes the country story, sets the outlook, and returns risk flags the frontend can render directly.
+            The second synthesis stage receives only the structured indicator notes. It builds the country story, sets the outlook, and returns risk flags the frontend can render directly.
           </p>
         </div>
       </section>

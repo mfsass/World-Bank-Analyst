@@ -15,14 +15,14 @@ export function AIInsightPanel({
       <div className="ai-insight-panel__header">
         <div>
           {eyebrow ? <p className="text-label">{eyebrow}</p> : null}
-          <h2 className="text-headline mt-3">
+          <h2 className="text-headline mt-3 ai-insight-panel__title">
             <span
               aria-hidden="true"
-              className="ai-insight__icon material-symbols-outlined"
+              className="ai-insight__icon material-symbols-outlined ui-inline-icon"
             >
               auto_awesome
             </span>
-            {title}
+            <span>{title}</span>
           </h2>
         </div>
         {status ? <StatusPill tone={tone}>{status}</StatusPill> : null}

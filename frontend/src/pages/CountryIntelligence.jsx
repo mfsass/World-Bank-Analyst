@@ -131,11 +131,11 @@ function CountryIntelligence() {
   ).filter(Boolean);
 
   const sharedActions = (
-    <div className="shell-command-row">
-      <Link className="shell-command-link shell-command-link--accent" to="/trigger">
+    <div className="button-row">
+      <Link className="btn-primary" to="/trigger">
         Open pipeline
       </Link>
-      <Link className="shell-command-link" to="/">
+      <Link className="btn-ghost" to="/">
         Return to overview
       </Link>
     </div>

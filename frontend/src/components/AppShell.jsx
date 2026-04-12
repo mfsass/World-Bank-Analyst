@@ -27,6 +27,7 @@ function getNavLinkClass(isActive) {
 export function AppShell() {
   const location = useLocation();
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const buildModeLabel = import.meta.env.DEV ? "Development" : "Production";
 
   useEffect(() => {
     setIsNavOpen(false);
@@ -37,7 +38,7 @@ export function AppShell() {
       <header className="shell-topbar">
         <div className="shell-topbar__brand">
           <Link className="shell-brand" to="/">
-            <span className="material-symbols-outlined shell-brand__icon">
+            <span className="material-symbols-outlined shell-brand__icon ui-inline-icon">
               auto_awesome
             </span>
             <span className="shell-brand__name">WORLD BANK ANALYST</span>
@@ -76,11 +77,11 @@ export function AppShell() {
           })}
         </nav>
 
-        <div className="shell-topbar__status" aria-label="Current slice status">
-          <span className="status-dot" />
+        <div className="shell-topbar__status" aria-label="Current build mode">
+          <span className="status-dot status-dot--steady status-dot--idle" />
           <div>
-            <p className="text-label">Current slice</p>
-            <span className="shell-topbar__status-copy">Live-compatible</span>
+            <p className="text-label">Build</p>
+            <span className="shell-topbar__status-copy">{buildModeLabel}</span>
           </div>
         </div>
       </header>
@@ -94,7 +95,8 @@ export function AppShell() {
           <footer className="shell-footer">
             <div className="shell-footer__brand">WORLD BANK ANALYST</div>
             <p className="shell-footer__disclaimer">
-              AI-generated content may contain inaccuracies. Verify before acting.
+              AI-generated content may contain inaccuracies. Verify before
+              acting.
             </p>
           </footer>
         </div>

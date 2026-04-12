@@ -142,27 +142,47 @@ describe("GlobalOverview", () => {
       screen.queryByRole("button", { name: "Open pipeline" }),
     ).not.toBeInTheDocument();
 
-    expect(screen.getByAltText("World coverage map")).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "World coverage map" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", {
+        name: /Focus .* market on world map/,
+      }),
+    ).toHaveLength(2);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Focus United States market on world map" }),
-    );
+    const unitedStatesMarker = screen.getByRole("button", {
+      name: "Focus United States market on world map",
+    });
 
-    expect(screen.getByText("Map focus")).toBeInTheDocument();
+    fireEvent.click(unitedStatesMarker);
+
     expect(screen.getByText("Focused market")).toBeInTheDocument();
     expect(screen.getAllByText("United States").length).toBeGreaterThan(0);
+    expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "true");
+    expect(unitedStatesMarker).toHaveAttribute(
+      "aria-controls",
+      "overview-map-popover",
+    );
+    expect(unitedStatesMarker).not.toHaveAttribute("aria-pressed");
     expect(
-      screen.getByRole("link", { name: "Open country intelligence" }),
+      screen.getByRole("region", { name: "United States market actions" }),
+    ).toBeInTheDocument();
+    const mapPopover = screen
+      .getByRole("link", { name: "Open intelligence" })
+      .closest(".overview-map-popover");
+    expect(mapPopover).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open intelligence" }),
     ).toHaveAttribute("href", "/country/us");
     expect(screen.getByRole("link", { name: "Open market" })).toHaveAttribute(
       "href",
       "/country/us",
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Focus United States market on world map" }),
-    );
+    fireEvent.click(unitedStatesMarker);
 
-    expect(screen.queryByText("Map focus")).not.toBeInTheDocument();
+    expect(screen.queryByText("Briefing available.")).not.toBeInTheDocument();
+    expect(unitedStatesMarker).toHaveAttribute("aria-expanded", "false");
   });
 });
