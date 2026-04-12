@@ -185,8 +185,9 @@ describe("GlobalOverview", () => {
       renderPage();
 
       expect(
-        await screen.findByRole("heading", { name: "Country drilldown" }),
+        await screen.findByRole("heading", { name: "Global Overview" }),
       ).toBeInTheDocument();
+      // Hero synthesis text is visible on arrival
       expect(
         screen.getByText(
           "Cross-market inflation pressure remains concentrated even as the monitored set no longer reads like a single-country story.",

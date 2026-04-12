@@ -69,6 +69,11 @@
   /* Shell dimensions */
   --topbar-height: 64px;
 
+  /* Layering scale */
+  --z-shell-topbar: 50;
+  --z-shell-nav: 45;
+  --z-overlay-modal: 1200;
+
   /* Transitions & Easing
    * --ease-out: strong ease-out for entrances and UI interactions (feels instant)
    * --ease-in-out: natural deceleration for on-screen movement
@@ -473,7 +478,7 @@ body.dialog-open {
 .pipeline-replay-modal__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: var(--z-overlay-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -482,11 +487,14 @@ body.dialog-open {
 }
 
 .pipeline-replay-modal {
+  position: relative;
   width: min(1180px, 100%);
   max-height: calc(100dvh - (var(--space-5) * 2));
   overflow: auto;
+  overscroll-behavior: contain;
   padding: var(--space-5);
   border: var(--border-structural);
+  border-top: 2px solid var(--color-accent);
   border-radius: var(--radius);
   background: var(--surface-card);
   animation: slideUpFade var(--transition-base) forwards;
@@ -503,6 +511,7 @@ body.dialog-open {
 .pipeline-replay-modal__header-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
 }
 
 .pipeline-replay-modal__close {
@@ -613,6 +622,8 @@ body.dialog-open {
 }
 
 .pipeline-replay-modal__footer {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
   justify-content: flex-end;
 }
 
@@ -1073,6 +1084,176 @@ body.dialog-open {
 
 .overview-hero-summary {
   max-width: 92ch;
+}
+
+/* --------------------------------------------------------------------------
+   Overview Landing — Unified Above-the-Fold Hero
+   Replaces the double-header PageHeader + AIInsightPanel combo on the
+   overview page only. Other pages still use those shared components.
+   -------------------------------------------------------------------------- */
+
+/* Outer container: gradient card with AI left-border accent */
+.overview-landing {
+  background: linear-gradient(
+    180deg,
+    var(--surface-card) 0%,
+    var(--surface-canvas) 100%
+  );
+  border-left: var(--border-accent);
+  border-radius: var(--radius);
+  padding: var(--space-6);
+}
+
+/* Two-column split: narrative (60%) | signal grid (40%) */
+.overview-landing__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* ---- Left Column: Narrative ---- */
+.overview-landing__narrative {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Eyebrow row: AI icon + label + inline status pill */
+.overview-landing__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.overview-landing__eyebrow-icon {
+  font-size: 1rem;
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.overview-landing__eyebrow-text {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+/* Title: same display scale but driven by container gap, not margin */
+.overview-landing__title {
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+/* AI synthesis text — constrained width so even 4-line LLM output stays
+   scannable without overwhelming the right-column metrics */
+.overview-landing__synthesis {
+  max-width: 58ch;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+/* Compact meta strip: monospace labels separated by middots */
+.overview-landing__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.overview-landing__meta-sep {
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+/* CTA buttons tucked under meta — spatial proximity to data freshness */
+.overview-landing__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+/* ---- Right Column: 2×2 Signal Grid ---- */
+.overview-landing__signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-self: stretch;
+}
+
+/* Individual metric card — nested surface, semantic top border */
+.overview-landing__metric {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  border: var(--border-structural);
+  border-radius: var(--radius);
+  background: var(--surface-nested);
+  border-top: 3px solid var(--color-border);
+}
+
+.overview-landing__metric--success {
+  border-top-color: var(--color-success);
+}
+
+.overview-landing__metric--warning {
+  border-top-color: var(--color-warning);
+}
+
+.overview-landing__metric--critical {
+  border-top-color: var(--color-critical);
+}
+
+/* Metric value: Commit Mono, 2rem, bold — the eye-catcher */
+.overview-landing__metric-value {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  margin-top: var(--space-2);
+}
+
+/* Description: compact, pushed down inside the flex column */
+.overview-landing__metric-desc {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin-top: auto;
+  padding-top: var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+/* ---- Risk Flag Strip ---- */
+.overview-risk-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.overview-risk-strip__flag {
+  padding: var(--space-4);
+  border: var(--border-structural);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+}
+
+.overview-risk-strip__flag .text-label {
+  color: var(--color-warning);
+}
+
+/* ---- Loading skeleton for the new landing layout ---- */
+.overview-landing--loading .overview-landing__synthesis,
+.overview-landing--loading .overview-landing__meta {
+  display: none;
 }
 
 /* --------------------------------------------------------------------------
@@ -2328,7 +2509,7 @@ body.dialog-open {
 .pipeline-replay-modal__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--z-overlay-modal);
   display: grid;
   place-items: center;
   padding: var(--space-6);
@@ -2336,11 +2517,14 @@ body.dialog-open {
 }
 
 .pipeline-replay-modal {
+  position: relative;
   width: min(1200px, 100%);
   max-height: calc(100dvh - (var(--space-6) * 2));
   overflow: auto;
+  overscroll-behavior: contain;
   padding: var(--space-5);
   border: var(--border-structural);
+  border-top: 2px solid var(--color-accent);
   border-radius: var(--radius);
   background: var(--surface-card);
 }
@@ -2632,6 +2816,22 @@ body.dialog-open {
     align-items: flex-start;
   }
 
+  .overview-landing__inner {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-landing__title {
+    font-size: 2rem;
+  }
+
+  .overview-landing__metric-value {
+    font-size: 1.5rem;
+  }
+
+  .overview-risk-strip {
+    grid-template-columns: 1fr;
+  }
+
   .overview-main-grid,
   .country-detail-grid,
   .trigger-grid,
@@ -2714,7 +2914,7 @@ body.dialog-open {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 50;
+  z-index: var(--z-shell-topbar);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -3419,7 +3619,7 @@ body.dialog-open {
     top: var(--topbar-height);
     left: 0;
     right: 0;
-    z-index: 45;
+    z-index: var(--z-shell-nav);
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;

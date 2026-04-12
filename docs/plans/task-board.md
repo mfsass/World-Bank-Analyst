@@ -6,6 +6,7 @@
 
 ## Next Up
 
+- [ ] **Global Overview Hero Redesign** — Replace PageHeader + AIInsightPanel double-header with unified risk-first landing hero. Split-column layout: narrative + CTAs left, 2×2 metric grid right, risk flag strip below. Plan: `docs/plans/global-overview-hero-redesign.md`.
 - [ ] **Country Intelligence Enhancement Phase 1** — Country directory (replace landing dead-end), click-away map reset, map hover preview. Frontend only. Plan: `docs/plans/country-intelligence-enhancement.md`.
 - [ ] **Country Intelligence Enhancement Phase 2** — `prepare_time_series()`, Firestore enrichment, openapi.yaml schema extension, regime label prompt extension. Backend + API. Blocked by: nothing (independent of Phase 1).
 - [ ] **Country Intelligence Enhancement Phase 3** — Country timeline (Recharts), enriched map popover, dense signal grid, regime label display. Frontend-intensive. Blocked by: Phase 2 data availability.

@@ -10,9 +10,6 @@ import {
 import { Link } from "react-router-dom";
 import worldGeography from "world-atlas/countries-110m.json";
 
-import { AIInsightPanel } from "../components/AIInsightPanel";
-
-import { PageHeader } from "../components/PageHeader";
 import { StatusPill } from "../components/StatusPill";
 import { apiRequest, fetchCountryDetail } from "../api";
 import {
@@ -275,37 +272,36 @@ function useSectionPrefetch(rootMargin = QUEUE_PREFETCH_ROOT_MARGIN) {
   return [sectionRef, sectionElementRef, isVisible];
 }
 
-function OverviewLoadingShell({ headerNarrative }) {
+function OverviewLoadingShell() {
   return (
     <div className="page page--overview container">
-      <PageHeader
-        description={headerNarrative}
-        eyebrow="GLOBAL OVERVIEW"
-        meta="Overview // current data window"
-        title="Global Overview"
-      />
-
-      <section className="section-gap">
-        <div className="ai-insight ai-insight-panel overview-loading-shell">
-          <div className="panel-header">
-            <div className="overview-loading-shell__hero-copy">
-              <p className="text-label">Global overview</p>
-              <div className="skeleton skeleton-title mt-3 overview-skeleton-title" />
+      <section className="overview-landing overview-landing--loading">
+        <div className="overview-landing__inner">
+          <div className="overview-landing__narrative">
+            <div className="overview-landing__eyebrow">
+              <span
+                aria-hidden="true"
+                className="material-symbols-outlined overview-landing__eyebrow-icon"
+              >
+                insights
+              </span>
+              <span className="overview-landing__eyebrow-text">
+                Global Overview
+              </span>
+              <div className="skeleton skeleton-pill" />
             </div>
-            <div className="skeleton skeleton-pill" />
+            <div className="skeleton skeleton-title mt-3 overview-skeleton-title" />
+            <div className="mt-3">
+              <div className="skeleton skeleton-text overview-skeleton-line" />
+              <div className="skeleton skeleton-text overview-skeleton-line" />
+              <div className="skeleton skeleton-text overview-skeleton-line overview-skeleton-line--short" />
+            </div>
           </div>
-
-          <div className="mt-4">
-            <div className="skeleton skeleton-text overview-skeleton-line" />
-            <div className="skeleton skeleton-text overview-skeleton-line" />
-            <div className="skeleton skeleton-text overview-skeleton-line overview-skeleton-line--short" />
-          </div>
-
-          <div className="overview-hero-grid mt-4">
-            {Array.from({ length: 3 }).map((_, index) => (
+          <div className="overview-landing__signals">
+            {Array.from({ length: 4 }).map((_, index) => (
               <article
-                className="card overview-hero-stat"
-                key={`hero-${index}`}
+                className="overview-landing__metric"
+                key={`metric-${index}`}
               >
                 <div className="skeleton skeleton-text overview-skeleton-label" />
                 <div className="skeleton skeleton-kpi-value mt-3" />
@@ -314,16 +310,6 @@ function OverviewLoadingShell({ headerNarrative }) {
             ))}
           </div>
         </div>
-      </section>
-
-      <section className="kpi-row section-gap">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <article className="kpi-card" key={`kpi-${index}`}>
-            <div className="skeleton skeleton-text overview-skeleton-label" />
-            <div className="skeleton skeleton-kpi-value mt-3" />
-            <div className="skeleton skeleton-text overview-skeleton-line--short mt-3" />
-          </article>
-        ))}
       </section>
 
       <section className="overview-main-grid section-gap">
@@ -361,10 +347,6 @@ function OverviewLoadingShell({ headerNarrative }) {
     </div>
   );
 }
-
-OverviewLoadingShell.propTypes = {
-  headerNarrative: PropTypes.string.isRequired,
-};
 
 function OverviewMapLayer({
   countries,
@@ -862,10 +844,10 @@ export function GlobalOverview() {
     ? `${leadPressureMarket.name} leads the current pressure queue${leadPressureMarket.leadIndicatorName ? ` on ${leadPressureMarket.leadIndicatorName}.` : "."}`
     : "The indicator layer is still hydrating the cross-market pressure ranking.";
   const leadPressureToneClass = leadPressureMarket?.anomalyCount
-    ? " overview-hero-stat--critical"
+    ? "overview-landing__metric--critical"
     : leadPressureMarket?.adverseCount
-      ? " overview-hero-stat--warning"
-      : " overview-hero-stat--success";
+      ? "overview-landing__metric--warning"
+      : "overview-landing__metric--success";
   const queueLeadCopy =
     queueMarkets.length > 0
       ? "Load the live queue below or focus a market on the map when you want a country briefing."
@@ -986,19 +968,37 @@ export function GlobalOverview() {
   }, [selectedMarkerRef, mapBounds]);
 
   if (viewState === "loading") {
-    return <OverviewLoadingShell headerNarrative={headerNarrative} />;
+    return <OverviewLoadingShell />;
   }
 
   if (viewState === "error") {
     return (
       <div className="page page--overview container">
-        <PageHeader
-          actions={sharedActions}
-          description={headerNarrative}
-          eyebrow="GLOBAL OVERVIEW"
-          meta="Overview // current data window"
-          title="Global Overview"
-        />
+        <section className="overview-landing">
+          <div className="overview-landing__inner">
+            <div className="overview-landing__narrative">
+              <div className="overview-landing__eyebrow">
+                <span
+                  aria-hidden="true"
+                  className="material-symbols-outlined overview-landing__eyebrow-icon"
+                >
+                  insights
+                </span>
+                <span className="overview-landing__eyebrow-text">
+                  Global Overview
+                </span>
+                <StatusPill tone="critical">ERROR</StatusPill>
+              </div>
+              <h1 className="overview-landing__title">Global Overview</h1>
+              <p className="overview-landing__synthesis text-body">
+                {headerNarrative}
+              </p>
+              <div className="overview-landing__actions">
+                {sharedActions}
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section className="section-gap">
           <div className="card state-panel">
@@ -1013,81 +1013,149 @@ export function GlobalOverview() {
 
   return (
     <div className="page page--overview container">
-      <PageHeader
-        actions={sharedActions}
-        description={headerNarrative}
-        eyebrow="GLOBAL OVERVIEW"
-        meta={`Source window // ${sourceWindowLabel} · Latest data year // ${latestDataYearLabel} · Pipeline refresh // ${pipelineRefreshLabel}`}
-        title="Global Overview"
-      />
+      {/* ---- Unified Landing Hero ---- */}
+      <section className="overview-landing">
+        <div className="overview-landing__inner">
+          <div className="overview-landing__narrative">
+            <div className="overview-landing__eyebrow">
+              <span
+                aria-hidden="true"
+                className="material-symbols-outlined overview-landing__eyebrow-icon"
+              >
+                insights
+              </span>
+              <span className="overview-landing__eyebrow-text">
+                Global Overview
+              </span>
+              <StatusPill tone={panelOutlookTone}>
+                {panelStatusLabel}
+              </StatusPill>
+            </div>
 
-      <section className="section-gap">
-        <AIInsightPanel
-          eyebrow="GLOBAL SYNTHESIS"
-          footer={
-            <div className="overview-hero-footer">
+            <h1 className="overview-landing__title">Global Overview</h1>
+
+            <p className="overview-landing__synthesis text-body">
+              {panelOverview?.summary || headerNarrative}
+            </p>
+
+            <div className="overview-landing__meta">
               <span className="text-label">
-                Data window // {sourceWindowLabel}
+                Source window // {sourceWindowLabel}
+              </span>
+              <span
+                className="overview-landing__meta-sep"
+                aria-hidden="true"
+              >
+                ·
               </span>
               <span className="text-label">
-                Live briefings // {liveCoverageLabel}
+                Latest data // {latestDataYearLabel}
+              </span>
+              <span
+                className="overview-landing__meta-sep"
+                aria-hidden="true"
+              >
+                ·
               </span>
               <span className="text-label">
-                Pipeline refresh // {pipelineRefreshLabel}
+                Refresh // {pipelineRefreshLabel}
               </span>
             </div>
-          }
-          status={panelStatusLabel}
-          title="Global economic outlook"
-          tone={panelOutlookTone}
-        >
-          <div className="overview-hero-summary">
-            <p className="text-body">{panelOverview?.summary || headerNarrative}</p>
-          </div>
-          {panelOverview?.risk_flags?.length ? (
-            <div className="overview-signal-list mt-4">
-              {panelOverview.risk_flags.slice(0, 2).map((riskFlag, index) => (
-                <article
-                  className="overview-signal-card overview-signal-card--hero"
-                  key={`${riskFlag}-${index}`}
+
+            <div className="overview-landing__actions">
+              <Link className="btn-primary" to="/trigger">
+                {pipelineStatus === "running"
+                  ? "Monitor pipeline"
+                  : "Open pipeline"}
+              </Link>
+              {selectedMapCountry ? (
+                <Link className="btn-ghost" to={marketOpenHref}>
+                  Open selected country
+                </Link>
+              ) : (
+                <button
+                  className="btn-ghost"
+                  onClick={() =>
+                    queueSectionElementRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    })
+                  }
+                  type="button"
                 >
-                  <p className="text-label">Risk flag {index + 1}</p>
-                  <p className="text-body text-secondary mt-3">{riskFlag}</p>
-                </article>
-              ))}
+                  Review country queue
+                </button>
+              )}
             </div>
-          ) : null}
-          <div className="overview-hero-grid mt-4">
-            <article className="card overview-hero-stat overview-hero-stat--success">
+          </div>
+
+          <div className="overview-landing__signals">
+            <article
+              className={`overview-landing__metric${
+                monitoredCountries && materialisedCountries === monitoredCountries
+                  ? " overview-landing__metric--success"
+                  : " overview-landing__metric--warning"
+              }`}
+            >
+              <span className="text-label">Tracked markets</span>
+              <span className="overview-landing__metric-value">
+                {liveCoverageLabel}
+              </span>
+              <p className="overview-landing__metric-desc">
+                Live briefings across the monitored panel.
+              </p>
+            </article>
+            <article className="overview-landing__metric overview-landing__metric--success">
               <span className="text-label">Latest data year</span>
-              <span className="overview-hero-stat__value">
+              <span className="overview-landing__metric-value">
                 {latestDataYearLabel}
               </span>
-              <p className="overview-hero-stat__desc text-body text-secondary">
-                Most recent year of World Bank data in this analysis.
+              <p className="overview-landing__metric-desc">
+                Most recent World Bank data in this analysis.
               </p>
             </article>
             <article
-              className={`card overview-hero-stat${anomalyCount > 0 ? " overview-hero-stat--critical" : " overview-hero-stat--success"}`}
+              className={`overview-landing__metric${
+                anomalyCount > 0
+                  ? " overview-landing__metric--critical"
+                  : " overview-landing__metric--success"
+              }`}
             >
               <span className="text-label">Anomalies detected</span>
-              <span className="overview-hero-stat__value">{anomalyCount}</span>
-              <p className="overview-hero-stat__desc text-body text-secondary">
-                Indicator anomalies flagged across the current data window.
+              <span className="overview-landing__metric-value">
+                {anomalyCount}
+              </span>
+              <p className="overview-landing__metric-desc">
+                Indicator anomalies across the current data window.
               </p>
             </article>
-            <article className={`card overview-hero-stat${leadPressureToneClass}`}>
+            <article className={`overview-landing__metric ${leadPressureToneClass}`}>
               <span className="text-label">Primary stress point</span>
-              <span className="overview-hero-stat__value">
+              <span className="overview-landing__metric-value">
                 {leadPressureValue}
               </span>
-              <p className="overview-hero-stat__desc text-body text-secondary">
+              <p className="overview-landing__metric-desc">
                 {leadPressureDescription}
               </p>
             </article>
           </div>
-        </AIInsightPanel>
+        </div>
       </section>
+
+      {/* ---- Risk Flag Strip ---- */}
+      {panelOverview?.risk_flags?.length > 0 ? (
+        <section className="overview-risk-strip section-gap">
+          {panelOverview.risk_flags.slice(0, 3).map((riskFlag, index) => (
+            <article
+              className="overview-risk-strip__flag"
+              key={`risk-${index}`}
+            >
+              <p className="text-label">Risk flag {index + 1}</p>
+              <p className="text-body text-secondary mt-3">{riskFlag}</p>
+            </article>
+          ))}
+        </section>
+      ) : null}
 
       {anomalyCount > 0 ? (
         <section className="section-gap">
