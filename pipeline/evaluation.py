@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import time
 from statistics import median
 from time import perf_counter
 from typing import Any, Callable
@@ -295,9 +296,16 @@ def evaluate_live_baseline(
             "outlook": result.get("outlook"),
         })
 
-    # Step 3: Global overview evaluation
+    # Step 3: Global overview evaluation — sleep to let the per-minute quota
+    # window reset after the Step 1+2 burst (Gemma 4: 16,000 tokens/min).
+    _STEP3_RATE_LIMIT_COOLDOWN_S = 65
     global_overview_case_results: list[dict[str, Any]] = []
     if global_overview_inputs:
+        print(
+            f"Waiting {_STEP3_RATE_LIMIT_COOLDOWN_S}s before Step 3 to clear rate-limit window…",
+            file=sys.stderr,
+        )
+        time.sleep(_STEP3_RATE_LIMIT_COOLDOWN_S)
         started_at = perf_counter()
         overview_result = evaluation_client.synthesise_global_overview(global_overview_inputs)
         latency_ms = int((perf_counter() - started_at) * 1000)
@@ -835,10 +843,15 @@ def _score_builtin_global_overview(
     if regions_covered >= 3:
         reasoning.append(f"summary covered {regions_covered} distinct regions")
 
-    # No single-country anchoring: first 80 chars should not be a country name/code
+    # No single-country anchoring: first 80 chars should not open with a country name or
+    # ISO2 code as a standalone token. Use word-boundary matching to avoid false positives
+    # on common English prefixes that share letters with ISO codes (e.g. "br" in "broadly").
     first_words = summary[:80]
-    top_country_codes = ["br", "brazil", "us", "usa", "united states", "china", "cn"]
-    anchored = any(code in first_words for code in top_country_codes)
+    anchor_tokens = [
+        "brazil", "united states", "usa", "china",
+        r"\bus\b", r"\bbr\b", r"\bcn\b",
+    ]
+    anchored = any(re.search(pattern, first_words) for pattern in anchor_tokens)
     no_anchoring = 0.0 if anchored else 1.0
     if not anchored:
         reasoning.append("summary did not open with a single-country anchor")
