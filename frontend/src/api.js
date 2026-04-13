@@ -50,6 +50,24 @@ export async function apiRequest(path, options = {}) {
 }
 
 /**
+ * Fetches the monitored-set overview payload.
+ *
+ * Returns null when no overview has been materialised yet (404). This keeps
+ * callers out of repetitive not-found handling when "no overview yet" is a
+ * valid state rather than an operational failure.
+ *
+ * @returns {Promise<object | null>}
+ */
+export async function fetchGlobalOverview() {
+  try {
+    return await apiRequest("/overview");
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
+/**
  * Fetches the full country detail payload for a single country.
  *
  * Returns null when the country has no briefing yet (404). This lets callers

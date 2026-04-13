@@ -21,11 +21,75 @@ const PIPELINE_ACTIVITY_INTERVAL_MS = 900;
 const PIPELINE_REPLAY_ACTIVITY_INTERVAL_MS = 900;
 const PIPELINE_REPLAY_STAGE_ADVANCE_MS = 2600;
 
+const PENDING_VERBS = [
+  "Accomplishing", "Actioning", "Actualizing", "Architecting", "Baking", "Beaming",
+  "Beboppin'", "Befuddling", "Billowing", "Blanching", "Bloviating", "Boogieing",
+  "Boondoggling", "Booping", "Bootstrapping", "Brewing", "Bunning", "Burrowing",
+  "Calculating", "Canoodling", "Caramelizing", "Cascading", "Catapulting",
+  "Cerebrating", "Channeling", "Channelling", "Choreographing", "Churning",
+  "Clauding", "Coalescing", "Cogitating", "Combobulating", "Composing", "Computing",
+  "Concocting", "Considering", "Contemplating", "Cooking", "Crafting", "Creating",
+  "Crunching", "Crystallizing", "Cultivating", "Deciphering", "Deliberating",
+  "Determining", "Dilly-dallying", "Discombobulating", "Doing", "Doodling",
+  "Drizzling", "Ebbing", "Effecting", "Elucidating", "Embellishing", "Enchanting",
+  "Envisioning", "Evaporating", "Fermenting", "Fiddle-faddling", "Finagling",
+  "Flambéing", "Flibbertigibbeting", "Flowing", "Flummoxing", "Fluttering",
+  "Forging", "Forming", "Frolicking", "Frosting", "Gallivanting", "Galloping",
+  "Garnishing", "Generating", "Gesticulating", "Germinating", "Gitifying",
+  "Grooving", "Gusting", "Harmonizing", "Hashing", "Hatching", "Herding",
+  "Honking", "Hullaballooing", "Hyperspacing", "Ideating", "Imagining",
+  "Improvising", "Incubating", "Inferring", "Infusing", "Ionizing", "Jitterbugging",
+  "Julienning", "Kneading", "Leavening", "Levitating", "Lollygagging", "Manifesting",
+  "Marinating", "Meandering", "Metamorphosing", "Misting", "Moonwalking", "Moseying",
+  "Mulling", "Mustering", "Musing", "Nebulizing", "Nesting", "Newspapering",
+  "Noodling", "Nucleating", "Orbiting", "Orchestrating", "Osmosing", "Perambulating",
+  "Percolating", "Perusing", "Philosophising", "Photosynthesizing", "Pollinating",
+  "Pondering", "Pontificating", "Pouncing", "Precipitating", "Prestidigitating",
+  "Processing", "Proofing", "Propagating", "Puttering", "Puzzling", "Quantumizing",
+  "Razzle-dazzling", "Razzmatazzing", "Recombobulating", "Reticulating", "Roosting",
+  "Ruminating", "Sautéing", "Scampering", "Schlepping", "Scurrying", "Seasoning",
+  "Shenaniganing", "Shimmying", "Simmering", "Skedaddling", "Sketching", "Slithering",
+  "Smooshing", "Sock-hopping", "Spelunking", "Spinning", "Sprouting", "Stewing",
+  "Sublimating", "Swirling", "Swooping", "Symbioting", "Synthesizing", "Tempering",
+  "Thinking", "Thundering", "Tinkering", "Tomfoolering", "Topsy-turvying",
+  "Transfiguring", "Transmuting", "Twisting", "Undulating", "Unfurling",
+  "Unravelling", "Vibing", "Waddling", "Wandering", "Warping", "Whatchamacalliting",
+  "Whirlpooling", "Whirring", "Whisking", "Wibbling", "Working"
+];
+
+function getPendingVerb(index, tick) {
+  const hash = index * 37 + tick;
+  return PENDING_VERBS[hash % PENDING_VERBS.length].toUpperCase();
+}
+
 function prefersReducedMotion() {
   return (
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
   );
 }
+
+function FormattedStory({ text }) {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <span className="text-accent" style={{ fontWeight: 600 }} key={index}>
+              {part.slice(2, -2)}
+            </span>
+          );
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+FormattedStory.propTypes = {
+  text: PropTypes.string,
+};
 
 function buildDemoStatus() {
   return {
@@ -130,57 +194,61 @@ function getExecutionCopy(step) {
   return statusCopy;
 }
 
-function buildTerminalLines(mode, status, executionSteps, activeStageActivity) {
-  const lines = [
-    `> MODE: ${mode === "real" ? "REAL RUN" : "DEMO WALKTHROUGH (SIMULATED)"}`,
-    mode === "real"
-      ? "> SOURCE: /PIPELINE/TRIGGER + /PIPELINE/STATUS"
-      : "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)",
-    `> STAGE MODEL: ${executionSteps
-      .map((step) => step.name.toUpperCase())
-      .join(" -> ")}`,
-    "> TARGET SCOPE: 17-COUNTRY PANEL",
-    `> STATUS: ${(status?.status || "idle").toUpperCase()}`,
-  ];
+function buildTerminalLines(mode, status, executionSteps, activeStageActivity, activityTick) {
+  const nodes = [];
+
+  const addLine = (text) => nodes.push(<span key={nodes.length}>{text}{"\n"}</span>);
+
+  addLine(`> MODE: ${mode === "real" ? "REAL RUN" : "DEMO WALKTHROUGH (SIMULATED)"}`);
+  addLine(mode === "real" ? "> SOURCE: /PIPELINE/TRIGGER + /PIPELINE/STATUS" : "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)");
+  addLine(`> STAGE MODEL: ${executionSteps.map((step) => step.name.toUpperCase()).join(" -> ")}`);
+  addLine("> TARGET SCOPE: 17-COUNTRY PANEL");
+  addLine(`> STATUS: ${(status?.status || "idle").toUpperCase()}`);
 
   if (status?.started_at) {
-    lines.push(`> STARTED AT: ${formatTimestamp(status.started_at)}`);
+    addLine(`> STARTED AT: ${formatTimestamp(status.started_at)}`);
   }
 
-  executionSteps.forEach((step) => {
+  executionSteps.forEach((step, index) => {
     const duration = step.duration_ms ? ` ${step.duration_ms}ms` : "";
-    lines.push(
-      `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`,
-    );
+    if (step.status === "running") {
+      const verb = getPendingVerb(index, 0);
+      const dots = ".".repeat((activityTick % 3) + 1);
+      nodes.push(
+        <span key={`step-${step.name}`}>
+          {`> ${step.name.toUpperCase().padEnd(10, " ")} ${verb}${dots}\n`}
+        </span>
+      );
+    } else {
+      addLine(`> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`);
+    }
   });
 
   if (status?.status === "running" && activeStageActivity) {
-    lines.push(
-      `> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`,
-    );
+    addLine(`> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`);
   }
 
   if (mode === "demo") {
-    lines.push("> COUNTRY PAGE STAYS LOCKED UNTIL A REAL RUN COMPLETES");
+    addLine("> COUNTRY PAGE STAYS LOCKED UNTIL A REAL RUN COMPLETES");
   }
 
   if (status?.completed_at) {
-    lines.push(`> COMPLETED AT: ${formatTimestamp(status.completed_at)}`);
+    addLine(`> COMPLETED AT: ${formatTimestamp(status.completed_at)}`);
   }
 
   if (status?.error) {
-    lines.push(`> ERROR: ${status.error}`);
+    addLine(`> ERROR: ${status.error}`);
   }
 
   if (!status || status.status === "idle") {
-    lines.push(
+    addLine(
       mode === "real"
         ? "> Awaiting real pipeline execution..."
         : "> Demo walkthrough will replay in the browser only.",
     );
   }
 
-  return lines;
+  return nodes;
 }
 
 function buildReplaySteps(activeStageIndex, isReplayComplete) {
@@ -200,31 +268,39 @@ function buildReplaySteps(activeStageIndex, isReplayComplete) {
   });
 }
 
-function buildReplayTerminalOutput(activeStep, replaySteps, isReplayComplete) {
-  const lines = [
-    "> MODE: DEMO WALKTHROUGH (SIMULATED)",
-    "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)",
-    `> STAGE MODEL: ${replaySteps
-      .map((step) => step.name.toUpperCase())
-      .join(" -> ")}`,
-    "> TARGET SCOPE: 17-COUNTRY PANEL",
-    `> STATUS: ${(isReplayComplete ? "complete" : "running").toUpperCase()}`,
-  ];
+function buildReplayTerminalOutput(activeStep, replaySteps, isReplayComplete, activityTick) {
+  const nodes = [];
 
-  replaySteps.forEach((step) => {
-    lines.push(
-      `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}`,
-    );
+  const addLine = (text) => nodes.push(<span key={nodes.length}>{text}{"\n"}</span>);
+
+  addLine("> MODE: DEMO WALKTHROUGH (SIMULATED)");
+  addLine("> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)");
+  addLine(`> STAGE MODEL: ${replaySteps.map((step) => step.name.toUpperCase()).join(" -> ")}`);
+  addLine("> TARGET SCOPE: 17-COUNTRY PANEL");
+  addLine(`> STATUS: ${(isReplayComplete ? "complete" : "running").toUpperCase()}`);
+
+  replaySteps.forEach((step, index) => {
+    if (step.status === "running") {
+      const verb = getPendingVerb(index, 0);
+      const dots = ".".repeat((activityTick % 3) + 1);
+      nodes.push(
+        <span key={`step-${step.name}`}>
+          {`> ${step.name.toUpperCase().padEnd(10, " ")} ${verb}${dots}\n`}
+        </span>
+      );
+    } else {
+      addLine(`> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}`);
+    }
   });
 
   if (activeStep) {
-    lines.push(`> ACTIVE STAGE: ${activeStep.title.toUpperCase()}`);
-    lines.push(`> OUTCOME: ${activeStep.outcome}`);
+    addLine(`> ACTIVE STAGE: ${activeStep.title.toUpperCase()}`);
+    addLine(`> OUTCOME: ${activeStep.outcome}`);
   }
 
-  lines.push("> COUNTRY PAGE STAYS LOCKED UNTIL A REAL RUN COMPLETES");
+  addLine("> COUNTRY PAGE STAYS LOCKED UNTIL A REAL RUN COMPLETES");
 
-  return lines.join("\n");
+  return nodes;
 }
 
 function PipelineReplayModal({ isOpen, onClose, replayVersion }) {
@@ -464,7 +540,7 @@ function PipelineReplayModal({ isOpen, onClose, replayVersion }) {
                 </StatusPill>
               </div>
               <p className="text-body text-secondary mt-4">
-                {activeStep.story}
+                <FormattedStory text={activeStep.story} />
               </p>
               <div className="execution-step-card__note mt-4">
                 <span className="text-label">Stage outcome</span>
@@ -479,7 +555,7 @@ function PipelineReplayModal({ isOpen, onClose, replayVersion }) {
                 </p>
               </div>
               <StepSimulation
-                activityLabel="Replay activity"
+                activityLabel="Activity"
                 isRunning={!isReplayComplete}
                 stepName={activeStep.name}
                 tick={activityTick}
@@ -493,6 +569,7 @@ function PipelineReplayModal({ isOpen, onClose, replayVersion }) {
                   activeStep,
                   replaySteps,
                   isReplayComplete,
+                  activityTick,
                 )}
                 {!isReplayComplete ? (
                   <span className="terminal-cursor" />
@@ -577,7 +654,8 @@ export function PipelineTrigger() {
     displayStatus,
     executionSteps,
     activeStageActivity,
-  ).join("\n");
+    activityTick,
+  );
   const pipelineReady = mode === "real" && status?.status === "complete";
   const completedSteps = executionSteps.filter(
     (step) => step.status === "complete",
@@ -915,32 +993,14 @@ export function PipelineTrigger() {
                     </StatusPill>
                   </div>
                   <p className="text-body text-secondary mt-4">
-                    {getExecutionCopy(step)}
+                    <FormattedStory text={getExecutionCopy(step)} />
                   </p>
                   <div className="execution-step-card__note mt-4">
                     <span className="text-label">What changes here</span>
                     <p className="text-body text-secondary mt-3">
-                      {step.story}
+                      <FormattedStory text={step.story} />
                     </p>
                   </div>
-                  {isRunning ? (
-                    <div className="execution-step-card__note mt-4">
-                      <span className="text-label">
-                        Why this stage can take time
-                      </span>
-                      <p className="text-body text-secondary mt-3">
-                        {step.latencyNote}
-                      </p>
-                    </div>
-                  ) : null}
-                  <StepSimulation
-                    activityLabel={
-                      mode === "demo" ? "Demo activity" : "Live operation"
-                    }
-                    isRunning={isRunning}
-                    stepName={step.name}
-                    tick={activityTick}
-                  />
                 </article>
               );
             })}

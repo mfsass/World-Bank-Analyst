@@ -35,15 +35,20 @@ let _generationKey = null;
 let _countriesList = null;
 
 /**
- * Session-scoped cache for the `/overview` AI panel payload. Enables the
- * Global Overview page to render its hero section immediately on re-visit,
- * skipping the loading skeleton entirely.
+ * Session-scoped cache for the Global Overview first-render snapshot.
  *
+ * Stores the panel overview plus the deterministic data the landing surface
+ * needs to avoid dropping from skeleton into placeholder copy on re-visit.
  * Cleared alongside all country entries whenever the cache generation advances
- * (i.e. a new pipeline run completes) so stale AI summaries are never shown
+ * (i.e. a new pipeline run completes) so stale overview state is never reused
  * after fresh data lands.
  *
- * @type {object | null}
+ * @type {{
+ *   panelOverview: object | null,
+ *   countries: Array<{ code: string, name: string }>,
+ *   status: object | null,
+ *   indicators: object[],
+ * } | null}
  */
 let _overviewCache = null;
 
@@ -68,23 +73,33 @@ export function setCountriesList(list) {
 }
 
 /**
- * Returns the cached `/overview` payload, or `null` when it has not been
- * fetcheed yet this session.
+ * Returns the cached Global Overview first-render snapshot, or `null` when it
+ * has not been fetched yet this session.
  *
- * @returns {object | null}
+ * @returns {{
+ *   panelOverview: object | null,
+ *   countries: Array<{ code: string, name: string }>,
+ *   status: object | null,
+ *   indicators: object[],
+ * } | null}
  */
 export function getOverviewCache() {
   return _overviewCache;
 }
 
 /**
- * Stores the `/overview` payload in the session cache.
+ * Stores the Global Overview first-render snapshot in the session cache.
  *
- * @param {object} payload - Full `/overview` API response.
+ * @param {{
+ *   panelOverview: object | null,
+ *   countries: Array<{ code: string, name: string }>,
+ *   status: object | null,
+ *   indicators: object[],
+ * }} snapshot - Stable initial snapshot for the Global Overview page.
  */
-export function setOverviewCache(payload) {
-  if (!payload) return;
-  _overviewCache = payload;
+export function setOverviewCache(snapshot) {
+  if (!snapshot) return;
+  _overviewCache = snapshot;
 }
 
 /**
@@ -129,6 +144,19 @@ export function updateCacheGeneration(nextKey) {
   _cache.clear();
   _overviewCache = null;
   _generationKey = nextKey;
+}
+
+/**
+ * Resets the session-scoped frontend caches.
+ *
+ * Used by tests so each scenario starts from a clean browser-session model
+ * instead of inheriting warmed entries from a previous case.
+ */
+export function resetCountryDetailCache() {
+  _cache.clear();
+  _countriesList = null;
+  _overviewCache = null;
+  _generationKey = null;
 }
 
 /**

@@ -127,7 +127,7 @@ describe("PipelineTrigger", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("SIMULATED").length).toBeGreaterThan(0);
     expect(dialogQueries.getByText("AUTO-PLAY")).toBeInTheDocument();
-    expect(dialogQueries.getByText("Replay activity")).toBeInTheDocument();
+    expect(dialogQueries.getByText("Activity")).toBeInTheDocument();
     expect(
       dialogQueries.getByRole("heading", { name: "Fetch and normalize" }),
     ).toBeInTheDocument();
@@ -266,11 +266,9 @@ describe("PipelineTrigger", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Live operation")).toBeInTheDocument();
+    expect(await screen.findByText("Execution feed")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "> Gathering structured indicator evidence for the model.",
-      ),
+      screen.getByRole("heading", { name: "Country + panel synthesis" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(

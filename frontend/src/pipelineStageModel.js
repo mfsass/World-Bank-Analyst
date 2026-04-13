@@ -56,7 +56,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "fetch",
     title: "Fetch and normalize",
     story:
-      "Six macro series pulled from the World Bank Indicators API v2 for all 17 monitored markets: GDP growth, inflation, unemployment, current account balance, government debt, and nominal GDP. The 2010\u20132024 window gives 15 annual observations per country \u2014 enough for the statistical pass to detect meaningful movement without being dominated by any single year. Raw API payloads are archived to GCS before analysis starts.",
+      "Extracts **six macro indicators** across **17 monitored markets** directly from the World Bank API. A **15-year observation window** provides enough historical baseline to detect true anomalies without single-year noise. Raw payloads are archived to GCS for provenance.",
     outcome:
       "102 normalised year-on-year records ready for the statistical pass, plus a raw payload archive for provenance.",
     latencyNote:
@@ -99,7 +99,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "analyse",
     title: "Statistical signal layer",
     story:
-      "Pandas computes year-over-year percentage changes and tests each record against a z-score threshold of 2.0 standard deviations. The threshold is calibrated cross-panel per indicator \u2014 not per country \u2014 because each country has roughly seven annual observations, too few for a reliable per-country baseline. Pooled across 17 markets, each indicator has roughly 102 observations. A GDP swing that looks routine inside one economy still registers clearly when measured against the full peer group.",
+      "Pandas scores year-over-year changes against a **2.0 standard deviation anomaly threshold**. Thresholds are calibrated across the **entire market panel**, meaning local GDP swings are contextualized against the global peer group before yielding a signal.",
     outcome:
       "Structured signal layer: deltas, z-scores, anomaly flags, and regime context. The model never touches raw numbers.",
     latencyNote:
@@ -140,7 +140,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "synthesise",
     title: "Country + panel synthesis",
     story:
-      "Three model passes per run. Step 1: one call per indicator \u2014 the model receives single-series signal data and returns trend direction, a short narrative, risk level, and confidence score. Step 2: all six indicator notes for a country go into a second call that returns an executive summary, top risk flags, economic outlook (bullish / cautious / bearish), and a regime label (recovery / expansion / overheating / contraction / stagnation). Step 3: all 17 country briefings go into a single panel overview call. Every output is validated against a Pydantic schema before the run accepts it.",
+      "The LLM evaluates structural signals to write **country briefings**, deriving **regimes** (expansion, overheating, contraction) and structural **risk flags**. It concludes with a synthesized **macro panel overview**. Every output must pass **Pydantic schema validation**.",
     outcome:
       "17 country briefings and one cross-market panel overview, each with risk flags, regime label, and structured outlook fields.",
     latencyNote:
@@ -196,7 +196,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "store",
     title: "Persist outputs",
     story:
-      "Country briefings, the panel overview, and runtime status are written through a shared repository layer that switches between local JSON and Firestore without any code change. Firestore turns on via an environment variable. The same write path runs in local development and in the deployed Cloud Run job \u2014 there is no separate production code path.",
+      "Country briefings, the panel overview, and run metadata are committed through a **shared repository layer** supporting local JSON or remote **Firestore**. Run completion metrics are sealed into a durable **status contract**.",
     outcome:
       "Dashboard-ready records in the configured store. Pipeline status sealed with per-step durations and completion timestamps.",
     latencyNote:
@@ -240,7 +240,7 @@ const LIVE_ONLY_STAGE_META = {
     name: "dispatch",
     title: "Dispatch Cloud Run job",
     story:
-      "Claims the single active run slot and hands the bounded pipeline execution to Cloud Run Jobs when the deployment path is live.",
+      "Validates configuration constraints and claims the **exclusive execution lock** before routing execution instructions safely out to **Google Cloud Run**.",
     outcome: "One accepted background run in the deploy topology.",
     latencyNote:
       "Dispatch must verify runtime configuration and claim the monitored-set run slot before the actual data stages can start.",
