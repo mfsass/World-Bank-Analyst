@@ -2,11 +2,11 @@
 
 ## In Progress
 
-*(Nothing actively in flight.)*
+_(Nothing actively in flight.)_
 
 ## Next Up
 
-*(No must-ship execution tracks remain. The items below are optional follow-on work rather than blockers for the current presentation build.)*
+_(No must-ship execution tracks remain. The items below are optional follow-on work rather than blockers for the current presentation build.)_
 
 ## Queued (after above)
 
