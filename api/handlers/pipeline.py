@@ -1,7 +1,9 @@
 """Pipeline trigger and status handlers."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
+import math
+import os
 import sys
 from pathlib import Path
 from threading import Thread
@@ -28,14 +30,21 @@ from shared.repository import (  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+PIPELINE_COOLDOWN_SECONDS_ENV = "WORLD_ANALYST_PIPELINE_COOLDOWN_SECONDS"
+DEFAULT_PIPELINE_COOLDOWN_SECONDS = 86400
 
-def trigger() -> tuple[dict[str, Any], int]:
+type TriggerResponse = (
+    tuple[dict[str, Any], int] | tuple[dict[str, Any], int, dict[str, str]]
+)
+
+
+def trigger() -> TriggerResponse:
     """Trigger manual pipeline execution.
 
     Starts the data fetch → analysis → storage pipeline.
 
     Returns:
-        Tuple of (pipeline_status, 202) on success.
+        Pipeline status or rate-limit response tuple.
     """
     logger.info("Pipeline trigger requested")
     run_id = str(uuid4())
@@ -46,6 +55,12 @@ def trigger() -> tuple[dict[str, Any], int]:
         return _project_public_status(
             _build_preflight_failure_status(run_id, str(exc))
         ), 202
+
+    cooldown_result = _get_pipeline_cooldown_result(
+        repository.get_pipeline_status_record()
+    )
+    if cooldown_result is not None:
+        return cooldown_result
 
     try:
         dispatch_mode = get_pipeline_dispatch_mode()
@@ -225,3 +240,76 @@ def _utc_now() -> str:
         ISO-formatted UTC timestamp.
     """
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_pipeline_cooldown_result(
+    status_record: dict[str, Any],
+) -> tuple[dict[str, Any], int, dict[str, str]] | None:
+    """Return a 429 response tuple when the last completed run is still cooling down."""
+    if status_record.get("status") != "complete":
+        return None
+
+    completed_at = _parse_iso_timestamp(status_record.get("completed_at"))
+    if completed_at is None:
+        return None
+
+    cooldown_seconds = _get_pipeline_cooldown_seconds()
+    if cooldown_seconds <= 0:
+        return None
+
+    retry_after_seconds = math.ceil(
+        (
+            completed_at
+            + timedelta(seconds=cooldown_seconds)
+            - datetime.now(timezone.utc)
+        ).total_seconds()
+    )
+    if retry_after_seconds <= 0:
+        return None
+
+    return (
+        {
+            "error": (
+                "Pipeline run too recent. "
+                f"Last run completed at {completed_at.isoformat()}."
+            ),
+            "retry_after_seconds": retry_after_seconds,
+        },
+        429,
+        {"Retry-After": str(retry_after_seconds)},
+    )
+
+
+def _get_pipeline_cooldown_seconds() -> int:
+    """Return the manual-trigger cooldown window in seconds."""
+    configured_value = os.environ.get(PIPELINE_COOLDOWN_SECONDS_ENV)
+    if configured_value is None:
+        return DEFAULT_PIPELINE_COOLDOWN_SECONDS
+
+    try:
+        return max(int(configured_value), 0)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r. Falling back to %d seconds.",
+            PIPELINE_COOLDOWN_SECONDS_ENV,
+            configured_value,
+            DEFAULT_PIPELINE_COOLDOWN_SECONDS,
+        )
+        return DEFAULT_PIPELINE_COOLDOWN_SECONDS
+
+
+def _parse_iso_timestamp(value: Any) -> datetime | None:
+    """Parse one stored ISO timestamp into an aware UTC datetime."""
+    if not isinstance(value, str) or not value:
+        return None
+
+    normalised_value = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalised_value)
+    except ValueError:
+        logger.warning("Skipping unparseable pipeline timestamp %r.", value)
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)

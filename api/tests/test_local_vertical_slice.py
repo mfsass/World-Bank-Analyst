@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pipeline.main as pipeline_main
@@ -162,6 +163,17 @@ def test_trigger_status_transition_and_country_detail_flow(client) -> None:
     assert all(indicator["time_series"] for indicator in detail["indicators"])
     assert all(indicator["time_series"][0]["year"] == 2017 for indicator in detail["indicators"])
     assert all(indicator["time_series"][-1]["year"] == 2023 for indicator in detail["indicators"])
+    assert all("change_value" in indicator for indicator in detail["indicators"])
+    assert all("change_basis" in indicator for indicator in detail["indicators"])
+    assert all("signal_polarity" in indicator for indicator in detail["indicators"])
+    assert all(
+        "change_value" in indicator["time_series"][-1]
+        for indicator in detail["indicators"]
+    )
+    assert all(
+        "change_basis" in indicator["time_series"][-1]
+        for indicator in detail["indicators"]
+    )
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert all("run_id" not in indicator for indicator in detail["indicators"])
@@ -402,6 +414,86 @@ def test_cloud_dispatch_mode_refuses_duplicate_manual_run(client, monkeypatch) -
     assert response.json()["status"] == "running"
     assert "run_id" not in response.json()
     assert not dispatch_called
+
+
+def test_trigger_returns_429_when_last_completed_run_is_within_cooldown(
+    client, monkeypatch
+) -> None:
+    """A recently completed run should publish a retry window instead of starting again."""
+    repository = get_repository()
+    completed_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+    repository.upsert_pipeline_status(
+        {
+            "status": "complete",
+            "started_at": (completed_at - timedelta(minutes=5)).isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "steps": [{"name": "store", "status": "complete"}],
+        }
+    )
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_COOLDOWN_SECONDS", "600")
+
+    local_thread_started = False
+
+    def unexpected_start(*_args, **_kwargs) -> None:
+        nonlocal local_thread_started
+        local_thread_started = True
+
+    monkeypatch.setattr(
+        pipeline_handler, "_start_local_pipeline_thread", unexpected_start
+    )
+
+    response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert response.status_code == 429
+    response_body = response.json()
+    assert response.headers["Retry-After"] == str(response_body["retry_after_seconds"])
+    assert response_body["error"] == (
+        "Pipeline run too recent. "
+        f"Last run completed at {completed_at.isoformat()}."
+    )
+    assert 1 <= response_body["retry_after_seconds"] <= 480
+    assert not local_thread_started
+    assert repository.get_pipeline_status_record()["status"] == "complete"
+
+
+def test_trigger_starts_when_last_completed_run_is_outside_cooldown(
+    client, monkeypatch
+) -> None:
+    """A cooled-down completed run should allow a fresh manual trigger."""
+    repository = get_repository()
+    completed_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    repository.upsert_pipeline_status(
+        {
+            "status": "complete",
+            "started_at": (completed_at - timedelta(minutes=5)).isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "steps": [{"name": "store", "status": "complete"}],
+        }
+    )
+    monkeypatch.setenv("WORLD_ANALYST_PIPELINE_COOLDOWN_SECONDS", "600")
+
+    started_run: dict[str, str] = {}
+
+    def fake_start_local_pipeline_thread(
+        *, run_id: str, raw_archive_store: Any | None
+    ) -> None:
+        started_run["run_id"] = run_id
+        started_run["raw_archive_store"] = "configured" if raw_archive_store else "missing"
+
+    monkeypatch.setattr(
+        pipeline_handler,
+        "_start_local_pipeline_thread",
+        fake_start_local_pipeline_thread,
+    )
+
+    response = client.post("/api/v1/pipeline/trigger", headers=AUTH_HEADERS)
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "running"
+    assert "run_id" not in response.json()
+    assert started_run["run_id"]
+    assert started_run["raw_archive_store"] == "configured"
+    assert repository.get_pipeline_status_record()["status"] == "running"
 
 
 def test_cloud_dispatch_preflight_failure_returns_failed_status(

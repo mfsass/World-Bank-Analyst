@@ -31,6 +31,7 @@ def reset_repository(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("WORLD_ANALYST_STORAGE_BACKEND", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_RAW_ARCHIVE_BUCKET", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_PIPELINE_DISPATCH_MODE", raising=False)
+    monkeypatch.delenv("WORLD_ANALYST_PIPELINE_COOLDOWN_SECONDS", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_PIPELINE_JOB_REGION", raising=False)
     monkeypatch.delenv("WORLD_ANALYST_PIPELINE_JOB_NAME", raising=False)
