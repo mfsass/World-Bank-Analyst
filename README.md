@@ -6,7 +6,7 @@
 [![API Base](https://img.shields.io/badge/API-Base-1f6feb?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1)
 [![API Health](https://img.shields.io/badge/API-Health-198754?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/health)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-Spec-0f766e?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml)
-[![Swagger Explorer](https://img.shields.io/badge/Swagger-Explorer-0ea5e9?style=for-the-badge)](https://editor.swagger.io/?url=https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml)
+[![OpenAPI JSON](https://img.shields.io/badge/OpenAPI-JSON-0b7285?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.json)
 
 ## Live Access (Start Here)
 
@@ -18,7 +18,7 @@
 
 **OpenAPI spec:** https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml
 
-**Swagger explorer:** https://editor.swagger.io/?url=https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml
+**OpenAPI JSON:** https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.json
 
 AI-generated analysis may contain inaccuracies.
 
