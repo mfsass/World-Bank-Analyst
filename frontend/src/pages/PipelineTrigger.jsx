@@ -43,7 +43,11 @@ function FormattedStory({ text }) {
       {parts.map((part, index) => {
         if (part.startsWith("**") && part.endsWith("**")) {
           return (
-            <span className="text-accent" style={{ fontWeight: 600 }} key={index}>
+            <span
+              className="text-accent"
+              style={{ fontWeight: 600 }}
+              key={index}
+            >
               {part.slice(2, -2)}
             </span>
           );
@@ -182,7 +186,8 @@ function getRequestNotice(error) {
       tone: "warning",
       message: Number.isFinite(retryAfterSeconds)
         ? `Manual trigger is cooling down. Try again in ${formatRetryWindow(retryAfterSeconds)}.`
-        : error.payload?.error || "Manual trigger is cooling down. Try again later.",
+        : error.payload?.error ||
+          "Manual trigger is cooling down. Try again later.",
     };
   }
 
@@ -224,14 +229,34 @@ function getExecutionCopy(step) {
   return statusCopy;
 }
 
-function buildTerminalLines(mode, status, executionSteps, activeStageActivity, activityTick) {
+function buildTerminalLines(
+  mode,
+  status,
+  executionSteps,
+  activeStageActivity,
+  activityTick,
+) {
   const nodes = [];
 
-  const addLine = (text) => nodes.push(<span key={nodes.length}>{text}{"\n"}</span>);
+  const addLine = (text) =>
+    nodes.push(
+      <span key={nodes.length}>
+        {text}
+        {"\n"}
+      </span>,
+    );
 
-  addLine(`> MODE: ${mode === "real" ? "REAL RUN" : "DEMO WALKTHROUGH (SIMULATED)"}`);
-  addLine(mode === "real" ? "> SOURCE: /PIPELINE/TRIGGER + /PIPELINE/STATUS" : "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)");
-  addLine(`> STAGE MODEL: ${executionSteps.map((step) => step.name.toUpperCase()).join(" -> ")}`);
+  addLine(
+    `> MODE: ${mode === "real" ? "REAL RUN" : "DEMO WALKTHROUGH (SIMULATED)"}`,
+  );
+  addLine(
+    mode === "real"
+      ? "> SOURCE: /PIPELINE/TRIGGER + /PIPELINE/STATUS"
+      : "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)",
+  );
+  addLine(
+    `> STAGE MODEL: ${executionSteps.map((step) => step.name.toUpperCase()).join(" -> ")}`,
+  );
   addLine(
     mode === "real"
       ? "> TARGET SCOPE: CONFIGURED RUNTIME"
@@ -251,15 +276,19 @@ function buildTerminalLines(mode, status, executionSteps, activeStageActivity, a
       nodes.push(
         <span key={`step-${step.name}`}>
           {`> ${step.name.toUpperCase().padEnd(10, " ")} ${verb}${dots}\n`}
-        </span>
+        </span>,
       );
     } else {
-      addLine(`> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`);
+      addLine(
+        `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}${duration}`,
+      );
     }
   });
 
   if (status?.status === "running" && activeStageActivity) {
-    addLine(`> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`);
+    addLine(
+      `> ACTIVE OPERATION: ${activeStageActivity.verb.toUpperCase()} ${activeStageActivity.label.toUpperCase()}`,
+    );
   }
 
   if (mode === "demo") {
@@ -302,16 +331,31 @@ function buildReplaySteps(activeStageIndex, isReplayComplete) {
   });
 }
 
-function buildReplayTerminalOutput(activeStep, replaySteps, isReplayComplete, activityTick) {
+function buildReplayTerminalOutput(
+  activeStep,
+  replaySteps,
+  isReplayComplete,
+  activityTick,
+) {
   const nodes = [];
 
-  const addLine = (text) => nodes.push(<span key={nodes.length}>{text}{"\n"}</span>);
+  const addLine = (text) =>
+    nodes.push(
+      <span key={nodes.length}>
+        {text}
+        {"\n"}
+      </span>,
+    );
 
   addLine("> MODE: DEMO WALKTHROUGH (SIMULATED)");
   addLine("> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)");
-  addLine(`> STAGE MODEL: ${replaySteps.map((step) => step.name.toUpperCase()).join(" -> ")}`);
+  addLine(
+    `> STAGE MODEL: ${replaySteps.map((step) => step.name.toUpperCase()).join(" -> ")}`,
+  );
   addLine("> TARGET SCOPE: DEMO WALKTHROUGH");
-  addLine(`> STATUS: ${(isReplayComplete ? "complete" : "running").toUpperCase()}`);
+  addLine(
+    `> STATUS: ${(isReplayComplete ? "complete" : "running").toUpperCase()}`,
+  );
 
   replaySteps.forEach((step) => {
     if (step.status === "running") {
@@ -325,10 +369,12 @@ function buildReplayTerminalOutput(activeStep, replaySteps, isReplayComplete, ac
       nodes.push(
         <span key={`step-${step.name}`}>
           {`> ${step.name.toUpperCase().padEnd(10, " ")} ${verb}${dots}\n`}
-        </span>
+        </span>,
       );
     } else {
-      addLine(`> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}`);
+      addLine(
+        `> ${step.name.toUpperCase().padEnd(10, " ")} ${step.status.toUpperCase()}`,
+      );
     }
   });
 
@@ -801,7 +847,9 @@ export function PipelineTrigger() {
       /* Seed the live countdown when the API returns a cooldown window. */
       if (error.status === 429) {
         const seconds = Number(error.payload?.retry_after_seconds);
-        setCooldownSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : null);
+        setCooldownSeconds(
+          Number.isFinite(seconds) && seconds > 0 ? seconds : null,
+        );
       } else {
         setCooldownSeconds(null);
       }
@@ -998,7 +1046,9 @@ export function PipelineTrigger() {
             >
               <p
                 className={`text-body ${
-                  requestErrorTone === "warning" ? "text-warning" : "text-critical"
+                  requestErrorTone === "warning"
+                    ? "text-warning"
+                    : "text-critical"
                 }`}
               >
                 {cooldownSeconds !== null

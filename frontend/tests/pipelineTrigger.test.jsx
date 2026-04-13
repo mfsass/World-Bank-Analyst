@@ -146,7 +146,9 @@ describe("PipelineTrigger", () => {
     fireEvent.click(dialogQueries.getByRole("button", { name: "Next stage" }));
 
     expect(
-      dialogQueries.getByRole("heading", { name: "Country + overview synthesis" }),
+      dialogQueries.getByRole("heading", {
+        name: "Country + overview synthesis",
+      }),
     ).toBeInTheDocument();
 
     const persistOutputsCard = dialogQueries
