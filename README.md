@@ -2,7 +2,37 @@
 
 > AI-native global economic intelligence terminal for the ML6 Engineering Challenge.
 
-## What This Is
+[![Live Frontend](https://img.shields.io/badge/Live-Frontend-FF4500?style=for-the-badge)](https://world-analyst-frontend-495164848006.europe-west1.run.app)
+[![Live API](https://img.shields.io/badge/Live-API-1f6feb?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1)
+
+## Live Access (Start Here)
+
+**Frontend dashboard:** https://world-analyst-frontend-495164848006.europe-west1.run.app
+
+**API base:** https://world-analyst-api-495164848006.europe-west1.run.app/api/v1
+
+AI-generated analysis may contain inaccuracies.
+
+## Jump To
+
+- [Demo In 60 Seconds](#demo-in-60-seconds)
+- [What This Project Does](#what-this-project-does)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Development](#development)
+- [Reviewer Quick Path](#reviewer-quick-path)
+- [Documentation](#documentation)
+
+## Demo In 60 Seconds
+
+1. Open the frontend dashboard: https://world-analyst-frontend-495164848006.europe-west1.run.app
+2. Go to the Pipeline Trigger page and run a pipeline job.
+3. Open one country page and confirm the narrative highlights direction, magnitude, and risk.
+4. Validate API health quickly: https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/health
+
+Expected outcome: the UI loads, trigger flow responds, and country intelligence is available for the full monitored panel.
+
+## What This Project Does
 
 World Bank Analyst pulls economic data from the World Bank, processes it through a two-step LLM analysis chain, and serves structured insights through a Connexion REST API to a React frontend.
 
@@ -121,7 +151,8 @@ See `.agents/workflows/deploy.md` for copy-pasteable service-account, secret-cre
 
 Treat that workflow as the developer-facing deployment source of truth. It now documents both the commands and the rollout lessons that actually mattered in practice: repo-root image builds, override-based Cloud Run Job IAM, the scheduler OAuth scope, the frontend proxy runtime split, and the smoke gate that proves the deployment is real.
 
-Cloud rollout notes:
+<details>
+<summary>Cloud rollout notes (operator details)</summary>
 
 - `frontend/nginx/default.conf.template` already proxies `/api/v1/` and injects `X-API-Key` server-side. Do not bake the API key into frontend assets.
 - `POST /api/v1/pipeline/trigger` stays on the deterministic local thread path unless `WORLD_ANALYST_PIPELINE_DISPATCH_MODE=cloud` is set explicitly.
@@ -132,6 +163,8 @@ Cloud rollout notes:
 - The Cloud Scheduler job creation command should include `--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform` when targeting the Cloud Run Jobs API.
 - Firestore mode requires the paired GCS bucket because stored records keep raw archive references alongside processed documents.
 - Live AI now runs through `pipeline/ai_client.py`. The default live baseline is Google GenAI `gemma-4-31b-it` with `GEMINI_API_KEY` supplied server-side; switch providers deliberately with `WORLD_ANALYST_AI_PROVIDER=openai` plus `OPENAI_API_KEY`.
+
+</details>
 
 Container entry points for Cloud Run builds now live in `api/Dockerfile`, `pipeline/Dockerfile`, and `frontend/Dockerfile`. The API container now serves the Connexion app through Gunicorn via `api/wsgi.py` instead of the Flask development server.
 
@@ -173,14 +206,7 @@ python -m pipeline.evaluation
 | The shipped feature and architecture phases | `docs/prds/` |
 | The trade-offs behind the current shape | `docs/DECISIONS.md` |
 
-### Live Access
-
-| Surface | URL |
-| --- | --- |
-| Dashboard | `https://world-analyst-frontend-495164848006.europe-west1.run.app` |
-| API base | `https://world-analyst-api-495164848006.europe-west1.run.app/api/v1` |
-
-These URLs were confirmed against the live Cloud Run rollout and smoke gate: the API health endpoint responds, the direct protected countries endpoint rejects unauthenticated access with `401`, and the frontend proxy returns the full 17-country panel.
+These live URLs were confirmed against the Cloud Run smoke gate: the API health endpoint responds, the direct protected countries endpoint rejects unauthenticated access with `401`, and the frontend proxy returns the full 17-country panel.
 
 ## Git Workflow
 
