@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { AIInsightPanel } from "../components/AIInsightPanel";
@@ -64,6 +65,21 @@ const TECH_STRIP = [
 ];
 
 export function HowItWorks() {
+  const [activeStageIndex, setActiveStageIndex] = useState(0);
+  const activeStage =
+    PIPELINE_STAGE_MODEL[activeStageIndex] || PIPELINE_STAGE_MODEL[0];
+  const isFirstStage = activeStageIndex === 0;
+  const isLastStage = activeStageIndex === PIPELINE_STAGE_MODEL.length - 1;
+
+  function moveStage(direction) {
+    setActiveStageIndex((currentIndex) =>
+      Math.min(
+        PIPELINE_STAGE_MODEL.length - 1,
+        Math.max(0, currentIndex + direction),
+      ),
+    );
+  }
+
   return (
     <div className="page page--how-it-works container">
       <PageHeader
@@ -202,24 +218,113 @@ export function HowItWorks() {
       </section>
 
       <section className="architecture-prompt-grid section-gap">
-        {PIPELINE_STAGE_MODEL.map((stage, index) => (
-          <div className="card architecture-step-card" key={stage.name}>
-            <div className="panel-header">
-              <div>
-                <p className="text-label">
-                  Stage {String(index + 1).padStart(2, "0")}
-                </p>
-                <h2 className="text-headline mt-3">{stage.title}</h2>
-              </div>
-              <StatusPill tone="neutral">{stage.name}</StatusPill>
+        <article className="card architecture-step-card architecture-step-card--active">
+          <div className="panel-header">
+            <div>
+              <p className="text-label">
+                Stage {String(activeStageIndex + 1).padStart(2, "0")}
+              </p>
+              <h2 className="text-headline mt-3">{activeStage.title}</h2>
             </div>
-            <p className="text-body text-secondary mt-4">{stage.story}</p>
-            <div className="architecture-step-card__detail mt-4">
-              <span className="text-label">Output</span>
-              <p className="text-body text-secondary mt-3">{stage.outcome}</p>
+            <StatusPill tone="neutral">{activeStage.name}</StatusPill>
+          </div>
+          <p className="text-body text-secondary mt-4">{activeStage.story}</p>
+          <div className="architecture-step-card__detail mt-4">
+            <span className="text-label">Output</span>
+            <p className="text-body text-secondary mt-3">{activeStage.outcome}</p>
+          </div>
+          <div className="architecture-step-card__detail mt-4">
+            <span className="text-label">Stage activity</span>
+            <div className="architecture-step-card__activity-list mt-3">
+              {activeStage.activities.map((activity) => (
+                <div
+                  className="architecture-step-card__activity"
+                  key={activity.label}
+                >
+                  <p className="text-label">{activity.label}</p>
+                  <p className="architecture-step-card__activity-verb mt-2">
+                    {activity.verb}
+                  </p>
+                  <p className="text-body text-secondary mt-3">
+                    {activity.detail}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
-        ))}
+        </article>
+
+        <div className="card architecture-step-sequence">
+          <div className="panel-header">
+            <div>
+              <p className="text-label">Interactive sequence</p>
+              <h2 className="text-headline mt-3">Current step lit, next steps dimmed</h2>
+            </div>
+            <StatusPill tone="neutral">
+              {String(activeStageIndex + 1).padStart(2, "0")} /{" "}
+              {String(PIPELINE_STAGE_MODEL.length).padStart(2, "0")}
+            </StatusPill>
+          </div>
+
+          <div className="architecture-step-sequence__list mt-4">
+            {PIPELINE_STAGE_MODEL.map((stage, index) => {
+              const isActive = index === activeStageIndex;
+              const stateLabel = isActive
+                ? "Current"
+                : index < activeStageIndex
+                  ? "Reviewed"
+                  : "Up next";
+
+              return (
+                <button
+                  aria-current={isActive ? "step" : undefined}
+                  className={`architecture-step-sequence__item ${
+                    isActive
+                      ? "architecture-step-sequence__item--active"
+                      : "architecture-step-sequence__item--inactive"
+                  }`}
+                  key={stage.name}
+                  onClick={() => setActiveStageIndex(index)}
+                  type="button"
+                >
+                  <div className="architecture-step-sequence__meta">
+                    <div>
+                      <p className="architecture-step-sequence__index">
+                        Stage {String(index + 1).padStart(2, "0")}
+                      </p>
+                      <h3 className="text-title mt-2">{stage.title}</h3>
+                    </div>
+                    <span className="architecture-step-sequence__status">
+                      {stateLabel}
+                    </span>
+                  </div>
+                  <p className="text-body text-secondary mt-3">
+                    {stage.latencyNote}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="architecture-step-sequence__controls mt-4">
+            <button
+              className="btn-ghost"
+              disabled={isFirstStage}
+              onClick={() => moveStage(-1)}
+              type="button"
+            >
+              Previous
+            </button>
+            <button
+              className="btn-primary"
+              disabled={isLastStage}
+              onClick={() => moveStage(1)}
+              type="button"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="architecture-spec-strip section-gap">

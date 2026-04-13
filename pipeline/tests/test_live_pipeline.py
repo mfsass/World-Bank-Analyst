@@ -637,7 +637,7 @@ def test_live_pipeline_uses_world_bank_fetch_and_archives_raw_request_envelopes(
         list(INDICATORS)
     )
     assert indicator_record["ai_provenance"]["provider"] == "stub-live-provider"
-    assert indicator_record["ai_provenance"]["prompt_version"] == "step1.v1.0.0"
+    assert indicator_record["ai_provenance"]["prompt_version"] == STEP1_PROMPT_VERSION
     assert indicator_record["ai_provenance"]["degraded"] is False
     assert country_record["ai_provenance"]["provider"] == "stub-live-provider"
     assert country_record["ai_provenance"]["prompt_version"] == "step2.v2.0.0"

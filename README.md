@@ -38,6 +38,8 @@ World Bank API → Cloud Run Job (Python + Pandas)
     → React Frontend (World Bank Analyst Dashboard)
 ```
 
+The 17-country monitored panel is not an editorial shortlist. It is the smallest World Bank 2024 exact-complete set with full 2010-2024 coverage across all six indicators, which is why Bahamas and El Salvador stay in scope while larger economies with missing series do not. That rule keeps the live demo comparable across every market in the panel instead of mixing complete and partial histories. See [ADR-041](docs/DECISIONS.md#adr-041-replace-ml6-market-scope-with-a-2024-exact-complete-17-country-core-panel).
+
 ### Three Services
 
 | Service                  | Technology            | Role                                                         |

@@ -11,17 +11,20 @@ import { Link } from "react-router-dom";
 import worldGeography from "world-atlas/countries-110m.json";
 
 import { StatusPill } from "../components/StatusPill";
-import { apiRequest, fetchCountryDetail } from "../api";
+import { apiRequest, fetchCountryDetail, fetchGlobalOverview } from "../api";
 import {
   getCachedCountry,
-  setCachedCountry,
-  getCountriesList,
-  setCountriesList,
   getOverviewCache,
+  setCachedCountry,
+  setCountriesList,
   setOverviewCache,
   startBackgroundWarm,
   updateCacheGeneration,
 } from "../lib/countryDetailCache";
+import {
+  getDisplayChangeBasis,
+  getDisplayChangeValue,
+} from "../lib/indicatorSignals.js";
 import {
   deriveCoverageBoard,
   deriveOverviewMetrics,
@@ -32,6 +35,7 @@ import {
   formatMetricValue,
   formatSourceDateRange,
   formatTimestamp,
+  getBoundedOverlayPosition,
   getEmptyStateBody,
   getEmptyStateHeading,
   getLatestDataYear,
@@ -50,6 +54,13 @@ const MAP_POPOVER = {
   height: 80,
   gap: 14,
   edgePadding: 12,
+};
+
+const MAP_TOOLTIP = {
+  width: 172,
+  height: 64,
+  gap: 12,
+  edgePadding: 10,
 };
 
 const MAP_POPOVER_ID = "overview-map-popover";
@@ -93,18 +104,6 @@ const DETAIL_SIGNAL_CODES = [
 // the local alias keeps the call sites within this module readable.
 const fetchCountryBriefing = fetchCountryDetail;
 
-async function fetchGlobalOverview() {
-  try {
-    return await apiRequest("/overview");
-  } catch (error) {
-    if (error.status === 404) {
-      return null;
-    }
-
-    throw error;
-  }
-}
-
 /** Phase 1: fetch the AI global overview and country list — renders the hero panel. */
 async function fetchOverviewPhase1() {
   const [panelOverview, countries] = await Promise.all([
@@ -121,6 +120,47 @@ async function fetchOverviewPhase2() {
     apiRequest("/indicators"),
   ]);
   return { status, indicators };
+}
+
+function buildOverviewState(nextOverview, briefings = []) {
+  return {
+    status: nextOverview.status ?? null,
+    countries: nextOverview.countries ?? [],
+    indicators: nextOverview.indicators ?? [],
+    briefings,
+    panelOverview: nextOverview.panelOverview ?? null,
+  };
+}
+
+function buildOverviewCacheSnapshot(nextOverview) {
+  return {
+    panelOverview: nextOverview.panelOverview ?? null,
+    countries: nextOverview.countries ?? [],
+    status: nextOverview.status ?? null,
+    indicators: nextOverview.indicators ?? [],
+  };
+}
+
+function hasOverviewCacheSnapshot(snapshot) {
+  return Boolean(
+    snapshot &&
+      Array.isArray(snapshot.countries) &&
+      "status" in snapshot &&
+      Array.isArray(snapshot.indicators) &&
+      "panelOverview" in snapshot,
+  );
+}
+
+async function fetchOverviewInitialData() {
+  const [phase1, phase2] = await Promise.all([
+    fetchOverviewPhase1(),
+    fetchOverviewPhase2(),
+  ]);
+
+  return {
+    ...phase1,
+    ...phase2,
+  };
 }
 
 function getPipelineTone(status) {
@@ -183,37 +223,11 @@ function getCountryCoordinates(countryCode) {
 }
 
 function getMapPopoverPosition(point, bounds) {
-  const [x, y] = point;
-  const preferredLeft = x - MAP_POPOVER.width / 2;
-  const maximumLeft = Math.max(
-    MAP_POPOVER.edgePadding,
-    bounds.width - MAP_POPOVER.width - MAP_POPOVER.edgePadding,
-  );
-  const clampedLeft = Math.min(
-    maximumLeft,
-    Math.max(MAP_POPOVER.edgePadding, preferredLeft),
-  );
-  const availableAbove = y - MAP_POPOVER.gap - MAP_POPOVER.edgePadding;
-  const availableBelow =
-    bounds.height - y - MAP_POPOVER.gap - MAP_POPOVER.edgePadding;
-  const openBelow =
-    availableBelow >= MAP_POPOVER.height || availableBelow >= availableAbove;
-  const preferredTop = openBelow
-    ? y + MAP_POPOVER.gap
-    : y - (MAP_POPOVER.height + MAP_POPOVER.gap);
-  const maximumTop = Math.max(
-    MAP_POPOVER.edgePadding,
-    bounds.height - MAP_POPOVER.height - MAP_POPOVER.edgePadding,
-  );
-  const clampedTop = Math.min(
-    maximumTop,
-    Math.max(MAP_POPOVER.edgePadding, preferredTop),
-  );
+  return getBoundedOverlayPosition(point, bounds, MAP_POPOVER);
+}
 
-  return {
-    left: clampedLeft,
-    top: clampedTop,
-  };
+function getMapTooltipPosition(point, bounds) {
+  return getBoundedOverlayPosition(point, bounds, MAP_TOOLTIP);
 }
 
 function mergeBriefings(currentBriefings, nextBriefing) {
@@ -470,6 +484,7 @@ export function GlobalOverview() {
     countries: [],
     indicators: [],
     briefings: [],
+    panelOverview: null,
   });
   const [viewState, setViewState] = useState("loading");
   const [requestError, setRequestError] = useState("");
@@ -489,6 +504,40 @@ export function GlobalOverview() {
     queuePrefetchStartedRef.current = false;
     setLoadingBriefingCodes([]);
   }, []);
+
+  const applyReadyOverview = useCallback(
+    (nextOverview, options = {}) => {
+      const { preserveBriefings = false } = options;
+      const nextCountries = nextOverview.countries ?? [];
+      const completedAt = nextOverview.status?.completed_at ?? null;
+
+      if (!preserveBriefings) {
+        resetBriefingHydrationState();
+      }
+
+      setOverview((currentOverview) =>
+        buildOverviewState(
+          nextOverview,
+          preserveBriefings ? currentOverview.briefings : [],
+        ),
+      );
+      updateCacheGeneration(completedAt);
+      setCountriesList(nextCountries);
+      setOverviewCache(buildOverviewCacheSnapshot(nextOverview));
+      setViewState("ready");
+      setRequestError("");
+
+      // Warm country pages only after the landing surface has the data required
+      // for a stable first render, so the cache work never decides when the
+      // skeleton should clear.
+      startBackgroundWarm(
+        nextCountries.map((country) => country.code),
+        fetchCountryBriefing,
+        completedAt,
+      );
+    },
+    [resetBriefingHydrationState],
+  );
 
   const loadCountryBriefing = useCallback(
     async (countryCode) => {
@@ -568,76 +617,21 @@ export function GlobalOverview() {
     async function loadOverview() {
       try {
         const cachedOverview = getOverviewCache();
-        const cachedCountries = getCountriesList();
 
-        if (cachedOverview && cachedCountries) {
-          // Cache hit — render hero immediately without a loading skeleton,
-          // then silently refresh phase 1 + 2 in the background so the page
-          // always converges to fresh data without the user waiting.
-          resetBriefingHydrationState();
-          setOverview((prev) => ({
-            ...prev,
-            panelOverview: cachedOverview,
-            countries: cachedCountries,
-            briefings: [],
-          }));
-          setViewState("ready");
-          setRequestError("");
+        if (hasOverviewCacheSnapshot(cachedOverview)) {
+          applyReadyOverview(cachedOverview);
 
-          // Background refresh — updates overview and countries silently.
-          const phase1 = await fetchOverviewPhase1();
+          const refreshedOverview = await fetchOverviewInitialData();
           if (!isActive) return;
-          setOverview((prev) => ({ ...prev, ...phase1 }));
-          setCountriesList(phase1.countries);
-          setOverviewCache(phase1.panelOverview);
-          startBackgroundWarm(
-            phase1.countries.map((c) => c.code),
-            fetchCountryBriefing,
-          );
-          fetchOverviewPhase2()
-            .then((phase2) => {
-              if (!isActive) return;
-              setOverview((prev) => ({ ...prev, ...phase2 }));
-              updateCacheGeneration(phase2.status?.completed_at ?? null);
-            })
-            .catch((err) => {
-              console.error("phase2 fetch failed", err);
-            });
+          applyReadyOverview(refreshedOverview, { preserveBriefings: true });
           return;
         }
 
-        // Cache miss — normal two-phase load with skeleton.
-        const phase1 = await fetchOverviewPhase1();
+        // Cache miss — keep the skeleton up until the full first-render
+        // payload is ready, not just the hero copy.
+        const initialOverview = await fetchOverviewInitialData();
         if (!isActive) return;
-        resetBriefingHydrationState();
-        setOverview((prev) => ({ ...prev, ...phase1 }));
-        // Cache for re-visits so next navigation skips the loading state.
-        setCountriesList(phase1.countries);
-        setOverviewCache(phase1.panelOverview);
-        setViewState("ready");
-        setRequestError("");
-
-        // Begin background warming for all monitored countries. Priority
-        // order follows the country catalog (highest-coverage countries first).
-        // Already-cached codes are skipped automatically by startBackgroundWarm
-        // so this never duplicates in-flight or completed fetches.
-        startBackgroundWarm(
-          phase1.countries.map((c) => c.code),
-          fetchCountryBriefing,
-        );
-
-        // Phase 2: hydrate indicator stats and pipeline status in background
-        fetchOverviewPhase2()
-          .then((phase2) => {
-            if (!isActive) return;
-            setOverview((prev) => ({ ...prev, ...phase2 }));
-            // Advance the cache generation so any entries pre-dating this
-            // completed run are discarded on the next access.
-            updateCacheGeneration(phase2.status?.completed_at ?? null);
-          })
-          .catch((err) => {
-            console.error("phase2 fetch failed", err);
-          });
+        applyReadyOverview(initialOverview);
       } catch (error) {
         if (!isActive) {
           return;
@@ -652,7 +646,7 @@ export function GlobalOverview() {
     return () => {
       isActive = false;
     };
-  }, [resetBriefingHydrationState]);
+  }, [applyReadyOverview]);
 
   useEffect(() => {
     if (overview.status?.status !== "running") {
@@ -675,27 +669,9 @@ export function GlobalOverview() {
 
         if (nextStatus.status !== "running") {
           window.clearInterval(intervalId);
-          // Two-phase reload after the run completes
-          const phase1 = await fetchOverviewPhase1();
+          const refreshedOverview = await fetchOverviewInitialData();
           if (!isActive) return;
-          resetBriefingHydrationState();
-          setOverview((prev) => ({ ...prev, ...phase1 }));
-          setCountriesList(phase1.countries);
-          // Re-warm after a new pipeline run: phase 2 provides the new
-          // completed_at which invalidates pre-run cache entries.
-          startBackgroundWarm(
-            phase1.countries.map((c) => c.code),
-            fetchCountryBriefing,
-          );
-          fetchOverviewPhase2()
-            .then((phase2) => {
-              if (!isActive) return;
-              setOverview((prev) => ({ ...prev, ...phase2 }));
-              updateCacheGeneration(phase2.status?.completed_at ?? null);
-            })
-            .catch((err) => {
-              console.error("phase2 fetch failed", err);
-            });
+          applyReadyOverview(refreshedOverview);
         }
       } catch (error) {
         if (!isActive) {
@@ -711,7 +687,7 @@ export function GlobalOverview() {
       isActive = false;
       window.clearInterval(intervalId);
     };
-  }, [overview.status?.status, resetBriefingHydrationState]);
+  }, [applyReadyOverview, overview.status?.status]);
 
   useEffect(() => {
     const canvasElement = mapCanvasRef.current;
@@ -802,6 +778,27 @@ export function GlobalOverview() {
     .map(({ code }) => coverageBoardByCode.get(code))
     .filter(Boolean)
     .slice(0, QUEUE_CARD_LIMIT);
+  const idlePanelSignals = useMemo(
+    () =>
+      [...panelSignals]
+        .sort((left, right) => {
+          if (right.anomalyCount !== left.anomalyCount) {
+            return right.anomalyCount - left.anomalyCount;
+          }
+
+          if (right.adverseCount !== left.adverseCount) {
+            return right.adverseCount - left.adverseCount;
+          }
+
+          if (right.coverageCount !== left.coverageCount) {
+            return right.coverageCount - left.coverageCount;
+          }
+
+          return left.indicator_name.localeCompare(right.indicator_name);
+        })
+        .slice(0, 3),
+    [panelSignals],
+  );
   const highlightedMarketCode = selectedMapCountry || null;
   const highlightedMarket =
     highlightedMarketCode && coverageBoardByCode.has(highlightedMarketCode)
@@ -879,7 +876,7 @@ export function GlobalOverview() {
     : "neutral";
   const leadPressureValue = leadPressureMarket
     ? leadPressureMarket.leadChange != null
-      ? `${leadPressureMarket.code} ${formatChange(leadPressureMarket.leadChange)}`
+      ? `${leadPressureMarket.code} ${formatChange(leadPressureMarket.leadChange, leadPressureMarket.leadChangeBasis)}`
       : leadPressureMarket.code
     : "Pending";
   const leadPressureDescription = leadPressureMarket
@@ -908,18 +905,9 @@ export function GlobalOverview() {
           Open selected country
         </Link>
       ) : (
-        <button
-          className="btn-ghost"
-          onClick={() =>
-            queueSectionElementRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            })
-          }
-          type="button"
-        >
-          Review country queue
-        </button>
+        <Link className="btn-ghost" to="/country">
+          Browse all markets
+        </Link>
       )}
     </div>
   );
@@ -1107,18 +1095,9 @@ export function GlobalOverview() {
                   Open selected country
                 </Link>
               ) : (
-                <button
-                  className="btn-ghost"
-                  onClick={() =>
-                    queueSectionElementRef.current?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    })
-                  }
-                  type="button"
-                >
-                  Review country queue
-                </button>
+                <Link className="btn-ghost" to="/country">
+                  Browse all markets
+                </Link>
               )}
             </div>
           </div>
@@ -1299,14 +1278,16 @@ export function GlobalOverview() {
                     markerRect.left + markerRect.width / 2 - canvasRect.left;
                   const cy =
                     markerRect.top + markerRect.height / 2 - canvasRect.top;
+                  const tooltipPosition = getMapTooltipPosition([cx, cy], {
+                    width: canvasRect.width,
+                    height: canvasRect.height,
+                  });
                   return (
                     <div
                       className="overview-map-tooltip"
                       style={{
-                        position: "absolute",
-                        left: `${cx}px`,
-                        top: `${cy - 48}px`,
-                        transform: "translateX(-50%)",
+                        left: `${tooltipPosition.left}px`,
+                        top: `${tooltipPosition.top}px`,
                       }}
                     >
                       <span className="text-label">{hoverMarket.code}</span>
@@ -1387,10 +1368,13 @@ export function GlobalOverview() {
                       <span
                         className={`overview-signal-cell__delta text-label ${getSignalTone(
                           leadKpi.indicator_code,
-                          leadKpi.percent_change,
+                          getDisplayChangeValue(leadKpi),
                         )}`}
                       >
-                        {formatChange(leadKpi.percent_change)}
+                        {formatChange(
+                          getDisplayChangeValue(leadKpi),
+                          getDisplayChangeBasis(leadKpi),
+                        )}
                       </span>
                     ) : (
                       <span className="overview-signal-cell__delta text-label text-secondary">
@@ -1468,7 +1452,10 @@ export function GlobalOverview() {
                               }`}
                             >
                               {market.leadChange != null
-                                ? formatChange(market.leadChange)
+                                ? formatChange(
+                                    market.leadChange,
+                                    market.leadChangeBasis,
+                                  )
                                 : "--"}
                             </span>
                             <StatusPill tone={market.statusTone}>
@@ -1483,24 +1470,83 @@ export function GlobalOverview() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-body text-secondary mt-4 overview-market-summary">
-                    {queueLeadCopy}
-                  </p>
+                  <>
+                    <div className="overview-idle-summary mt-4">
+                      <p className="text-label">Panel summary</p>
+                      <p className="text-body text-secondary mt-3">
+                        {panelOverview?.summary || queueLeadCopy}
+                      </p>
+                    </div>
+
+                    {idlePanelSignals.length ? (
+                      <div className="overview-idle-signals mt-4">
+                        {idlePanelSignals.map((indicator) => (
+                          <article
+                            className="overview-idle-signal"
+                            key={indicator.indicator_code}
+                          >
+                            <div className="panel-header">
+                              <div>
+                                <p className="text-label">Risk signal</p>
+                                <h3 className="text-title mt-3">
+                                  {indicator.indicator_name}
+                                </h3>
+                              </div>
+                              <span className="text-label text-secondary">
+                                {indicator.coverageCount} markets
+                              </span>
+                            </div>
+                            <div className="indicator-meta mt-3">
+                              <span className="text-metric">
+                                {indicator.adverseCount}/{indicator.coverageCount}
+                              </span>
+                              <span
+                                className={`text-label ${indicator.statisticalAnomalyTone}`}
+                              >
+                                {indicator.statisticalAnomalyLabel}
+                              </span>
+                            </div>
+                            <p className="text-body text-secondary mt-3">
+                              {indicator.stressedMarketCode
+                                ? `${indicator.adverseCount} of ${indicator.coverageCount} markets moved in the wrong direction. Current stress point // ${indicator.stressedMarketCode} ${formatChange(indicator.stressedMarketChange, indicator.stressedMarketChangeBasis)}`
+                                : `${indicator.adverseCount} of ${indicator.coverageCount} markets moved in the wrong direction.`}
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-body text-secondary mt-4 overview-market-summary">
+                        {queueLeadCopy}
+                      </p>
+                    )}
+
+                    <div className="overview-panel-cta-row mt-4">
+                      <p className="text-body text-secondary">
+                        Open the full market directory when you want coverage
+                        beyond the live stress queue.
+                      </p>
+                      <Link className="btn-primary" to="/country">
+                        Browse all markets
+                      </Link>
+                    </div>
+                  </>
                 )}
 
                 <div className="button-row mt-4">
-                  <button
-                    className="btn-ghost"
-                    onClick={() =>
-                      queueSectionElementRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      })
-                    }
-                    type="button"
-                  >
-                    Open market briefings
-                  </button>
+                  {pressureWatchlist.length ? (
+                    <button
+                      className="btn-ghost"
+                      onClick={() =>
+                        queueSectionElementRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        })
+                      }
+                      type="button"
+                    >
+                      Open market briefings
+                    </button>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -1573,10 +1619,13 @@ export function GlobalOverview() {
                             <span
                               className={`text-label mt-3 ${getSignalTone(
                                 indicator.indicator_code,
-                                indicator.percent_change,
+                                getDisplayChangeValue(indicator),
                               )}`}
                             >
-                              {formatChange(indicator.percent_change)}
+                              {formatChange(
+                                getDisplayChangeValue(indicator),
+                                getDisplayChangeBasis(indicator),
+                              )}
                             </span>
                           </article>
                         ))}
@@ -1722,7 +1771,10 @@ export function GlobalOverview() {
                       ? `${formatMetricValue(
                           leadIndicator.indicator_code,
                           leadIndicator.latest_value,
-                        )} // ${formatChange(leadIndicator.percent_change)}`
+                        )} // ${formatChange(
+                          getDisplayChangeValue(leadIndicator),
+                          getDisplayChangeBasis(leadIndicator),
+                        )}`
                       : "Awaiting briefing"}
                   </span>
                 </div>
@@ -1755,7 +1807,7 @@ export function GlobalOverview() {
                     </div>
                     <p className="text-body text-secondary mt-3">
                       {indicator.stressedMarketCode
-                        ? `${indicator.adverseCount} of ${indicator.coverageCount} markets moved in the wrong direction. Current stress point // ${indicator.stressedMarketCode} ${formatChange(indicator.stressedMarketChange)}`
+                        ? `${indicator.adverseCount} of ${indicator.coverageCount} markets moved in the wrong direction. Current stress point // ${indicator.stressedMarketCode} ${formatChange(indicator.stressedMarketChange, indicator.stressedMarketChangeBasis)}`
                         : `${indicator.adverseCount} of ${indicator.coverageCount} markets moved in the wrong direction.`}
                     </p>
                   </div>
