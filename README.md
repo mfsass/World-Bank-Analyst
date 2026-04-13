@@ -15,22 +15,12 @@ AI-generated analysis may contain inaccuracies.
 
 ## Jump To
 
-- [Demo In 60 Seconds](#demo-in-60-seconds)
 - [What This Project Does](#what-this-project-does)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Development](#development)
 - [Reviewer Quick Path](#reviewer-quick-path)
 - [Documentation](#documentation)
-
-## Demo In 60 Seconds
-
-1. Open the frontend dashboard: https://world-analyst-frontend-495164848006.europe-west1.run.app
-2. Go to the Pipeline Trigger page and run a pipeline job.
-3. Open one country page and confirm the narrative highlights direction, magnitude, and risk.
-4. Validate API health quickly: https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/health
-
-Expected outcome: the UI loads, trigger flow responds, and country intelligence is available for the full monitored panel.
 
 ## What This Project Does
 
@@ -72,11 +62,11 @@ The 17-country monitored panel is not an editorial shortlist. It is the smallest
 
 ### Three Services
 
-| Service                  | Technology            | Role                                                         |
-| ------------------------ | --------------------- | ------------------------------------------------------------ |
-| `world-analyst-api`      | Python + Connexion    | REST API serving insights from the active repository backend |
-| `world-analyst-pipeline` | Python + Pandas       | Data fetch → analysis → storage pipeline                     |
-| `world-analyst-frontend` | React 18 + Vite       | Dashboard served via nginx                                   |
+| Service                  | Technology         | Role                                                         |
+| ------------------------ | ------------------ | ------------------------------------------------------------ |
+| `world-analyst-api`      | Python + Connexion | REST API serving insights from the active repository backend |
+| `world-analyst-pipeline` | Python + Pandas    | Data fetch → analysis → storage pipeline                     |
+| `world-analyst-frontend` | React 18 + Vite    | Dashboard served via nginx                                   |
 
 ### Four Pages
 
@@ -89,13 +79,13 @@ The 17-country monitored panel is not an editorial shortlist. It is the smallest
 
 ## Tech Decisions
 
-| Decision     | Choice                                                              | Rationale                                                                                           |
-| ------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Storage      | **Local in-memory for development; Firestore + GCS for deployment** | Local runs stay dependency-light, while the deployed target remains document-shaped and read-heavy. |
-| Backend      | **Connexion**                                                       | OpenAPI-first, contract-enforced routing. Spec is source of truth.                                  |
-| Frontend CSS | **Vanilla CSS**                                                     | Design system uses explicit tokens. No Tailwind, no frameworks.                                     |
+| Decision     | Choice                                                              | Rationale                                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage      | **Local in-memory for development; Firestore + GCS for deployment** | Local runs stay dependency-light, while the deployed target remains document-shaped and read-heavy.                                                        |
+| Backend      | **Connexion**                                                       | OpenAPI-first, contract-enforced routing. Spec is source of truth.                                                                                         |
+| Frontend CSS | **Vanilla CSS**                                                     | Design system uses explicit tokens. No Tailwind, no frameworks.                                                                                            |
 | AI Chain     | **Two-step contract**                                               | Per-indicator analysis → macro synthesis. Live runs now use provider-backed AI, while local runs stay deterministic for tests and lightweight development. |
-| Deployment   | **Cloud Run**                                                       | Scale-to-zero, europe-west1 region.                                                                 |
+| Deployment   | **Cloud Run**                                                       | Scale-to-zero, europe-west1 region.                                                                                                                        |
 
 ### Why Not BigQuery?
 
@@ -125,11 +115,11 @@ npm run dev
 
 For deployed runtimes, keep the code default local and set the cloud services explicitly instead:
 
-| Surface | Required runtime/build configuration |
-| --- | --- |
-| API service | `WORLD_ANALYST_RUNTIME_ENV=production`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_API_KEY`, `WORLD_ANALYST_ALLOWED_ORIGINS`, `WORLD_ANALYST_PIPELINE_DISPATCH_MODE=cloud`, `WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID`, `WORLD_ANALYST_PIPELINE_JOB_REGION`, `WORLD_ANALYST_PIPELINE_JOB_NAME`, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_PIPELINE_JOB_CONTAINER_NAME` |
-| Pipeline job | `PIPELINE_MODE=live`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_RAW_ARCHIVE_BUCKET`, `GEMINI_API_KEY` for the default Google path, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_AI_PROVIDER`, `WORLD_ANALYST_GEMINI_MODEL`, `WORLD_ANALYST_OPENAI_MODEL`, `WORLD_ANALYST_AI_MAX_ATTEMPTS` |
-| Frontend runtime | The frontend already defaults to `/api/v1`; Cloud Run must set `WORLD_ANALYST_RUNTIME_ENV=production`, `WORLD_ANALYST_API_UPSTREAM`, and `WORLD_ANALYST_PROXY_API_KEY` for the nginx same-origin proxy, and the frontend service account must be able to read that secret at runtime |
+| Surface          | Required runtime/build configuration                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API service      | `WORLD_ANALYST_RUNTIME_ENV=production`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_API_KEY`, `WORLD_ANALYST_ALLOWED_ORIGINS`, `WORLD_ANALYST_PIPELINE_DISPATCH_MODE=cloud`, `WORLD_ANALYST_PIPELINE_JOB_PROJECT_ID`, `WORLD_ANALYST_PIPELINE_JOB_REGION`, `WORLD_ANALYST_PIPELINE_JOB_NAME`, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_PIPELINE_JOB_CONTAINER_NAME` |
+| Pipeline job     | `PIPELINE_MODE=live`, `REPOSITORY_MODE=firestore`, `GOOGLE_CLOUD_PROJECT`, `WORLD_ANALYST_RAW_ARCHIVE_BUCKET`, `GEMINI_API_KEY` for the default Google path, optional `WORLD_ANALYST_FIRESTORE_COLLECTION`, `WORLD_ANALYST_AI_PROVIDER`, `WORLD_ANALYST_GEMINI_MODEL`, `WORLD_ANALYST_OPENAI_MODEL`, `WORLD_ANALYST_AI_MAX_ATTEMPTS`                                                                             |
+| Frontend runtime | The frontend already defaults to `/api/v1`; Cloud Run must set `WORLD_ANALYST_RUNTIME_ENV=production`, `WORLD_ANALYST_API_UPSTREAM`, and `WORLD_ANALYST_PROXY_API_KEY` for the nginx same-origin proxy, and the frontend service account must be able to read that secret at runtime                                                                                                                             |
 
 Example cloud configuration values for this repo:
 
@@ -198,13 +188,13 @@ python -m pipeline.evaluation
 
 ## Reviewer Quick Path
 
-| If you want to validate... | Start here |
-| --- | --- |
-| The challenge fit and why the repo is shaped this way | `docs/context/world-analyst-project.md` |
-| The cloud deployment and smoke gate | `.agents/workflows/deploy.md` |
-| The AI-native workflow and agentic repo setup | `docs/AI_NATIVE_WORKFLOW.md`, `.github/agents/`, `.github/prompts/`, `.github/instructions/` |
-| The shipped feature and architecture phases | `docs/prds/` |
-| The trade-offs behind the current shape | `docs/DECISIONS.md` |
+| If you want to validate...                            | Start here                                                                                   |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| The challenge fit and why the repo is shaped this way | `docs/context/world-analyst-project.md`                                                      |
+| The cloud deployment and smoke gate                   | `.agents/workflows/deploy.md`                                                                |
+| The AI-native workflow and agentic repo setup         | `docs/AI_NATIVE_WORKFLOW.md`, `.github/agents/`, `.github/prompts/`, `.github/instructions/` |
+| The shipped feature and architecture phases           | `docs/prds/`                                                                                 |
+| The trade-offs behind the current shape               | `docs/DECISIONS.md`                                                                          |
 
 These live URLs were confirmed against the Cloud Run smoke gate: the API health endpoint responds, the direct protected countries endpoint rejects unauthenticated access with `401`, and the frontend proxy returns the full 17-country panel.
 
