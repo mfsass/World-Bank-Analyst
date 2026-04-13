@@ -12,67 +12,164 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 GDP_GROWTH_INDICATOR_CODE = "NY.GDP.MKTP.KD.ZG"
+GDP_LEVEL_INDICATOR_CODE = "NY.GDP.MKTP.CD"
 INFLATION_INDICATOR_CODE = "FP.CPI.TOTL.ZG"
 UNEMPLOYMENT_INDICATOR_CODE = "SL.UEM.TOTL.ZS"
+CURRENT_ACCOUNT_INDICATOR_CODE = "BN.CAB.XOKA.GD.ZS"
+GOVERNMENT_DEBT_INDICATOR_CODE = "GC.DOD.TOTL.GD.ZS"
+RELATIVE_PERCENT_CHANGE_BASIS = "relative_percent"
+PERCENTAGE_POINT_CHANGE_BASIS = "percentage_point"
+HIGHER_IS_BETTER_POLARITY = "higher_is_better"
+LOWER_IS_BETTER_POLARITY = "lower_is_better"
+RATE_BASED_INDICATOR_CODES = {
+    GDP_GROWTH_INDICATOR_CODE,
+    INFLATION_INDICATOR_CODE,
+    UNEMPLOYMENT_INDICATOR_CODE,
+    CURRENT_ACCOUNT_INDICATOR_CODE,
+    GOVERNMENT_DEBT_INDICATOR_CODE,
+}
+HIGHER_IS_BETTER_INDICATOR_CODES = {
+    GDP_LEVEL_INDICATOR_CODE,
+    GDP_GROWTH_INDICATOR_CODE,
+    CURRENT_ACCOUNT_INDICATOR_CODE,
+}
+LOWER_IS_BETTER_INDICATOR_CODES = {
+    INFLATION_INDICATOR_CODE,
+    UNEMPLOYMENT_INDICATOR_CODE,
+    GOVERNMENT_DEBT_INDICATOR_CODE,
+}
 
-# Anomaly detection uses a per-indicator z-score rather than a single fixed
-# percentage threshold.  A move is flagged when its year-over-year percent
-# change is more than Z_SCORE_THRESHOLD standard deviations from that
-# indicator's own historical mean across the full cross-panel window.
+# Anomaly detection: hybrid z-score approach
+# -------------------------------------------
+# Two complementary z-score lenses flag anomalous moves:
 #
-# Why z-score?
-#   A uniform 3% threshold treats GDP growth and unemployment identically.
-#   GDP growth crossing 3% is routine; CPI crossing 3% may signal overheating;
-#   a 3% shift in debt-to-GDP is almost invisible.  Each indicator has its own
-#   natural volatility range, so the anomaly bar must be relative to that
-#   indicator's own history, not an arbitrary constant.
+#  1. Cross-panel z (z_score): pool all 17 countries' YoY percent changes per
+#     indicator.  Catches moves that are unusual relative to global peers.
+#     Good for GDP growth and unemployment where peer comparison is meaningful.
 #
-# Why 2.0 standard deviations?
-#   The conventional statistical significance threshold — roughly the outer 5%
-#   of a normal distribution.  Defensible in a finance context and keeps the
-#   signal-to-noise ratio practical across a 17-country, 6-indicator panel.
+#  2. Per-country z (z_score_local): each country's own historical mean/std
+#     per indicator.  Catches moves that are unusual for *that* country's own
+#     history, regardless of what peers are doing.  Fixes the current account
+#     balance problem where pooled std across wildly different economies is so
+#     large that nothing gets flagged.
 #
-# Why pool across all countries per indicator (not per country)?
-#   With ~7 annual observations per country, per-country std collapses to noise.
-#   The cross-panel pool gives ~119 observations per indicator — enough for a
-#   meaningful baseline while also measuring each country against the global
-#   peer group, which is the right frame for a risk-flagging system.
+# is_anomaly = |z_global| >= threshold  OR  |z_local| >= threshold
+#
+# Why 2.0σ?  The conventional outer-5% level.  Defensible in a finance
+# context and keeps signal-to-noise practical across a 17-country panel.
 Z_SCORE_THRESHOLD = 2.0
 
 
-def _add_anomaly_flags(df: pd.DataFrame) -> pd.DataFrame:
-    """Flag rows whose change is anomalous relative to the indicator's history.
+def _compute_z_scores(
+    df: pd.DataFrame,
+    group_cols: list[str],
+    z_col_name: str,
+    *,
+    value_col: str,
+) -> pd.DataFrame:
+    """Compute z-scores for percent_change grouped by the given columns.
 
-    Computes z-scores per indicator across the full cross-country window, then
-    marks as anomalous any row where |z| >= Z_SCORE_THRESHOLD.  Rows without a
-    prior-year value (first observation per country-indicator) are never flagged.
+    Helper shared by both the cross-panel and per-country z-score paths.
+    Adds a column named ``z_col_name`` to the DataFrame.
 
     Args:
-        df: DataFrame with a 'percent_change' column.
+        df: DataFrame with the column named by ``value_col``.
+        group_cols: Columns to group by for mean/std computation.
+        z_col_name: Name for the resulting z-score column.
+        value_col: Column used for mean/std computation.
 
     Returns:
-        Same DataFrame with 'z_score' and 'is_anomaly' columns added in-place.
+        DataFrame with the z-score column added.
     """
-    # Compute cross-panel mean and std per indicator (pooled across all countries).
-    indicator_stats = (
-        df.groupby("indicator_code")["percent_change"]
+    stats = (
+        df.groupby(group_cols)[value_col]
         .agg(["mean", "std"])
-        .rename(columns={"mean": "_ind_mean", "std": "_ind_std"})
+        .rename(columns={"mean": "_z_mean", "std": "_z_std"})
     )
-    df = df.join(indicator_stats, on="indicator_code")
+    df = df.join(stats, on=group_cols)
 
-    # z = (x - μ) / σ; where std is 0 or NaN, treat every point as non-anomalous
-    non_zero_std = df["_ind_std"].replace(0, pd.NA).notna()
-    df["z_score"] = pd.NA
-    df.loc[non_zero_std, "z_score"] = (
-        (df.loc[non_zero_std, "percent_change"] - df.loc[non_zero_std, "_ind_mean"])
-        / df.loc[non_zero_std, "_ind_std"]
+    # z = (x - μ) / σ; where std is 0 or NaN, treat as non-anomalous
+    valid_std = df["_z_std"].replace(0, pd.NA).notna()
+    df[z_col_name] = pd.NA
+    df.loc[valid_std, z_col_name] = (
+        (df.loc[valid_std, value_col] - df.loc[valid_std, "_z_mean"])
+        / df.loc[valid_std, "_z_std"]
     )
 
-    df["is_anomaly"] = df["z_score"].abs() >= Z_SCORE_THRESHOLD
+    df = df.drop(columns=["_z_mean", "_z_std"])
+    return df
 
-    # Drop intermediate stats columns — callers don't need them.
-    df = df.drop(columns=["_ind_mean", "_ind_std"])
+
+def _add_anomaly_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """Flag rows whose change is anomalous using a hybrid z-score approach.
+
+    Two complementary z-scores are computed:
+      - z_score: cross-panel (all countries pooled per indicator)
+      - z_score_local: per-country (each country's own history per indicator)
+
+    A row is flagged when *either* |z| >= Z_SCORE_THRESHOLD.  This catches both
+    globally unusual moves and historically unusual moves for the specific
+    country.
+
+    Args:
+        df: DataFrame with a canonical 'change_value' column.
+
+    Returns:
+        DataFrame with 'z_score', 'z_score_local', and 'is_anomaly' columns.
+    """
+    # 1. Cross-panel z-score: compares each country against global peers
+    df = _compute_z_scores(
+        df, ["indicator_code"], "z_score", value_col="change_value"
+    )
+
+    # 2. Per-country z-score: compares each year against the country's own
+    #    history for that indicator — catches moves unusual for *this* economy
+    df = _compute_z_scores(
+        df,
+        ["country_code", "indicator_code"],
+        "z_score_local",
+        value_col="change_value",
+    )
+
+    # Anomaly if either lens flags the move.
+    global_flag = (df["z_score"].abs() >= Z_SCORE_THRESHOLD).fillna(False)
+    local_flag = (df["z_score_local"].abs() >= Z_SCORE_THRESHOLD).fillna(False)
+    df["is_anomaly"] = global_flag | local_flag
+    df["anomaly_basis"] = pd.NA
+    df.loc[global_flag & ~local_flag, "anomaly_basis"] = "panel"
+    df.loc[~global_flag & local_flag, "anomaly_basis"] = "historical"
+    df.loc[global_flag & local_flag, "anomaly_basis"] = "panel_and_historical"
+
+    return df
+
+
+def _add_indicator_change_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """Attach indicator-aware movement metrics to the analysed frame.
+
+    ``percent_change`` remains the backward-compatible relative-percent field used
+    throughout the existing API contract. The new canonical anomaly input is
+    ``change_value`` paired with ``change_basis``:
+
+    - level indicators (for this product, GDP in current US$) use relative %
+    - rate and ratio indicators use percentage-point deltas
+    """
+    rate_based_mask = df["indicator_code"].astype(str).isin(RATE_BASED_INDICATOR_CODES)
+    relative_previous = df["previous_value"].abs().replace(0, pd.NA)
+    df["percent_change"] = (
+        (df["value"] - df["previous_value"]) / relative_previous * 100
+    )
+
+    df["change_basis"] = RELATIVE_PERCENT_CHANGE_BASIS
+    df.loc[rate_based_mask, "change_basis"] = PERCENTAGE_POINT_CHANGE_BASIS
+    df["change_value"] = df["percent_change"]
+    df.loc[rate_based_mask, "change_value"] = (
+        df.loc[rate_based_mask, "value"] - df.loc[rate_based_mask, "previous_value"]
+    )
+    df["signal_polarity"] = HIGHER_IS_BETTER_POLARITY
+    lower_is_better_mask = df["indicator_code"].astype(str).isin(
+        LOWER_IS_BETTER_INDICATOR_CODES
+    )
+    df.loc[lower_is_better_mask, "signal_polarity"] = LOWER_IS_BETTER_POLARITY
     return df
 
 
@@ -84,10 +181,9 @@ def compute_changes(data_points: list[dict[str, Any]]) -> pd.DataFrame:
                      'year', and 'value' keys.
 
     Returns:
-        DataFrame with added 'percent_change', 'z_score', and 'is_anomaly'
-        columns.  'is_anomaly' is True when the year-over-year percent change
-        exceeds Z_SCORE_THRESHOLD standard deviations from the indicator's
-        cross-panel mean.
+        DataFrame with legacy ``percent_change`` plus canonical
+        ``change_value``/``change_basis`` signal columns, along with anomaly
+        fields.
     """
     if not data_points:
         return pd.DataFrame()
@@ -99,10 +195,7 @@ def compute_changes(data_points: list[dict[str, Any]]) -> pd.DataFrame:
         ["country_code", "indicator_code"]
     )["value"].shift(1)
 
-    df["percent_change"] = (
-        (df["value"] - df["previous_value"]) / df["previous_value"].abs() * 100
-    )
-
+    df = _add_indicator_change_metrics(df)
     df = _add_anomaly_flags(df)
 
     logger.info(
@@ -180,9 +273,15 @@ def prepare_llm_context(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "percent_change": _round_optional_number(
                     row.get("percent_change"), digits=2
                 ),
+                "change_value": _round_optional_number(
+                    row.get("change_value"), digits=2
+                ),
+                "change_basis": _optional_string(row.get("change_basis")),
+                "signal_polarity": _optional_string(row.get("signal_polarity")),
                 # z_score gives the LLM the anomaly severity, not just a boolean.
                 "z_score": _round_optional_number(row.get("z_score"), digits=2),
-                "is_anomaly": bool(row.get("is_anomaly", False)),
+                "is_anomaly": _as_bool(row.get("is_anomaly")),
+                "anomaly_basis": _optional_string(row.get("anomaly_basis")),
                 "data_year": int(row["year"]),
             }
         )
@@ -282,18 +381,33 @@ def _build_time_series_point(row: Any) -> dict[str, Any]:
     point: dict[str, Any] = {
         "year": int(row["year"]),
         "value": round(float(row["value"]), 4),
-        "is_anomaly": bool(row.get("is_anomaly", False)),
+        "is_anomaly": _as_bool(row.get("is_anomaly")),
     }
     previous_value = _round_optional_number(row.get("previous_value"), digits=4)
     percent_change = _round_optional_number(row.get("percent_change"), digits=2)
     z_score = _round_optional_number(row.get("z_score"), digits=2)
+    z_score_local = _round_optional_number(row.get("z_score_local"), digits=2)
 
     if previous_value is not None:
         point["previous_value"] = previous_value
     if percent_change is not None:
         point["percent_change"] = percent_change
+    change_value = _round_optional_number(row.get("change_value"), digits=2)
+    if change_value is not None:
+        point["change_value"] = change_value
+    change_basis = _optional_string(row.get("change_basis"))
+    if change_basis is not None:
+        point["change_basis"] = change_basis
+    signal_polarity = _optional_string(row.get("signal_polarity"))
+    if signal_polarity is not None:
+        point["signal_polarity"] = signal_polarity
     if z_score is not None:
         point["z_score"] = z_score
+    if z_score_local is not None:
+        point["z_score_local"] = z_score_local
+    anomaly_basis = _optional_string(row.get("anomaly_basis"))
+    if anomaly_basis is not None:
+        point["anomaly_basis"] = anomaly_basis
 
     return point
 
@@ -311,3 +425,21 @@ def _as_float(value: Any) -> float | None:
     if value is None or pd.isna(value):
         return None
     return float(value)
+
+
+def _optional_string(value: Any) -> str | None:
+    """Return a string when the value is present, else None."""
+
+    if value is None or pd.isna(value):
+        return None
+
+    return str(value)
+
+
+def _as_bool(value: Any) -> bool:
+    """Return a stable bool while treating missing values as False."""
+
+    if value is None or pd.isna(value):
+        return False
+
+    return bool(value)

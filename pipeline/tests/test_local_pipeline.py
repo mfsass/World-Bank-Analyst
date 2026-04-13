@@ -169,7 +169,7 @@ def test_local_pipeline_persists_private_provenance_and_raw_archives(
     )
     assert indicator_record["ai_provenance"]["provider"] == "deterministic-development"
     assert indicator_record["ai_provenance"]["model"] == "local-fixture-v1"
-    assert indicator_record["ai_provenance"]["prompt_version"] == "step1.v1.0.0"
+    assert indicator_record["ai_provenance"]["prompt_version"] == "step1.v1.1.0"
     assert indicator_record["ai_provenance"]["degraded"] is False
     assert indicator_record["ai_provenance"]["lineage"]["reused_from"] is None
     assert country_record["run_id"] == run_id

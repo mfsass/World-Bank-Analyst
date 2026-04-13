@@ -32,7 +32,7 @@ DEFAULT_MAX_ATTEMPTS = 2
 STEP1_NAME = "indicator_analysis"
 STEP2_NAME = "macro_synthesis"
 STEP3_NAME = "panel_overview"
-STEP1_PROMPT_VERSION = "step1.v1.0.0"
+STEP1_PROMPT_VERSION = "step1.v1.1.0"
 STEP2_PROMPT_VERSION = "step2.v2.0.0"
 STEP3_PROMPT_VERSION = "step3.v2.0.0"
 
@@ -139,6 +139,7 @@ Hard rules:
 
 def _build_step1_prompt(context: dict[str, Any]) -> str:
     """Build the Step 1 user prompt."""
+    change_value = context.get("change_value", context.get("percent_change"))
 
     return f"""Analyse this economic indicator:
 
@@ -146,8 +147,10 @@ Country: {context['country_name']} ({context['country_code']})
 Indicator: {context['indicator_name']}
 Latest Value: {context['latest_value']}
 Previous Value: {context.get('previous_value', 'N/A')}
-Year-over-Year Change: {context.get('percent_change', 'N/A')}%
+Year-over-Year Move: {_format_change_metric(change_value, context.get('change_basis'))}
+Signal Polarity: {_describe_signal_polarity(context.get('signal_polarity'))}
 Anomaly Flagged: {context.get('is_anomaly', False)}
+Anomaly Scope: {_describe_anomaly_basis(context.get('anomaly_basis'))}
 Data Year: {context['data_year']}"""
 
 
@@ -868,7 +871,11 @@ def _strip_private_fields(payload: dict[str, Any]) -> dict[str, Any]:
 def _build_indicator_fallback(context: dict[str, Any]) -> dict[str, Any]:
     """Create an explicit degraded Step 1 payload when structured output fails."""
 
-    trend = _classify_trend(context.get("percent_change"))
+    trend = _classify_trend(
+        context.get("change_value", context.get("percent_change")),
+        context.get("signal_polarity"),
+        context.get("change_basis"),
+    )
     risk_level = "high" if context.get("is_anomaly") else "moderate"
     latest_value = context.get("latest_value")
     narrative = (
@@ -964,18 +971,60 @@ def _build_panel_overview_fallback(
     }
 
 
-def _classify_trend(
-    percent_change: float | None,
-) -> Literal["improving", "stable", "declining"]:
-    """Map a year-over-year change into the public trend contract."""
+def _describe_signal_polarity(signal_polarity: str | None) -> str:
+    """Render the indicator's favorable direction for prompt grounding."""
 
-    if percent_change is None:
+    if signal_polarity == "lower_is_better":
+        return "Lower values are economically favorable for this indicator."
+
+    return "Higher values are economically favorable for this indicator."
+
+
+def _describe_anomaly_basis(anomaly_basis: str | None) -> str:
+    """Render anomaly scope in prompt-friendly language."""
+
+    if anomaly_basis == "panel":
+        return "Peer-set anomaly relative to the current country panel."
+    if anomaly_basis == "historical":
+        return "Historical anomaly relative to this country's own series."
+    if anomaly_basis == "panel_and_historical":
+        return "Flagged both against peers and against this country's own history."
+    return "Not flagged."
+
+
+def _format_change_metric(change_value: Any, change_basis: str | None) -> str:
+    """Format a change metric with the correct unit for prompt grounding."""
+
+    if not isinstance(change_value, (int, float)):
+        return "N/A"
+
+    if change_basis == "percentage_point":
+        return f"{change_value:+.2f} percentage points"
+
+    return f"{change_value:+.2f}%"
+
+
+def _classify_trend(
+    change_value: float | None,
+    signal_polarity: str | None,
+    change_basis: str | None,
+) -> Literal["improving", "stable", "declining"]:
+    """Map a year-over-year move into the public trend contract."""
+
+    if change_value is None:
         return "stable"
-    if percent_change > 1.0:
+
+    stability_band = 0.25 if change_basis == "percentage_point" else 1.0
+    if abs(change_value) < stability_band:
+        return "stable"
+
+    lower_is_better = signal_polarity == "lower_is_better"
+    if (change_value > 0 and not lower_is_better) or (
+        change_value < 0 and lower_is_better
+    ):
         return "improving"
-    if percent_change < -1.0:
-        return "declining"
-    return "stable"
+
+    return "declining"
 
 
 def _format_value(value: Any) -> str:

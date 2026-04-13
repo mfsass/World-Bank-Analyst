@@ -175,13 +175,42 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
             "latest_value": 0.6,
             "previous_value": 1.2,
             "percent_change": -50.0,
+            "change_value": -0.6,
+            "change_basis": "percentage_point",
+            "signal_polarity": "higher_is_better",
             "is_anomaly": True,
+            "anomaly_basis": "historical",
             "ai_analysis": "Growth has slowed materially.",
             "data_year": 2024,
             "time_series": [
-                {"year": 2022, "value": 2.5, "percent_change": 4.1, "is_anomaly": False},
-                {"year": 2023, "value": 1.2, "percent_change": -52.0, "is_anomaly": False},
-                {"year": 2024, "value": 0.6, "percent_change": -50.0, "is_anomaly": True},
+                {
+                    "year": 2022,
+                    "value": 2.5,
+                    "percent_change": 4.1,
+                    "change_value": 0.6,
+                    "change_basis": "percentage_point",
+                    "signal_polarity": "higher_is_better",
+                    "is_anomaly": False,
+                },
+                {
+                    "year": 2023,
+                    "value": 1.2,
+                    "percent_change": -52.0,
+                    "change_value": -1.3,
+                    "change_basis": "percentage_point",
+                    "signal_polarity": "higher_is_better",
+                    "is_anomaly": False,
+                },
+                {
+                    "year": 2024,
+                    "value": 0.6,
+                    "percent_change": -50.0,
+                    "change_value": -0.6,
+                    "change_basis": "percentage_point",
+                    "signal_polarity": "higher_is_better",
+                    "anomaly_basis": "historical",
+                    "is_anomaly": True,
+                },
             ],
             "updated_at": "2026-04-09T12:00:05+00:00",
             "run_id": "f9710a31-8f35-43d0-b75e-78054470ab80",
@@ -228,12 +257,15 @@ def test_firestore_repository_persists_status_and_country_detail() -> None:
     assert detail["source_date_range"] == "2010:2024"
     assert len(detail["indicators"]) == 1
     assert detail["indicators"][0]["country_code"] == "ZA"
+    assert detail["indicators"][0]["change_value"] == -0.6
+    assert detail["indicators"][0]["change_basis"] == "percentage_point"
     assert [point["year"] for point in detail["indicators"][0]["time_series"]] == [
         2022,
         2023,
         2024,
     ]
     assert detail["indicators"][0]["time_series"][-1]["is_anomaly"] is True
+    assert detail["indicators"][0]["time_series"][-1]["change_value"] == -0.6
     assert "run_id" not in detail
     assert "raw_backup_reference" not in detail
     assert "source_provenance" not in detail["indicators"][0]

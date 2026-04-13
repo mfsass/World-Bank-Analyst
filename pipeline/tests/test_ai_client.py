@@ -67,7 +67,11 @@ def test_gemini_indicator_analysis_uses_gemma4_low_variance_config_and_repairs_f
             "latest_value": 0.6,
             "previous_value": 1.2,
             "percent_change": -50.0,
+            "change_value": -0.6,
+            "change_basis": "percentage_point",
+            "signal_polarity": "higher_is_better",
             "is_anomaly": True,
+            "anomaly_basis": "panel_and_historical",
             "data_year": 2024,
         }
     )
@@ -79,6 +83,14 @@ def test_gemini_indicator_analysis_uses_gemma4_low_variance_config_and_repairs_f
     assert result["ai_provenance"]["repair_applied"] is True
     assert fake_client.models.calls[0]["model"] == "gemma-4-31b-it"
     assert fake_client.models.calls[0]["config"]["temperature"] == 0
+    assert (
+        "Year-over-Year Move: -0.60 percentage points"
+        in fake_client.models.calls[0]["contents"]
+    )
+    assert (
+        "Signal Polarity: Higher values are economically favorable"
+        in fake_client.models.calls[0]["contents"]
+    )
 
 
 def test_gemini_macro_synthesis_repairs_trailing_fence_before_schema_validation() -> (
@@ -150,6 +162,9 @@ def test_gemini_indicator_analysis_returns_explicit_degraded_fallback_after_boun
             "latest_value": 32.1,
             "previous_value": 31.6,
             "percent_change": 1.58,
+            "change_value": 0.5,
+            "change_basis": "percentage_point",
+            "signal_polarity": "lower_is_better",
             "is_anomaly": False,
             "data_year": 2024,
         }

@@ -200,6 +200,88 @@ def test_empty_input_returns_empty_dataframe() -> None:
     assert df.empty
 
 
+def test_rate_indicators_add_percentage_point_change_fields_without_breaking_legacy_percent_change() -> (
+    None
+):
+    """Rate indicators should expose pp movement while preserving legacy relative %."""
+    df = compute_changes(
+        _make_points("FP.CPI.TOTL.ZG", "BR", [(2022, 2.0), (2023, 5.0)])
+    )
+
+    latest = df[df["year"] == 2023].iloc[0]
+
+    assert latest["percent_change"] == pytest.approx(150.0)
+    assert latest["change_value"] == pytest.approx(3.0)
+    assert latest["change_basis"] == "percentage_point"
+    assert latest["signal_polarity"] == "lower_is_better"
+
+
+def test_near_zero_growth_does_not_become_a_false_anomaly_from_relative_percent_explosions() -> (
+    None
+):
+    """GDP growth around zero should be judged on pp moves, not inflated relative changes."""
+    panel = {
+        "BR": [(2017, 0.1), (2018, 0.4), (2019, 0.8)],
+        "US": [(2017, 0.2), (2018, 0.6), (2019, 1.0)],
+        "GB": [(2017, -0.1), (2018, 0.2), (2019, 0.6)],
+        "DE": [(2017, 0.0), (2018, 0.3), (2019, 0.7)],
+        "FR": [(2017, 0.1), (2018, 0.5), (2019, 0.9)],
+        "JP": [(2017, 0.3), (2018, 0.7), (2019, 1.2)],
+        "AU": [(2017, 0.2), (2018, 0.5), (2019, 0.9)],
+        "CA": [(2017, 0.0), (2018, 0.4), (2019, 0.8)],
+        "KR": [(2017, 0.4), (2018, 0.9), (2019, 1.4)],
+        "TEST": [(2017, 0.1), (2018, 0.5), (2019, 0.8)],
+    }
+
+    df = compute_changes(_make_panel("NY.GDP.MKTP.KD.ZG", panel))
+    latest = df[(df["country_code"] == "TEST") & (df["year"] == 2018)].iloc[0]
+
+    assert latest["change_basis"] == "percentage_point"
+    assert latest["change_value"] == pytest.approx(0.4)
+    assert latest["percent_change"] == pytest.approx(400.0)
+    assert bool(latest["is_anomaly"]) is False, (
+        "A 0.4pp move around zero growth should not be over-flagged just because the "
+        "relative percent change is numerically large."
+    )
+
+
+def test_hybrid_detection_catches_idiosyncratic_shocks() -> None:
+    """A move that is normal for the global group but extreme for the local country must be flagged.
+
+    This proves the 'hybrid' approach works for indicators with extreme
+    cross-panel variance (like current account balance).
+    """
+    # 9 countries with huge volatility (making global std very large, e.g. ~40%)
+    volatile_panel = {
+        f"V{i}": [(2017, 100.0), (2018, 140.0), (2019, 100.0)] for i in range(9)
+    }
+
+    # One country with very low historical volatility (~1% moves).
+    # Then it has a 10% move — globally this is 'noise' (10% < 40%),
+    # but locally it's a massive shock (10% > 1% * 2.0).
+    stable_series = [
+        (2013, 100.0), (2014, 101.0), (2015, 102.01), (2016, 103.03),
+        (2017, 104.06), (2018, 105.10), (2019, 115.61)
+    ]
+
+    panel = volatile_panel
+    panel["STABLE"] = stable_series
+
+    df = compute_changes(_make_panel("NY.GNS.ICTR.ZS", panel))
+
+    stable_latest = df[
+        (df["country_code"] == "STABLE") & (df["year"] == 2019)
+    ].iloc[0]
+
+    # Global z-score should be low (10% move in a panel with 40% std)
+    # Local z-score should be high (10% move in a country with 1% history)
+    assert abs(stable_latest["z_score"]) < Z_SCORE_THRESHOLD
+    assert abs(stable_latest["z_score_local"]) >= Z_SCORE_THRESHOLD
+    assert bool(stable_latest["is_anomaly"]) is True, (
+        "Hybrid logic must flag moves that are anomalous locally even if they are clean globally."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Context enrichment: z_score passes through to LLM context
 # ---------------------------------------------------------------------------
@@ -219,6 +301,10 @@ def test_llm_context_includes_z_score() -> None:
     shock_ctx = next(c for c in contexts if c["country_code"] == "SHOCK")
 
     assert "z_score" in shock_ctx, "z_score must be present in LLM context."
+    assert shock_ctx["change_value"] == -50.0
+    assert shock_ctx["change_basis"] == "percentage_point"
+    assert shock_ctx["signal_polarity"] == "higher_is_better"
+    assert shock_ctx["anomaly_basis"] == "panel"
     assert shock_ctx["is_anomaly"] is True
     assert shock_ctx["z_score"] is not None
     assert abs(shock_ctx["z_score"]) >= Z_SCORE_THRESHOLD
@@ -253,6 +339,10 @@ def test_indicator_time_series_keeps_year_order_and_anomaly_flags() -> None:
     assert shock_history[-1]["is_anomaly"] is True
     assert shock_history[-1]["previous_value"] == 102.0
     assert shock_history[-1]["value"] == 50.0
+    assert shock_history[-1]["change_basis"] == "percentage_point"
+    assert shock_history[-1]["change_value"] == -52.0
+    assert shock_history[-1]["signal_polarity"] == "higher_is_better"
+    assert shock_history[-1]["anomaly_basis"] == "panel"
     assert abs(shock_history[-1]["z_score"]) >= Z_SCORE_THRESHOLD
 
 
