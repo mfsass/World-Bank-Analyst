@@ -1,3 +1,12 @@
+import {
+  getDisplayChangeBasis,
+  getDisplayChangeValue,
+  getSignalPolarity,
+  isAdverseMove,
+} from "../lib/indicatorSignals.js";
+
+export { formatChange, getSignalTone } from "../lib/indicatorSignals.js";
+
 export const SIGNAL_PRIORITY = [
   "NY.GDP.MKTP.KD.ZG",
   "FP.CPI.TOTL.ZG",
@@ -11,18 +20,6 @@ export const FALLBACK_STEPS = [
   { name: "synthesise", status: "pending" },
   { name: "store", status: "pending" },
 ];
-
-const HIGHER_IS_BETTER = new Set([
-  "NY.GDP.MKTP.CD",
-  "NY.GDP.MKTP.KD.ZG",
-  "BN.CAB.XOKA.GD.ZS",
-]);
-
-const LOWER_IS_BETTER = new Set([
-  "FP.CPI.TOTL.ZG",
-  "SL.UEM.TOTL.ZS",
-  "GC.DOD.TOTL.GD.ZS",
-]);
 
 const OUTLOOK_TONE_MAP = {
   bearish: "critical",
@@ -88,15 +85,6 @@ export function formatMetricValue(indicatorCode, value) {
   }
 
   return `${value.toFixed(1)}%`;
-}
-
-export function formatChange(value) {
-  if (value == null) {
-    return "--";
-  }
-
-  const sign = value >= 0 ? "+" : "-";
-  return `${sign}${Math.abs(value).toFixed(2)}%`;
 }
 
 export function getLatestRefresh(indicators, pipelineStatus) {
@@ -194,32 +182,16 @@ function getOutlookCounts(briefings = []) {
   );
 }
 
-function isAdverseMove(indicatorCode, percentChange) {
-  if (percentChange == null) {
-    return false;
-  }
-
-  if (HIGHER_IS_BETTER.has(indicatorCode)) {
-    return percentChange < 0;
-  }
-
-  if (LOWER_IS_BETTER.has(indicatorCode)) {
-    return percentChange > 0;
-  }
-
-  return percentChange < 0;
-}
-
-function getStressRank(indicatorCode, percentChange) {
-  if (percentChange == null) {
+function getStressRank(indicatorCode, changeValue) {
+  if (changeValue == null) {
     return -1;
   }
 
-  if (HIGHER_IS_BETTER.has(indicatorCode)) {
-    return percentChange * -1;
+  if (getSignalPolarity(indicatorCode) === "higher_is_better") {
+    return changeValue * -1;
   }
 
-  return percentChange;
+  return changeValue;
 }
 
 function getStatisticalAnomalyLabel(anomalyCount) {
@@ -241,17 +213,17 @@ export function getPanelSignals(indicators = []) {
     }
 
     const adverseCount = signalIndicators.filter((indicator) =>
-      isAdverseMove(indicatorCode, indicator.percent_change),
+      isAdverseMove(indicatorCode, getDisplayChangeValue(indicator)),
     ).length;
     const anomalyCount = signalIndicators.filter(
       (indicator) => indicator.is_anomaly,
     ).length;
     const stressedIndicator = [...signalIndicators]
-      .filter((indicator) => indicator.percent_change != null)
+      .filter((indicator) => getDisplayChangeValue(indicator) != null)
       .sort(
         (left, right) =>
-          getStressRank(indicatorCode, right.percent_change) -
-          getStressRank(indicatorCode, left.percent_change),
+          getStressRank(indicatorCode, getDisplayChangeValue(right)) -
+          getStressRank(indicatorCode, getDisplayChangeValue(left)),
       )[0];
 
     return {
@@ -266,7 +238,8 @@ export function getPanelSignals(indicators = []) {
       adverseCount,
       coverageCount: signalIndicators.length,
       stressedMarketCode: stressedIndicator?.country_code || null,
-      stressedMarketChange: stressedIndicator?.percent_change ?? null,
+      stressedMarketChange: getDisplayChangeValue(stressedIndicator),
+      stressedMarketChangeBasis: getDisplayChangeBasis(stressedIndicator),
     };
   }).filter(Boolean);
 }
@@ -307,28 +280,45 @@ export function getStepSummary(step) {
   return "Awaiting pipeline execution.";
 }
 
+export function getBoundedOverlayPosition(point, bounds, overlay) {
+  const [x, y] = point;
+  const preferredLeft = x - overlay.width / 2;
+  const maximumLeft = Math.max(
+    overlay.edgePadding,
+    bounds.width - overlay.width - overlay.edgePadding,
+  );
+  const clampedLeft = Math.min(
+    maximumLeft,
+    Math.max(overlay.edgePadding, preferredLeft),
+  );
+  const availableAbove = y - overlay.gap - overlay.edgePadding;
+  const availableBelow = bounds.height - y - overlay.gap - overlay.edgePadding;
+  const openBelow =
+    availableBelow >= overlay.height || availableBelow >= availableAbove;
+  const preferredTop = openBelow
+    ? y + overlay.gap
+    : y - (overlay.height + overlay.gap);
+  const maximumTop = Math.max(
+    overlay.edgePadding,
+    bounds.height - overlay.height - overlay.edgePadding,
+  );
+  const clampedTop = Math.min(
+    maximumTop,
+    Math.max(overlay.edgePadding, preferredTop),
+  );
+
+  return {
+    left: clampedLeft,
+    top: clampedTop,
+  };
+}
+
 export function getOutlookTone(outlook) {
   if (!outlook) {
     return "neutral";
   }
 
   return OUTLOOK_TONE_MAP[outlook.toLowerCase()] || "neutral";
-}
-
-export function getSignalTone(indicatorCode, percentChange) {
-  if (percentChange == null) {
-    return "text-secondary";
-  }
-
-  if (HIGHER_IS_BETTER.has(indicatorCode)) {
-    return percentChange >= 0 ? "text-success" : "text-critical";
-  }
-
-  if (LOWER_IS_BETTER.has(indicatorCode)) {
-    return percentChange >= 0 ? "text-critical" : "text-success";
-  }
-
-  return percentChange >= 0 ? "text-success" : "text-critical";
 }
 
 export function deriveOverviewMetrics(overview) {
@@ -463,14 +453,15 @@ function getCountryPressureScore(countryIndicators = []) {
       nextScore += 4;
     }
 
-    if (isAdverseMove(indicator.indicator_code, indicator.percent_change)) {
+    const changeValue = getDisplayChangeValue(indicator);
+    if (isAdverseMove(indicator.indicator_code, changeValue)) {
       nextScore += 2;
     }
 
-    if (indicator.percent_change != null) {
+    if (changeValue != null) {
       nextScore += Math.min(
         3,
-        Math.abs(Number(indicator.percent_change) || 0) / 3,
+        Math.abs(Number(changeValue) || 0) / 3,
       );
     }
 
@@ -507,7 +498,10 @@ export function derivePressureQueue(
         (indicator) => indicator.is_anomaly,
       ).length;
       const adverseCount = countryIndicators.filter((indicator) =>
-        isAdverseMove(indicator.indicator_code, indicator.percent_change),
+        isAdverseMove(
+          indicator.indicator_code,
+          getDisplayChangeValue(indicator),
+        ),
       ).length;
 
       return {
@@ -613,7 +607,8 @@ export function derivePressureWatchlist(
         pressureScore: queueMarket.pressureScore,
         leadIndicatorCode: leadIndicator?.indicator_code || null,
         leadIndicatorName: leadIndicator?.indicator_name || null,
-        leadChange: leadIndicator?.percent_change ?? null,
+        leadChange: getDisplayChangeValue(leadIndicator),
+        leadChangeBasis: getDisplayChangeBasis(leadIndicator),
       };
     })
     .filter(Boolean)
