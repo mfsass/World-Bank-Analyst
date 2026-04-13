@@ -163,6 +163,18 @@ Live AI evaluation gate:
 python -m pipeline.evaluation
 ```
 
+## Reviewer Quick Path
+
+| If you want to validate... | Start here |
+| --- | --- |
+| The challenge fit and why the repo is shaped this way | `docs/context/world-analyst-project.md` |
+| The cloud deployment and smoke gate | `.agents/workflows/deploy.md` |
+| The AI-native workflow and agentic repo setup | `docs/AI_NATIVE_WORKFLOW.md`, `.github/agents/`, `.github/prompts/`, `.github/instructions/` |
+| The shipped feature and architecture phases | `docs/prds/` |
+| The trade-offs behind the current shape | `docs/DECISIONS.md` |
+
+The live frontend and API URLs are rollout outputs rather than stable repo constants. Before the presentation handoff, capture the active `FRONTEND_URL` and `API_ORIGIN` from the latest successful Cloud Run rollout and smoke gate so the reviewer gets one current entry point instead of an outdated hardcoded link.
+
 ## Git Workflow
 
 This repo should read as an audit trail, not a file dump. Keep commits small and intention-revealing so a reviewer can follow repo hygiene, design decisions, tests, and behavior changes without reconstructing intent from chat history.
@@ -186,6 +198,9 @@ See `docs/design-mockups/Design System.md` for the full specification. Key const
 | `docs/DECISIONS.md`                     | **Why** — trade-offs, alternatives considered, rationale         |
 | `CONTRIBUTING.md`                       | How we stage, split, and curate commits into a clear audit trail |
 | `docs/context/world-analyst-project.md` | Full project brief, data model, pipeline architecture            |
+| `.agents/workflows/deploy.md`           | Deployment commands, required GCP resources, and the smoke gate  |
+| `docs/AI_NATIVE_WORKFLOW.md`            | How the repo demonstrates an AI-native way of working            |
+| `docs/prds/`                            | Shipped phases and scoped product/architecture decisions         |
 | `.github/skills/`                       | Domain-specific guidance for each area of the codebase           |
 | `docs/design-mockups/Design System.md`  | Complete design token specification                              |
 

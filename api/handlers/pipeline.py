@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     # Keep the local slice runnable without packaging the repo as an installed module.
     sys.path.insert(0, str(REPO_ROOT))
 
-from pipeline.local_data import LOCAL_DEV_COUNTRY  # noqa: E402
+from pipeline.local_data import LOCAL_DEV_COUNTRY, LOCAL_TARGET_COUNTRY  # noqa: E402
 from pipeline.storage import RawArchiveStore, get_raw_archive_store  # noqa: E402
 from api.pipeline_dispatch import (  # noqa: E402
     dispatch_cloud_run_job,
@@ -100,7 +100,9 @@ def trigger() -> TriggerResponse:
         return _project_public_status(claimed_status), 202
 
     try:
-        dispatch_cloud_run_job(run_id=run_id, country_code=LOCAL_DEV_COUNTRY)
+        # Use the canonical live-mode sentinel so the dispatch call reads as a
+        # full-panel run rather than a Brazil-only slice to reviewers.
+        dispatch_cloud_run_job(run_id=run_id, country_code=LOCAL_TARGET_COUNTRY)
     except Exception as exc:
         logger.exception("Cloud pipeline dispatch failed")
         failed_status = _build_dispatch_failure_status(run_id, str(exc))

@@ -50,8 +50,8 @@ const ARCHITECTURE_NODES = [
   { label: "Pipeline Orchestrator", state: "current" },
   { label: "Fetch + Normalize", state: "current" },
   { label: "Pandas Analysis", state: "current" },
-  { label: "Country + Panel synthesis", state: "current" },
-  { label: "Firestore + GCS", state: "target" },
+  { label: "Country + overview synthesis", state: "current" },
+  { label: "Firestore + GCS", state: "current" },
   { label: "Connexion API", state: "current" },
   { label: "React Dashboard", state: "current" },
 ];
@@ -189,10 +189,13 @@ export function HowItWorks() {
             {`{
   "country_code": "BR",
   "indicator_code": "FP.CPI.TOTL.ZG",
-  "year": 2023,
-  "latest_value": 5.9,
-  "percent_change": 1.1,
-  "is_anomaly": false
+  "data_year": 2024,
+  "latest_value": 4.6,
+  "change_value": -4.7,
+  "change_basis": "percentage_point",
+  "signal_polarity": "lower_is_better",
+  "is_anomaly": false,
+  "anomaly_basis": null
 }`}
           </pre>
         </div>
@@ -207,7 +210,9 @@ export function HowItWorks() {
             {`{
   "code": "BR",
   "macro_synthesis": "Inflation remains elevated...",
+  "regime_label": "stagnation",
   "outlook": "cautious",
+  "source_date_range": "2010:2024",
   "risk_flags": [
     "Inflation remains above comfort range",
     "Debt pressure limits fiscal room"

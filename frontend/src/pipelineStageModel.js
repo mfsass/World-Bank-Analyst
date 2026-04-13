@@ -25,12 +25,12 @@ export const PIPELINE_TRIGGER_MODES = [
     key: "real",
     label: "Real run",
     eyebrow: "Truthful runtime",
-    title: "Run the live World Bank Analyst pipeline",
+    title: "Run the configured World Analyst pipeline",
     description:
-      "Calls the real backend endpoints and only reports the state the pipeline has actually reached.",
+      "Calls the real backend endpoints and only reports the state the configured runtime has actually reached.",
     boundaryLabel: "API-backed status",
     boundaryDetail:
-      "Real run uses /pipeline/trigger and /pipeline/status. If the run is queued, slow, or failed, the UI stays truthful.",
+      "Real run uses /pipeline/trigger and /pipeline/status. In live deployment that means the full monitored panel; in local mode it stays on the deterministic development slice.",
     actionLabel: "Run pipeline",
     replayLabel: "Pipeline running",
     tone: "success",
@@ -56,15 +56,15 @@ export const PIPELINE_STAGE_MODEL = [
     name: "fetch",
     title: "Fetch and normalize",
     story:
-      "Extracts **six macro indicators** across **17 monitored markets** directly from the World Bank API. A **15-year observation window** provides enough historical baseline to detect true anomalies without single-year noise. Raw payloads are archived to GCS for provenance.",
+      "Fetches the approved indicator scope for the current runtime. In live mode that means **six macro indicators** across the **17-market monitored panel**; in local mode it stays on the deterministic development slice. Raw payloads are archived for provenance.",
     outcome:
-      "102 normalised year-on-year records ready for the statistical pass, plus a raw payload archive for provenance.",
+      "Normalized year-on-year records ready for the statistical pass, plus raw payload provenance for follow-up.",
     latencyNote:
-      "The run pulls six indicators across all 17 markets and normalizes uneven source rows before analysis can start.",
+      "The run fetches the approved indicator scope for the current runtime and normalizes uneven source rows before analysis starts.",
     statusCopy: {
-      pending: "Waiting to request the approved World Bank indicator set.",
+      pending: "Waiting to request the approved World Bank indicator scope.",
       running:
-        "Pulling the approved World Bank indicator set for the active monitored panel.",
+        "Requesting and normalizing the approved World Bank indicator scope for the current runtime.",
       complete:
         "World Bank source data was fetched and normalized for this run.",
       failed:
@@ -99,7 +99,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "analyse",
     title: "Statistical signal layer",
     story:
-      "Pandas scores year-over-year changes against a **2.0 standard deviation anomaly threshold**. Thresholds are calibrated across the **entire market panel**, meaning local GDP swings are contextualized against the global peer group before yielding a signal.",
+      "Pandas scores year-over-year changes against a **2.0 standard deviation anomaly threshold**. In live mode that context comes from the full monitored panel; in local mode it reflects the deterministic development slice.",
     outcome:
       "Structured signal layer: deltas, z-scores, anomaly flags, and regime context. The model never touches raw numbers.",
     latencyNote:
@@ -138,17 +138,17 @@ export const PIPELINE_STAGE_MODEL = [
   },
   {
     name: "synthesise",
-    title: "Country + panel synthesis",
+    title: "Country + overview synthesis",
     story:
-      "The LLM evaluates structural signals to write **country briefings**, deriving **regimes** (expansion, overheating, contraction) and structural **risk flags**. It concludes with a synthesized **macro panel overview**. Every output must pass **Pydantic schema validation**.",
+      "The LLM turns the signal layer into **country briefings**, **regime labels**, **risk flags**, and one overview for the stored slice. Live mode works through the full monitored panel; local mode stays on the deterministic development slice. Every output must pass **Pydantic schema validation**.",
     outcome:
-      "17 country briefings and one cross-market panel overview, each with risk flags, regime label, and structured outlook fields.",
+      "Country briefings plus one overview record, each with risk flags, regime label, and structured outlook fields.",
     latencyNote:
-      "This is the longest stage because the model works through the full 17-country panel before the overview pass can finish.",
+      "This is usually the longest stage because the model works through every country in the current runtime scope before the overview pass can finish.",
     statusCopy: {
       pending: "Waiting for the AI synthesis stage.",
       running:
-        "Turning structured signals into country briefings and a global overview. This is the longest stage because the model works through the full 17-country panel.",
+        "Turning structured signals into country briefings and an overview for the current runtime scope.",
       complete:
         "Country narratives and the global overview were generated for this run.",
       failed: "The run stopped while generating the analyst narratives.",
@@ -196,7 +196,7 @@ export const PIPELINE_STAGE_MODEL = [
     name: "store",
     title: "Persist outputs",
     story:
-      "Country briefings, the panel overview, and run metadata are committed through a **shared repository layer** supporting local JSON or remote **Firestore**. Run completion metrics are sealed into a durable **status contract**.",
+      "Country briefings, the overview, and run metadata are committed through a **shared repository layer** supporting local in-memory storage or remote **Firestore**. Run completion metrics are sealed into a durable **status contract**.",
     outcome:
       "Dashboard-ready records in the configured store. Pipeline status sealed with per-step durations and completion timestamps.",
     latencyNote:

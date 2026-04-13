@@ -228,7 +228,7 @@ function CountryIntelligence() {
             <span className="flag-frame flag-frame--lg flag-frame--placeholder" />
             <div>
               <h1 className="text-headline">{countryCode}</h1>
-              <p className="text-label mt-3">{requestError}</p>
+              <p className="text-label mt-3">Briefing unavailable</p>
             </div>
           </div>
         </header>

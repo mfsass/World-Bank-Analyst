@@ -1,6 +1,12 @@
 # PRD: Country Intelligence & Overview Enhancement
 
+Version: 1.0
+Date: 2026-04-13
+Status: Implemented and validated locally
+
 > **Product goal:** Transform World Analyst from a static snapshot dashboard into a premium economic intelligence terminal where finance professionals can reach any country in two interactions or fewer and immediately see direction-of-travel across a multi-year window — not just a single frozen frame.
+
+This enhancement track is now closed in the implemented product surface. World Analyst now exposes direct country access at `/country`, reuses a shared country-detail cache across overview and drill-in flows, and renders regime labels plus indicator timelines backed by stored `time_series` data. The supporting API contract is also covered by local tests that assert the presence of `regime_label` and historical series payloads on country detail responses.
 
 ---
 
@@ -353,7 +359,7 @@ _Estimated complexity: Medium-High. Frontend-intensive._
 
 ---
 
-## 12. Open Questions
+## 12. Resolved implementation questions
 
 | #   | Question                                                                                                                                                            | Blocking?                                                                                                                                        |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |

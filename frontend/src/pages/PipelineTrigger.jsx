@@ -21,46 +21,13 @@ const PIPELINE_ACTIVITY_INTERVAL_MS = 900;
 const PIPELINE_REPLAY_ACTIVITY_INTERVAL_MS = 900;
 const PIPELINE_REPLAY_STAGE_ADVANCE_MS = 2600;
 
-const PENDING_VERBS = [
-  "Accomplishing", "Actioning", "Actualizing", "Architecting", "Baking", "Beaming",
-  "Beboppin'", "Befuddling", "Billowing", "Blanching", "Bloviating", "Boogieing",
-  "Boondoggling", "Booping", "Bootstrapping", "Brewing", "Bunning", "Burrowing",
-  "Calculating", "Canoodling", "Caramelizing", "Cascading", "Catapulting",
-  "Cerebrating", "Channeling", "Channelling", "Choreographing", "Churning",
-  "Clauding", "Coalescing", "Cogitating", "Combobulating", "Composing", "Computing",
-  "Concocting", "Considering", "Contemplating", "Cooking", "Crafting", "Creating",
-  "Crunching", "Crystallizing", "Cultivating", "Deciphering", "Deliberating",
-  "Determining", "Dilly-dallying", "Discombobulating", "Doing", "Doodling",
-  "Drizzling", "Ebbing", "Effecting", "Elucidating", "Embellishing", "Enchanting",
-  "Envisioning", "Evaporating", "Fermenting", "Fiddle-faddling", "Finagling",
-  "Flambéing", "Flibbertigibbeting", "Flowing", "Flummoxing", "Fluttering",
-  "Forging", "Forming", "Frolicking", "Frosting", "Gallivanting", "Galloping",
-  "Garnishing", "Generating", "Gesticulating", "Germinating", "Gitifying",
-  "Grooving", "Gusting", "Harmonizing", "Hashing", "Hatching", "Herding",
-  "Honking", "Hullaballooing", "Hyperspacing", "Ideating", "Imagining",
-  "Improvising", "Incubating", "Inferring", "Infusing", "Ionizing", "Jitterbugging",
-  "Julienning", "Kneading", "Leavening", "Levitating", "Lollygagging", "Manifesting",
-  "Marinating", "Meandering", "Metamorphosing", "Misting", "Moonwalking", "Moseying",
-  "Mulling", "Mustering", "Musing", "Nebulizing", "Nesting", "Newspapering",
-  "Noodling", "Nucleating", "Orbiting", "Orchestrating", "Osmosing", "Perambulating",
-  "Percolating", "Perusing", "Philosophising", "Photosynthesizing", "Pollinating",
-  "Pondering", "Pontificating", "Pouncing", "Precipitating", "Prestidigitating",
-  "Processing", "Proofing", "Propagating", "Puttering", "Puzzling", "Quantumizing",
-  "Razzle-dazzling", "Razzmatazzing", "Recombobulating", "Reticulating", "Roosting",
-  "Ruminating", "Sautéing", "Scampering", "Schlepping", "Scurrying", "Seasoning",
-  "Shenaniganing", "Shimmying", "Simmering", "Skedaddling", "Sketching", "Slithering",
-  "Smooshing", "Sock-hopping", "Spelunking", "Spinning", "Sprouting", "Stewing",
-  "Sublimating", "Swirling", "Swooping", "Symbioting", "Synthesizing", "Tempering",
-  "Thinking", "Thundering", "Tinkering", "Tomfoolering", "Topsy-turvying",
-  "Transfiguring", "Transmuting", "Twisting", "Undulating", "Unfurling",
-  "Unravelling", "Vibing", "Waddling", "Wandering", "Warping", "Whatchamacalliting",
-  "Whirlpooling", "Whirring", "Whisking", "Wibbling", "Working"
-];
-
-function getPendingVerb(index, tick) {
-  const hash = index * 37 + tick;
-  return PENDING_VERBS[hash % PENDING_VERBS.length].toUpperCase();
-}
+const STAGE_RUNNING_VERBS = {
+  dispatch: "DISPATCHING",
+  fetch: "FETCHING",
+  analyse: "ANALYSING",
+  synthesise: "SYNTHESISING",
+  store: "PERSISTING",
+};
 
 function prefersReducedMotion() {
   return (
@@ -167,7 +134,69 @@ function getStatusTone(status) {
 }
 
 function formatTimestamp(value) {
+  if (!value) {
+    return "PENDING";
+  }
   return new Date(value).toLocaleString();
+}
+
+function formatStepDuration(durationMs) {
+  if (!durationMs || durationMs <= 0) {
+    return null;
+  }
+
+  if (durationMs < 1000) {
+    return "<1s";
+  }
+
+  return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function formatRetryWindow(totalSeconds) {
+  const seconds = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  if (seconds < 3600) {
+    return `${Math.ceil(seconds / 60)}m`;
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.ceil((seconds % 3600) / 60);
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function getRunningVerb(stepName, activeActivity) {
+  if (activeActivity?.verb) {
+    return activeActivity.verb.toUpperCase();
+  }
+
+  return STAGE_RUNNING_VERBS[stepName] || "RUNNING";
+}
+
+function getRequestNotice(error) {
+  if (error.status === 429) {
+    const retryAfterSeconds = error.payload?.retry_after_seconds;
+    return {
+      tone: "warning",
+      message: Number.isFinite(retryAfterSeconds)
+        ? `Manual trigger is cooling down. Try again in ${formatRetryWindow(retryAfterSeconds)}.`
+        : error.payload?.error || "Manual trigger is cooling down. Try again later.",
+    };
+  }
+
+  if (error.status === 409 && error.payload) {
+    return {
+      tone: "warning",
+      message: error.payload.error || error.message,
+    };
+  }
+
+  return {
+    tone: "critical",
+    message: error.message,
+  };
 }
 
 function buildStatusFreshness(mode, status) {
@@ -186,9 +215,10 @@ function buildStatusFreshness(mode, status) {
 
 function getExecutionCopy(step) {
   const statusCopy = getPipelineStageStatusCopy(step.name, step.status);
+  const formattedDuration = formatStepDuration(step.duration_ms);
 
-  if (step.duration_ms && statusCopy) {
-    return `${statusCopy} Latest duration: ${step.duration_ms}ms.`;
+  if (formattedDuration && statusCopy) {
+    return `${statusCopy} Latest duration: ${formattedDuration}.`;
   }
 
   return statusCopy;
@@ -202,17 +232,21 @@ function buildTerminalLines(mode, status, executionSteps, activeStageActivity, a
   addLine(`> MODE: ${mode === "real" ? "REAL RUN" : "DEMO WALKTHROUGH (SIMULATED)"}`);
   addLine(mode === "real" ? "> SOURCE: /PIPELINE/TRIGGER + /PIPELINE/STATUS" : "> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)");
   addLine(`> STAGE MODEL: ${executionSteps.map((step) => step.name.toUpperCase()).join(" -> ")}`);
-  addLine("> TARGET SCOPE: 17-COUNTRY PANEL");
+  addLine(
+    mode === "real"
+      ? "> TARGET SCOPE: CONFIGURED RUNTIME"
+      : "> TARGET SCOPE: DEMO WALKTHROUGH",
+  );
   addLine(`> STATUS: ${(status?.status || "idle").toUpperCase()}`);
 
   if (status?.started_at) {
     addLine(`> STARTED AT: ${formatTimestamp(status.started_at)}`);
   }
 
-  executionSteps.forEach((step, index) => {
+  executionSteps.forEach((step) => {
     const duration = step.duration_ms ? ` ${step.duration_ms}ms` : "";
     if (step.status === "running") {
-      const verb = getPendingVerb(index, 0);
+      const verb = getRunningVerb(step.name, activeStageActivity);
       const dots = ".".repeat((activityTick % 3) + 1);
       nodes.push(
         <span key={`step-${step.name}`}>
@@ -276,12 +310,17 @@ function buildReplayTerminalOutput(activeStep, replaySteps, isReplayComplete, ac
   addLine("> MODE: DEMO WALKTHROUGH (SIMULATED)");
   addLine("> SOURCE: FRONTEND-ONLY REPLAY (NO API CALLS)");
   addLine(`> STAGE MODEL: ${replaySteps.map((step) => step.name.toUpperCase()).join(" -> ")}`);
-  addLine("> TARGET SCOPE: 17-COUNTRY PANEL");
+  addLine("> TARGET SCOPE: DEMO WALKTHROUGH");
   addLine(`> STATUS: ${(isReplayComplete ? "complete" : "running").toUpperCase()}`);
 
-  replaySteps.forEach((step, index) => {
+  replaySteps.forEach((step) => {
     if (step.status === "running") {
-      const verb = getPendingVerb(index, 0);
+      const verb = getRunningVerb(
+        step.name,
+        activeStep?.name === step.name
+          ? getActivePipelineStageActivity(step.name, activityTick)
+          : null,
+      );
       const dots = ".".repeat((activityTick % 3) + 1);
       nodes.push(
         <span key={`step-${step.name}`}>
@@ -629,10 +668,12 @@ export function PipelineTrigger() {
   const [mode, setMode] = useState("real");
   const [status, setStatus] = useState(null);
   const [requestError, setRequestError] = useState("");
+  const [requestErrorTone, setRequestErrorTone] = useState("critical");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activityTick, setActivityTick] = useState(0);
   const [isReplayModalOpen, setIsReplayModalOpen] = useState(false);
   const [demoReplayVersion, setDemoReplayVersion] = useState(0);
+  const [cooldownSeconds, setCooldownSeconds] = useState(null);
 
   const modeData =
     PIPELINE_TRIGGER_MODES.find((option) => option.key === mode) ||
@@ -674,10 +715,12 @@ export function PipelineTrigger() {
         if (isActive) {
           setStatus(nextStatus);
           setRequestError("");
+          setRequestErrorTone("critical");
         }
       } catch (error) {
         if (isActive) {
           setRequestError(error.message);
+          setRequestErrorTone("critical");
         }
       }
     }
@@ -746,11 +789,22 @@ export function PipelineTrigger() {
       });
       setStatus(nextStatus);
       setRequestError("");
+      setRequestErrorTone("critical");
     } catch (error) {
       if (error.status === 409 && error.payload) {
         setStatus(error.payload);
       }
-      setRequestError(error.message);
+      const notice = getRequestNotice(error);
+      setRequestError(notice.message);
+      setRequestErrorTone(notice.tone);
+
+      /* Seed the live countdown when the API returns a cooldown window. */
+      if (error.status === 429) {
+        const seconds = Number(error.payload?.retry_after_seconds);
+        setCooldownSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : null);
+      } else {
+        setCooldownSeconds(null);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -759,6 +813,8 @@ export function PipelineTrigger() {
   function handleModeChange(nextMode) {
     setMode(nextMode);
     setRequestError("");
+    setRequestErrorTone("critical");
+    setCooldownSeconds(null);
     setIsReplayModalOpen(false);
   }
 
@@ -783,9 +839,30 @@ export function PipelineTrigger() {
     modeButtonRefs.current[PIPELINE_TRIGGER_MODES[nextIndex].key]?.focus();
   }
 
+  /* Tick down the cooldown counter once per second after a 429. */
+  useEffect(() => {
+    if (cooldownSeconds === null || cooldownSeconds <= 0) return undefined;
+
+    const timerId = window.setInterval(() => {
+      setCooldownSeconds((prev) => {
+        if (prev === null || prev <= 1) {
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [cooldownSeconds]);
+
   function handleDemoReplay() {
     setDemoReplayVersion((currentReplayId) => currentReplayId + 1);
     setIsReplayModalOpen(true);
+  }
+
+  function handleCooldownSwitchToDemo() {
+    handleModeChange("demo");
+    handleDemoReplay();
   }
 
   return (
@@ -914,7 +991,30 @@ export function PipelineTrigger() {
           </div>
 
           {mode === "real" && requestError ? (
-            <p className="text-body text-critical mt-4">{requestError}</p>
+            <div
+              className={`pipeline-cooldown-notice pipeline-cooldown-notice--${
+                requestErrorTone === "warning" ? "warning" : "critical"
+              } mt-4`}
+            >
+              <p
+                className={`text-body ${
+                  requestErrorTone === "warning" ? "text-warning" : "text-critical"
+                }`}
+              >
+                {cooldownSeconds !== null
+                  ? `Manual trigger is cooling down. Try again in ${formatRetryWindow(cooldownSeconds)}.`
+                  : requestError}
+              </p>
+              {cooldownSeconds !== null ? (
+                <button
+                  className="btn-ghost"
+                  onClick={handleCooldownSwitchToDemo}
+                  type="button"
+                >
+                  Switch to demo walkthrough
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </section>

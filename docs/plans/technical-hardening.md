@@ -1,7 +1,7 @@
 # Plan: Technical Hardening
 
 **Track:** CTO — Close two production gaps before the demo  
-**Status:** Ready to execute  
+**Status:** Implemented  
 **Blocked by:** Nothing  
 **Effort estimate:** Country Intelligence Phase 1 is 2–3 days frontend. Rate limiting is 1–2 hours backend.  
 

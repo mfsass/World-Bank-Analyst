@@ -2,14 +2,11 @@
 
 ## In Progress
 
-*(Nothing actively in flight — two plans ready to execute in parallel below.)*
+*(Nothing actively in flight.)*
 
-## Next Up — Parallel Execution Ready
+## Next Up
 
-Run these two plans simultaneously in separate agent conversations.
-
-- [ ] **Demo Polish & Presentation** — Global Overview default right-rail state, How It Works step navigation, country panel narrative in README and UI. Frontend only. No backend changes. Plan + prompt: `docs/plans/demo-polish-presentation.md`. **Use:** `world-analyst-implementer`.
-- [ ] **Technical Hardening** — Rate limit `POST /pipeline/trigger` (429 + Retry-After), Country Intelligence Phase 1 (historical timeline, regime badge, risk flag prominence). Plan + prompt: `docs/plans/technical-hardening.md`. **Use:** `world-analyst-dual-lane`.
+*(No must-ship execution tracks remain. The items below are optional follow-on work rather than blockers for the current presentation build.)*
 
 ## Queued (after above)
 
@@ -23,6 +20,8 @@ Run these two plans simultaneously in separate agent conversations.
 
 ## Done
 
+- [x] Demo polish & presentation: Global Overview default right-rail state, How It Works step navigation, and country panel narrative in the README and UI. Plan: `docs/plans/demo-polish-presentation.md`.
+- [x] Technical hardening: trigger cooldown (`429` + `Retry-After`), country timelines, regime badge, and stronger country-entry flow. Plan: `docs/plans/technical-hardening.md`.
 - [x] ADR cleanup: trimmed from 72 to 20 fork-in-the-road decisions. Full archive in `private-context/DECISIONS_ARCHIVE_2026-04-13.md`.
 - [x] Three-perspective evaluation (CTO / CEO / CFO). Findings in session context, April 2026.
 - [x] Cloud deployment: 3-service Cloud Run topology, Cloud Scheduler, Secret Manager, Firestore, GCS. PRD: `cloud-deployment-scheduling-and-runtime-topology.md`.

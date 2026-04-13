@@ -379,7 +379,7 @@ def test_cloud_dispatch_mode_claims_running_status_before_dispatch(
     assert response.status_code == 202
     assert response.json()["status"] == "running"
     assert "run_id" not in response.json()
-    assert dispatched["country_code"] == "BR"
+    assert dispatched["country_code"] == "ZA"
     stored_status = get_repository().get_pipeline_status_record()
     assert stored_status["status"] == "running"
     assert stored_status["run_id"] == dispatched["run_id"]

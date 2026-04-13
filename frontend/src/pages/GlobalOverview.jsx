@@ -1030,7 +1030,7 @@ export function GlobalOverview() {
 
         <section className="section-gap">
           <div className="card state-panel">
-            <p className="text-label">Overview unavailable</p>
+            <p className="text-label">System status</p>
             <h2 className="text-headline mt-3">Overview unavailable</h2>
             <p className="text-body text-secondary mt-4">{requestError}</p>
           </div>
@@ -1185,8 +1185,8 @@ export function GlobalOverview() {
                 set
               </span>
             </div>
-            <Link className="anomaly-banner__action" to="/trigger">
-              Review pipeline
+            <Link className="anomaly-banner__action" to="/country">
+              Explore markets
             </Link>
           </div>
         </section>

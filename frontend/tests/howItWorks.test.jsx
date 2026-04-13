@@ -38,11 +38,11 @@ describe("HowItWorks", () => {
       screen.getByRole("heading", { name: "Demo walkthrough" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Country + panel synthesis" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("heading", { name: "Country + overview synthesis" }).length,
+    ).toBeGreaterThan(0);
     expect(
-      screen.getByRole("heading", { name: "Persist outputs" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("heading", { name: "Persist outputs" }).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getByText(/frontend-only simulation/i),
     ).toBeInTheDocument();

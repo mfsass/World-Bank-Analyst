@@ -1,7 +1,9 @@
 # PRD: World Analyst V2 Product Upgrade
 
-**Status:** Draft  
+**Status:** Superseded by shipped PRDs  
 **Purpose:** Upgrade World Analyst from a competent dashboard into a sharper economic intelligence product with better interaction, better historical context, and a stronger demo story.
+
+This document remains as the umbrella framing note for the final product push. Its execution scope was intentionally decomposed into narrower PRDs such as frontend fidelity, country intelligence enhancement, How It Works explainability, cloud deployment, live AI integration, and security hardening, so it should be read as historical framing rather than an open delivery track.
 
 ---
 

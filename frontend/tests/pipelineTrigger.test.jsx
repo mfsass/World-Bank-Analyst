@@ -146,7 +146,7 @@ describe("PipelineTrigger", () => {
     fireEvent.click(dialogQueries.getByRole("button", { name: "Next stage" }));
 
     expect(
-      dialogQueries.getByRole("heading", { name: "Country + panel synthesis" }),
+      dialogQueries.getByRole("heading", { name: "Country + overview synthesis" }),
     ).toBeInTheDocument();
 
     const persistOutputsCard = dialogQueries
@@ -268,11 +268,11 @@ describe("PipelineTrigger", () => {
 
     expect(await screen.findByText("Execution feed")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Country + panel synthesis" }),
+      screen.getByRole("heading", { name: "Country + overview synthesis" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /This is the longest stage because the model works through the full 17-country panel\./,
+        /Turning structured signals into country briefings and an overview for the current runtime scope\./,
       ),
     ).toBeInTheDocument();
   });
@@ -295,7 +295,7 @@ describe("PipelineTrigger", () => {
 
     expect(
       await screen.findByText(
-        "The run stopped while generating the analyst narratives. Latest duration: 1200ms.",
+        "The run stopped while generating the analyst narratives. Latest duration: 1.2s.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -303,5 +303,62 @@ describe("PipelineTrigger", () => {
         name: "Open country intelligence",
       }),
     ).toBeDisabled();
+  });
+
+  it("shows a live countdown and demo walkthrough CTA when the trigger returns 429", async () => {
+    apiRequest.mockImplementation((path, options = {}) => {
+      if (path === "/pipeline/status") {
+        return Promise.resolve({ status: "complete", steps: [] });
+      }
+
+      if (path === "/pipeline/trigger") {
+        const error = new Error("Pipeline completed too recently.");
+        error.status = 429;
+        error.payload = {
+          error: "Pipeline completed too recently.",
+          retry_after_seconds: 120,
+        };
+        return Promise.reject(error);
+      }
+
+      return Promise.reject(new Error(`Unexpected path: ${path}`));
+    });
+
+    renderPage();
+
+    /* Wait for the initial status load to settle before switching to fake timers. */
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith("/pipeline/status");
+    });
+
+    vi.useFakeTimers();
+
+    const runButton = screen.getByRole("button", { name: "Run pipeline" });
+
+    await act(async () => {
+      fireEvent.click(runButton);
+    });
+
+    expect(screen.getByText(/cooling down/i)).toBeInTheDocument();
+    expect(screen.getByText(/2m/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Switch to demo walkthrough" }),
+    ).toBeInTheDocument();
+
+    /* Advance 61 seconds: 120 → 59s. Format switches from "2m" to "59s". */
+    act(() => {
+      vi.advanceTimersByTime(61_000);
+    });
+
+    expect(screen.getByText(/59s/)).toBeInTheDocument();
+
+    /* Clicking the demo CTA switches mode and opens the replay modal. */
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to demo walkthrough" }),
+    );
+
+    expect(
+      screen.getByRole("radio", { name: "Demo walkthrough" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 });
