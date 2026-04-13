@@ -41,7 +41,7 @@ function findGcloud() {
     ['gcloud'],
     { encoding: 'utf8' },
   );
-  if (probe.status === 0) return 'gcloud';
+  if (probe.status === 0) return os.platform() === 'win32' ? 'gcloud.cmd' : 'gcloud';
 
   // Windows fallback: try the default Cloud SDK install location.
   if (os.platform() === 'win32') {
