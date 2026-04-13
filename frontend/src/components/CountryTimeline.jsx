@@ -1,75 +1,270 @@
 import PropTypes from "prop-types";
 import {
-  LineChart,
+  CartesianGrid,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ReferenceLine,
-  ResponsiveContainer,
 } from "recharts";
 
-/* Custom dot renderer: anomaly years get a red dot, the latest point gets accent. */
-function TimelineDot({ cx, cy, payload, latestYear }) {
-  const isLatest = payload?.year === latestYear;
+import {
+  formatChange,
+  getAnomalyLabel,
+  getDesiredDirectionLabel,
+  getDisplayChangeBasis,
+  getDisplayChangeValue,
+  getSignalDisposition,
+  getSignalTone,
+} from "../lib/indicatorSignals.js";
 
-  if (isLatest) {
-    return <circle cx={cx} cy={cy} r={4} fill="#FF4500" stroke="none" />;
+function getToneColor(indicatorCode, indicatorPoint = {}) {
+  const tone = getSignalTone(indicatorCode, getDisplayChangeValue(indicatorPoint));
+
+  if (tone === "text-critical") {
+    return "var(--color-critical)";
   }
-  if (payload?.is_anomaly) {
-    return <circle cx={cx} cy={cy} r={3} fill="#EF4444" stroke="none" />;
+
+  if (tone === "text-success") {
+    return "var(--color-success)";
   }
-  return null;
+
+  return "var(--color-text-secondary)";
+}
+
+function formatTimelineValue(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  const absoluteValue = Math.abs(value);
+  if (absoluteValue >= 1_000_000_000) {
+    return `${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (absoluteValue >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (absoluteValue >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+  if (absoluteValue >= 100) {
+    return value.toFixed(0);
+  }
+  return value.toFixed(1);
+}
+
+function TimelineDot({ cx, cy, indicatorCode, payload, latestYear }) {
+  if (typeof cx !== "number" || typeof cy !== "number") {
+    return null;
+  }
+
+  const isLatest = payload?.year === latestYear;
+  const isAnomaly = Boolean(payload?.is_anomaly);
+  if (!isLatest && !isAnomaly) {
+    return null;
+  }
+
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={isLatest ? 4 : 3}
+      fill={isLatest ? getToneColor(indicatorCode, payload) : "var(--surface-card)"}
+      stroke={isAnomaly ? "var(--color-critical)" : "var(--surface-card)"}
+      strokeWidth={isAnomaly ? 2 : 1}
+    />
+  );
 }
 
 TimelineDot.propTypes = {
   cx: PropTypes.number,
   cy: PropTypes.number,
+  indicatorCode: PropTypes.string.isRequired,
+  latestYear: PropTypes.number,
   payload: PropTypes.shape({
+    change_basis: PropTypes.string,
+    change_value: PropTypes.number,
     is_anomaly: PropTypes.bool,
+    percent_change: PropTypes.number,
     year: PropTypes.number,
   }),
-  latestYear: PropTypes.number,
 };
 
-/* Custom tooltip matching the design system Level 3 surface. */
-function TimelineTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
+function TimelineTooltip({ active, indicatorCode, payload }) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
   const point = payload[0]?.payload;
-  if (!point) return null;
-  const changeLabel =
-    point.percent_change != null
-      ? `${point.percent_change >= 0 ? "+" : ""}${point.percent_change.toFixed(2)}% YoY`
-      : "No prior year";
+  if (!point) {
+    return null;
+  }
+
+  const changeLabel = formatChange(
+    getDisplayChangeValue(point),
+    getDisplayChangeBasis(point),
+    {
+      includePeriod: true,
+      nullLabel: "No prior year",
+    },
+  );
+  const directionSummary = `${getDesiredDirectionLabel(
+    indicatorCode,
+  )} / Latest move ${getSignalDisposition(
+    indicatorCode,
+    getDisplayChangeValue(point),
+  )}`;
+
   return (
     <div className="timeline-tooltip">
       <span className="timeline-tooltip__year">{point.year}</span>
-      <span className="timeline-tooltip__value">{point.value?.toFixed(2)}</span>
-      <span className="timeline-tooltip__change">{changeLabel}</span>
+      <span className="timeline-tooltip__value">
+        {formatTimelineValue(point.value)}
+      </span>
+      <span
+        className={`timeline-tooltip__change ${getSignalTone(
+          indicatorCode,
+          getDisplayChangeValue(point),
+        )}`}
+      >
+        {changeLabel}
+      </span>
+      <span className="timeline-tooltip__note">{directionSummary}</span>
+      {point.is_anomaly ? (
+        <span className="timeline-tooltip__anomaly">
+          {getAnomalyLabel(point.anomaly_basis)}
+        </span>
+      ) : null}
     </div>
   );
 }
 
 TimelineTooltip.propTypes = {
   active: PropTypes.bool,
+  indicatorCode: PropTypes.string.isRequired,
   payload: PropTypes.arrayOf(
     PropTypes.shape({
       payload: PropTypes.shape({
-        year: PropTypes.number,
+        anomaly_basis: PropTypes.string,
+        change_basis: PropTypes.string,
+        change_value: PropTypes.number,
+        is_anomaly: PropTypes.bool,
         value: PropTypes.number,
-        percent_change: PropTypes.number,
+        year: PropTypes.number,
       }),
     }),
   ),
 };
 
-export function CountryTimeline({ indicators }) {
-  /* Filter to indicators that have time_series data */
+function renderTimelineCard(indicator, compact) {
+  const series = indicator.time_series ?? [];
+  const years = series.map((point) => point.year);
+  const minYear = Math.min(...years);
+  const maxYear = Math.max(...years);
+  const anomalyCount = series.filter((point) => point.is_anomaly).length;
+
+  return (
+    <div
+      className={compact ? "country-timeline__compact" : "country-timeline__chart"}
+      key={indicator.indicator_code}
+    >
+      <div className="country-timeline__chart-header">
+        <div className="country-timeline__chart-context">
+          {!compact ? (
+            <span className="text-label">{indicator.indicator_name}</span>
+          ) : null}
+          <span className="text-label text-secondary">{minYear}-{maxYear}</span>
+          <span className="text-label text-secondary">
+            {getDesiredDirectionLabel(indicator.indicator_code)}
+          </span>
+        </div>
+        <span
+          className={`country-timeline__chart-note${
+            anomalyCount ? " text-warning" : ""
+          }`}
+        >
+          {anomalyCount
+            ? `${anomalyCount} anomaly year${anomalyCount === 1 ? "" : "s"}`
+            : "No anomaly years"}
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={compact ? 176 : 220}>
+        <LineChart
+          data={series}
+          margin={
+            compact
+              ? { top: 8, right: 8, bottom: 0, left: 0 }
+              : { top: 8, right: 12, bottom: 0, left: 0 }
+          }
+        >
+          <CartesianGrid
+            vertical={false}
+            stroke="var(--color-border)"
+            strokeDasharray="2 2"
+          />
+          <XAxis
+            axisLine={{ stroke: "var(--color-border)" }}
+            dataKey="year"
+            minTickGap={compact ? 20 : 16}
+            tick={{
+              fill: "var(--color-text-secondary)",
+              fontFamily: "var(--font-mono)",
+              fontSize: compact ? 10 : 11,
+            }}
+            tickLine={false}
+          />
+          <YAxis
+            axisLine={false}
+            tick={{
+              fill: "var(--color-text-secondary)",
+              fontFamily: "var(--font-mono)",
+              fontSize: compact ? 10 : 11,
+            }}
+            tickFormatter={formatTimelineValue}
+            tickLine={false}
+            width={compact ? 40 : 56}
+          />
+          <Tooltip
+            content={<TimelineTooltip indicatorCode={indicator.indicator_code} />}
+          />
+          <Line
+            activeDot={{
+              fill: "var(--color-text-primary)",
+              r: 5,
+              stroke: "var(--surface-card)",
+              strokeWidth: 2,
+            }}
+            connectNulls
+            dataKey="value"
+            dot={
+              <TimelineDot
+                indicatorCode={indicator.indicator_code}
+                latestYear={maxYear}
+              />
+            }
+            stroke="var(--color-text-primary)"
+            strokeWidth={2}
+            type="monotone"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function CountryTimeline({ indicators, compact = false }) {
   const timelineIndicators = indicators.filter(
-    (ind) => ind.time_series && ind.time_series.length > 1,
+    (indicator) => indicator.time_series && indicator.time_series.length > 1,
   );
 
-  if (!timelineIndicators.length) return null;
+  if (!timelineIndicators.length) {
+    return null;
+  }
+
+  if (compact) {
+    return timelineIndicators.map((indicator) => renderTimelineCard(indicator, true));
+  }
 
   return (
     <section className="country-timeline section-gap">
@@ -80,83 +275,27 @@ export function CountryTimeline({ indicators }) {
         </div>
       </div>
       <div className="country-timeline__grid mt-4">
-        {timelineIndicators.map((indicator) => {
-          const series = indicator.time_series;
-          const years = series.map((p) => p.year);
-          const minYear = Math.min(...years);
-          const maxYear = Math.max(...years);
-          const mean =
-            series.reduce((sum, p) => sum + (p.value ?? 0), 0) / series.length;
-          const latestYear = maxYear;
-
-          return (
-            <div className="country-timeline__chart" key={indicator.indicator_code}>
-              <div className="country-timeline__chart-header">
-                <span className="text-label">{indicator.indicator_name}</span>
-                <span className="text-label text-secondary">
-                  {minYear}–{maxYear}
-                </span>
-              </div>
-              <ResponsiveContainer width="100%" height={180}>
-                <LineChart
-                  data={series}
-                  margin={{ top: 8, right: 32, bottom: 4, left: 8 }}
-                >
-                  <XAxis
-                    dataKey="year"
-                    tick={{ fill: "#737373", fontFamily: "'Commit Mono', monospace", fontSize: 11 }}
-                    axisLine={{ stroke: "#262626" }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "#737373", fontFamily: "'Commit Mono', monospace", fontSize: 11 }}
-                    axisLine={{ stroke: "#262626" }}
-                    tickLine={false}
-                    width={48}
-                  />
-                  <Tooltip content={<TimelineTooltip />} />
-                  <ReferenceLine
-                    y={mean}
-                    stroke="#737373"
-                    strokeDasharray="4 4"
-                    label={{
-                      value: "MEAN",
-                      fill: "#737373",
-                      fontSize: 10,
-                      fontFamily: "'Commit Mono', monospace",
-                      position: "right",
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#F5F5F5"
-                    strokeWidth={1.5}
-                    dot={<TimelineDot latestYear={latestYear} />}
-                    activeDot={{ r: 4, fill: "#FF4500" }}
-                    connectNulls
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          );
-        })}
+        {timelineIndicators.map((indicator) => renderTimelineCard(indicator, false))}
       </div>
     </section>
   );
 }
 
 CountryTimeline.propTypes = {
+  compact: PropTypes.bool,
   indicators: PropTypes.arrayOf(
     PropTypes.shape({
       indicator_code: PropTypes.string.isRequired,
       indicator_name: PropTypes.string.isRequired,
       time_series: PropTypes.arrayOf(
         PropTypes.shape({
-          year: PropTypes.number.isRequired,
-          value: PropTypes.number,
-          percent_change: PropTypes.number,
+          anomaly_basis: PropTypes.string,
+          change_basis: PropTypes.string,
+          change_value: PropTypes.number,
           is_anomaly: PropTypes.bool,
+          percent_change: PropTypes.number,
+          value: PropTypes.number,
+          year: PropTypes.number.isRequired,
         }),
       ),
     }),
