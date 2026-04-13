@@ -3,13 +3,22 @@
 > AI-native global economic intelligence terminal for the ML6 Engineering Challenge.
 
 [![Live Frontend](https://img.shields.io/badge/Live-Frontend-FF4500?style=for-the-badge)](https://world-analyst-frontend-495164848006.europe-west1.run.app)
-[![Live API](https://img.shields.io/badge/Live-API-1f6feb?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1)
+[![API Base](https://img.shields.io/badge/API-Base-1f6feb?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1)
+[![API Health](https://img.shields.io/badge/API-Health-198754?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/health)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-Spec-0f766e?style=for-the-badge)](https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml)
+[![Swagger Explorer](https://img.shields.io/badge/Swagger-Explorer-0ea5e9?style=for-the-badge)](https://editor.swagger.io/?url=https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml)
 
 ## Live Access (Start Here)
 
 **Frontend dashboard:** https://world-analyst-frontend-495164848006.europe-west1.run.app
 
 **API base:** https://world-analyst-api-495164848006.europe-west1.run.app/api/v1
+
+**API health:** https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/health
+
+**OpenAPI spec:** https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml
+
+**Swagger explorer:** https://editor.swagger.io/?url=https://world-analyst-api-495164848006.europe-west1.run.app/api/v1/openapi.yaml
 
 AI-generated analysis may contain inaccuracies.
 
