@@ -239,16 +239,17 @@ Replace the dead-end `CountryIntelligenceLanding.jsx` with a searchable director
 
 1. Create `frontend/src/components/CountryTimeline.jsx`:
    - Takes `indicators` array (each with `time_series`).
-   - Renders one Recharts `<LineChart>` per indicator.
-   - Chart styling per PRD §7.2:
-     - Line: `#F5F5F5`, 1.5px stroke, no area fill.
+   - Renders one Recharts `<AreaChart>` per indicator.
+   - Chart styling per PRD §7.2 with modern area gradient:
+     - Area Fill: linear gradient from `rgba(255, 69, 0, 0.4)` (International Orange accent) at the top, fading to `rgba(255, 69, 0, 0.0)` at the bottom.
+     - Line: `#FF4500` (accent color), 1.5px stroke for strong boundary.
      - Background: transparent (inherits dark card).
      - No grid lines. Axis lines `#262626`. Axis labels `#737373` in Commit Mono.
-     - Anomaly years: `#EF4444` dots (6px radius) via custom dot renderer.
+     - Anomaly years: `#EF4444` dots (6px radius) via custom dot renderer, with small tooltip to explain the anomaly (e.g. "COVID-19 shock").
      - Latest point: `#FF4500` dot (8px radius) with value label.
      - Mean reference: dashed `#737373` line with "MEAN" label via `<ReferenceLine>`.
    - Height: 180px per chart. Width: responsive (100%).
-   - Tooltip: year, value, YoY change on Level 3 surface.
+   - Tooltip: year, value, YoY change on Level 3 surface with glassmorphic aesthetic (if tokens allow, otherwise dark popover).
    - Guard: if `time_series` is absent or empty, don't render.
 
 2. Integrate into `CountryIntelligence.jsx`:
