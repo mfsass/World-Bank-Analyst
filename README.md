@@ -173,7 +173,14 @@ python -m pipeline.evaluation
 | The shipped feature and architecture phases | `docs/prds/` |
 | The trade-offs behind the current shape | `docs/DECISIONS.md` |
 
-The live frontend and API URLs are rollout outputs rather than stable repo constants. Before the presentation handoff, capture the active `FRONTEND_URL` and `API_ORIGIN` from the latest successful Cloud Run rollout and smoke gate so the reviewer gets one current entry point instead of an outdated hardcoded link.
+### Live Access
+
+| Surface | URL |
+| --- | --- |
+| Dashboard | `https://world-analyst-frontend-495164848006.europe-west1.run.app` |
+| API base | `https://world-analyst-api-495164848006.europe-west1.run.app/api/v1` |
+
+These URLs were confirmed against the live Cloud Run rollout and smoke gate: the API health endpoint responds, the direct protected countries endpoint rejects unauthenticated access with `401`, and the frontend proxy returns the full 17-country panel.
 
 ## Git Workflow
 
